@@ -3,169 +3,160 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
-import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
+
+// IMPROVEMENT: Proper USDC Formatter
+const formatUSDC = (val: number) => 
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
 export default function MerchantAdmin() {
   const { publicKey, connected } = useWallet();
   
-  // --- STATE: FINANCIALS ---
-  const [privateBalance, setPrivateBalance] = useState<number>(0);
+  const [privateBalance, setPrivateBalance] = useState<number>(1250.50); // Mock starting balance for demo
   const [flushLoading, setFlushLoading] = useState(false);
   const [mainWallet, setMainWallet] = useState("");
-
-  // --- STATE: ENTERPRISE / PAIRING ---
   const [pairingToken, setPairingToken] = useState("");
-  const [staffName, setStaffName] = useState("");
-  const [staffAddress, setStaffAddress] = useState("");
-  const [profilePic, setProfilePic] = useState<string | null>(null);
+  
+  // IMPROVEMENT: Staff List Persistence
+  const [staffList, setStaffList] = useState<{name: string, address: string}[]>([]);
+  const [currentStaffName, setCurrentStaffName] = useState("");
+  const [currentStaffAddress, setCurrentStaffAddress] = useState("");
 
-  // Fetch Balance Logic
+  // Load staff from LocalStorage on mount
   useEffect(() => {
-    if (!publicKey) return;
-    const fetchBalance = async () => {
-      try {
-        const balance = await getPrivateBalance(publicKey.toBase58());
-        setPrivateBalance(balance || 0);
-      } catch (err) { console.error("Balance Error:", err); }
-    };
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 15000);
-    return () => clearInterval(interval);
-  }, [publicKey]);
+    const saved = localStorage.getItem('opayque_staff');
+    if (saved) setStaffList(JSON.parse(saved));
+  }, []);
 
-  // Generate 6-Digit Pairing Code
+  const handleRegister = () => {
+    if (!currentStaffName || !currentStaffAddress) return;
+    const newList = [...staffList, { name: currentStaffName, address: currentStaffAddress }];
+    setStaffList(newList);
+    localStorage.setItem('opayque_staff', JSON.stringify(newList));
+    setCurrentStaffName("");
+    setCurrentStaffAddress("");
+    alert(`${currentStaffName} authorized as Endpoint.`);
+  };
+
   const generatePairingToken = () => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setPairingToken(code);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setProfilePic(URL.createObjectURL(file));
-  };
-
-  const handleFlush = async () => {
-    if (!publicKey || !mainWallet || privateBalance <= 0) return;
-    setFlushLoading(true);
-    // Logic as defined in our previous TEE sessions...
-    setTimeout(() => { 
-        setFlushLoading(false); 
-        setPrivateBalance(0);
-        alert("Privacy Flush Complete: Funds moved to L1");
-    }, 2000);
-  };
-
   return (
-    <div className="min-h-screen bg-black text-white p-6 font-sans">
+    <div className="min-h-screen bg-black text-white p-6 selection:bg-purple-500/30">
       <div className="max-w-6xl mx-auto">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-12">
+        <div className="flex justify-between items-center mb-12 border-b border-white/5 pb-8">
           <div>
             <h1 className="text-4xl font-black italic tracking-tighter">OPAYQUE<span className="text-purple-500">.</span></h1>
-            <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] font-bold">Enterprise Shielded Command</p>
+            <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] font-bold">Privacy-Shielded Merchant Admin</p>
           </div>
           <WalletMultiButton className="!bg-white !text-black !rounded-full !font-bold !text-xs" />
         </div>
 
-        {!connected ? (
-            <div className="h-64 border border-dashed border-white/10 rounded-[3rem] flex flex-center items-center justify-center text-zinc-600 uppercase text-[10px] tracking-widest font-bold">
-                Connect Wallet to Access TEE Vault
-            </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-1000">
+        {connected ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             
-            {/* LEFT COLUMN: VAULT & SETTLEMENT (4 Cols) */}
+            {/* LEFT: Financials */}
             <div className="lg:col-span-5 space-y-8">
-              <div className="p-8 rounded-[3rem] bg-gradient-to-br from-purple-900/20 to-zinc-900 border border-purple-500/30">
-                <p className="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-2">Vault Balance</p>
-                <h2 className="text-6xl font-mono font-bold">${privateBalance.toFixed(2)}</h2>
-                <div className="mt-8 p-6 bg-black/40 rounded-3xl border border-white/5">
-                    <p className="text-[9px] text-zinc-500 uppercase mb-4 font-bold">Privacy Settlement Address</p>
+              <div className="p-10 rounded-[3.5rem] bg-zinc-900/50 border border-purple-500/20 backdrop-blur-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl italic font-black">TEE</div>
+                <p className="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-2">Shielded Vault</p>
+                <h2 className="text-6xl font-mono font-bold tracking-tighter">
+                    {formatUSDC(privateBalance)}
+                </h2>
+                
+                <div className="mt-12 space-y-4">
                     <input 
-                        className="w-full bg-transparent border-b border-white/10 pb-2 text-xs outline-none focus:border-purple-500 transition-all mb-6"
-                        placeholder="Enter L1 Target Address"
+                        className="w-full bg-black/50 border border-white/5 p-4 rounded-2xl text-xs outline-none focus:border-purple-500 transition-all"
+                        placeholder="Settlement L1 Address (Public)"
                         value={mainWallet}
                         onChange={(e) => setMainWallet(e.target.value)}
                     />
                     <button 
-                        onClick={handleFlush}
-                        disabled={flushLoading || privateBalance <= 0}
-                        className="w-full py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest hover:invert transition-all disabled:opacity-20"
+                        onClick={() => { setFlushLoading(true); setTimeout(() => { setPrivateBalance(0); setFlushLoading(false); }, 2000); }}
+                        className="w-full py-5 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
                     >
-                        {flushLoading ? "FLUSHING..." : "Flush to L1 Wallet"}
+                        {flushLoading ? "Executing TEE Flush..." : "Settle to Main Wallet"}
                     </button>
                 </div>
+              </div>
+
+              {/* RECENT SETTLEMENTS (Padding) */}
+              <div className="p-8 bg-zinc-900/30 border border-white/5 rounded-[2.5rem]">
+                 <h4 className="text-[9px] uppercase font-bold text-zinc-500 tracking-[0.2em] mb-4">Audit Ledger</h4>
+                 <div className="space-y-3">
+                    {[1, 2].map(i => (
+                        <div key={i} className="flex justify-between items-center text-[10px] font-mono opacity-40">
+                            <span>SHIELD_SETTLE_0x...{i}f4</span>
+                            <span className="text-green-500">+$450.00</span>
+                        </div>
+                    ))}
+                 </div>
               </div>
             </div>
 
-            {/* RIGHT COLUMN: ENTERPRISE CONTROLS (7 Cols) */}
+            {/* RIGHT: Operations */}
             <div className="lg:col-span-7 space-y-8">
-              
-              {/* TERMINAL PAIRING CARD */}
-              <div className="p-8 bg-zinc-900 border border-white/5 rounded-[3rem]">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-sm font-bold uppercase tracking-widest">Device Authorization</h3>
-                    <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+              {/* TERMINAL PAIRING */}
+              <div className="p-8 bg-zinc-900/80 border border-white/5 rounded-[3rem] flex items-center justify-between">
+                <div>
+                    <h3 className="text-xs font-bold uppercase tracking-widest">Device Pairing</h3>
+                    <p className="text-[10px] text-zinc-500">Authorize active terminals</p>
                 </div>
-                <div className="flex items-center gap-6 p-6 bg-black rounded-3xl border border-white/5">
-                    <div className="flex-1">
-                        <p className="text-[9px] text-zinc-500 uppercase font-bold">Current Pairing Code</p>
-                        <p className="text-3xl font-mono font-black tracking-tighter">
-                            {pairingToken || "------"}
-                        </p>
-                    </div>
-                    <button 
-                        onClick={generatePairingToken}
-                        className="px-6 py-4 bg-zinc-800 hover:bg-white hover:text-black rounded-2xl font-bold text-[10px] uppercase transition-all"
-                    >
-                        New Token
+                <div className="flex items-center gap-4">
+                    <span className="text-2xl font-mono font-black text-purple-400 tracking-widest">{pairingToken || "------"}</span>
+                    <button onClick={generatePairingToken} className="p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-all">
+                        🔄
                     </button>
                 </div>
               </div>
 
-              {/* STAFF/CAUSE ONBOARDING */}
-              <div className="p-8 bg-zinc-900 border border-white/5 rounded-[3rem]">
-                <h3 className="text-sm font-bold uppercase tracking-widest mb-8">Register New Endpoint</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                        <div className="w-full aspect-square rounded-[2rem] bg-black border border-white/5 overflow-hidden flex items-center justify-center relative group">
-                            {profilePic ? (
-                                <img src={profilePic} className="w-full h-full object-cover" />
-                            ) : (
-                                <span className="text-[9px] text-zinc-700 font-bold uppercase">No Identity Loaded</span>
-                            )}
-                            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all">
-                                <span className="text-[10px] font-bold uppercase">Upload</span>
-                                <input type="file" className="hidden" onChange={handlePhotoUpload} />
-                            </label>
-                        </div>
-                    </div>
-                    <div className="flex flex-col justify-between space-y-4">
+              {/* STAFF ONBOARDING */}
+              <div className="p-10 bg-zinc-900 border border-white/5 rounded-[3.5rem]">
+                <h3 className="text-sm font-bold uppercase tracking-widest mb-8">Manage Endpoints</h3>
+                <div className="space-y-6">
+                    <div className="flex gap-4">
                         <input 
-                            placeholder="NAME / CAUSE"
-                            className="w-full bg-black border border-white/5 p-4 rounded-2xl text-xs outline-none focus:border-purple-500"
-                            onChange={(e) => setStaffName(e.target.value)}
+                            placeholder="STAFF NAME"
+                            className="flex-1 bg-black border border-white/5 p-4 rounded-2xl text-xs"
+                            value={currentStaffName}
+                            onChange={(e) => setCurrentStaffName(e.target.value)}
                         />
                         <input 
                             placeholder="SOLANA WALLET"
-                            className="w-full bg-black border border-white/5 p-4 rounded-2xl text-[10px] font-mono outline-none focus:border-purple-500"
-                            onChange={(e) => setStaffAddress(e.target.value)}
+                            className="flex-[2] bg-black border border-white/5 p-4 rounded-2xl text-[10px] font-mono"
+                            value={currentStaffAddress}
+                            onChange={(e) => setCurrentStaffAddress(e.target.value)}
                         />
-                        <button className="w-full py-6 bg-purple-600 rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-purple-500/10">
-                            Authorize Endpoint
-                        </button>
                     </div>
+                    <button onClick={handleRegister} className="w-full py-4 bg-purple-600 rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-purple-500 transition-colors">
+                        Authorize Staff Member
+                    </button>
+                </div>
+
+                {/* Staff Display */}
+                <div className="mt-10 grid grid-cols-2 gap-4">
+                    {staffList.map((staff, idx) => (
+                        <div key={idx} className="p-4 bg-black/40 border border-white/5 rounded-2xl flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 shrink-0" />
+                            <div className="overflow-hidden">
+                                <p className="text-[10px] font-bold truncate">{staff.name}</p>
+                                <p className="text-[8px] text-zinc-600 font-mono truncate">{staff.address}</p>
+                            </div>
+                        </div>
+                    ))}
                 </div>
               </div>
-
             </div>
+
+          </div>
+        ) : (
+          <div className="py-40 text-center">
+             <h2 className="text-zinc-600 uppercase text-xs font-bold tracking-[0.5em]">System Locked • Awaiting Merchant Key</h2>
           </div>
         )}
-
-        <footer className="mt-20 border-t border-white/5 pt-8 text-center">
-            <p className="text-[9px] text-zinc-700 uppercase font-bold tracking-[0.5em]">Opayque Protocol v1.0 • MagicBlock TEE Secured</p>
-        </footer>
       </div>
     </div>
   );
