@@ -1,8 +1,8 @@
-import "./globals.css"; 
+import "./globals.css"; // Fixed: ensure this is in the same folder (app/)
 import { Inter } from "next/font/google";
 import React from "react";
-// FIX: Point to the actual filename 'WalletProvider' and go UP one level to find 'components'
-import AppWalletProvider from "../components/WalletProvider";
+// Go UP one level out of 'app' to find the 'components' folder at root
+import WalletProviderWrapper from "../components/WalletProvider";
 
 export const metadata = {
   title: "Opayque | Shielded Merchant Infrastructure",
@@ -16,9 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-black text-white antialiased selection:bg-purple-500/30`}>
-        <AppWalletProvider>
+        {/* Wrapping with the Provider from the components folder */}
+        <WalletProviderWrapper>
           {children}
-        </AppWalletProvider>
+        </WalletProviderWrapper>
       </body>
     </html>
   );
