@@ -14,6 +14,16 @@
   --radius-md: 1.5rem;
 }
 
+/* Light mode fallback */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --fg: #171717;
+    --muted: #6b7280;
+    --accent: #8b5cf6;
+  }
+}
+
 /* Base element styles */
 html, body {
   height: 100%;
@@ -23,12 +33,12 @@ html, body {
 body {
   background-color: var(--bg);
   color: var(--fg);
-  /* The layout uses the 'inter' variable, this keeps it consistent */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   line-height: 1.4;
   overflow-x: hidden;
+  font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
 }
 
 /* CUSTOM BRANDING: Purple highlight when selecting text */
@@ -37,7 +47,7 @@ body {
   color: #ffffff;
 }
 
-/* Small accessible focus ring helper */
+/* Accessible focus ring helper */
 :focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
