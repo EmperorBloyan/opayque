@@ -1,194 +1,321 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { QRCodeSVG } from "qrcode.react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 
-interface Endpoint {
-  id: string;
-  name: string;
-  address: string;
-  type: "employee" | "cause";
-}
+// --- UTILS ---
+const formatUSDC = (val: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+
+type Staff = { id: string; name: string; type: string };
+type Tx = { id: string; staff: string; amount: number; time: string };
+
+// Toggle demo helpers with env var: set NEXT_PUBLIC_DEMO_MODE=true for recordings
+const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export default function MerchantAdmin() {
+  // 1. HYDRATION & WALLET STATE
+  const [mounted, setMounted] = useState(false);
   const { publicKey, connected } = useWallet();
-  
-  // 1. DYNAMIC IDENTITY
-  // The "Main Vault" now defaults to the connected merchant's wallet
-  const merchantBaseAddress = useMemo(() => 
-    publicKey ? publicKey.toBase58() : "Connect Wallet to Initialize", 
-    [publicKey]
-  );
 
-  const [endpoints, setEndpoints] = useState<Endpoint[]>([
-    { id: "default", name: "Main Store Vault", address: merchantBaseAddress, type: "employee" },
-  ]);
+  // 2. APP STATE (lazy init from localStorage)
+  const [privateBalance, setPrivateBalance] = useState<number>(() => {
+    try {
+      const v = localStorage.getItem("opayque_balance");
+      return v ? Number(v) : 1250.5;
+    } catch {
+      return 1250.5;
+    }
+  });
+  const [flushLoading, setFlushLoading] = useState(false);
+  const [pairingToken, setPairingToken] = useState<string>(() => {
+    try {
+      return localStorage.getItem("active_pairing_code") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [staffList, setStaffList] = useState<Staff[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("opayque_staff") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [transactions, setTransactions] = useState<Tx[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("opayque_tx") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
-  const [transactions] = useState([
-    { id: 'tx1', type: 'Product Sale', amount: 50.00, status: 'Shielded', date: '2026-04-29' },
-    { id: 'tx2', type: 'Staff Tip', amount: 5.50, status: 'Shielded', date: '2026-04-29' },
-  ]);
+  // Toast state (non-blocking)
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
-  const [newName, setNewName] = useState("");
-  const [newAddress, setNewAddress] = useState("");
-  const [newType, setNewType] = useState<"employee" | "cause">("employee");
-  const [activeQR, setActiveQR] = useState<Endpoint | null>(null);
+  // 3. MOUNT LOGIC
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const addEndpoint = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName || !newAddress) return;
-    setEndpoints([...endpoints, { id: Date.now().toString(), name: newName, address: newAddress, type: newType }]);
-    setNewName("");
-    setNewAddress("");
-  };
+  // 4. Persist changes reactively
+  useEffect(() => {
+    try {
+      localStorage.setItem("opayque_staff", JSON.stringify(staffList));
+    } catch {}
+  }, [staffList]);
 
-  const deleteEndpoint = (id: string) => {
-    if (id === "default") return; // Prevent deleting the main vault
-    setEndpoints(endpoints.filter(e => e.id !== id));
-    if (activeQR?.id === id) setActiveQR(null);
-  };
+  useEffect(() => {
+    try {
+      localStorage.setItem("opayque_tx", JSON.stringify(transactions));
+    } catch {}
+  }, [transactions]);
 
-  // 2. SOLANA PAY URI GENERATOR
-  const getSolanaPayUri = (targetAddress: string, label: string) => {
-    // Standard format: solana:<address>?label=<label>&message=<msg>
-    const cleanLabel = encodeURIComponent(`Opayque: ${label}`);
-    return `solana:${targetAddress}?label=${cleanLabel}&message=Confidential+Shielded+Transfer`;
-  };
+  useEffect(() => {
+    try {
+      localStorage.setItem("active_pairing_code", pairingToken || "");
+    } catch {}
+  }, [pairingToken]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("opayque_balance", String(privateBalance));
+    } catch {}
+  }, [privateBalance]);
+
+  // 5. ACTIONS (secure token + stable tx ids)
+  const generatePairingToken = useCallback(() => {
+    // secure 6-digit token
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    const code = String(100000 + (arr[0] % 900000));
+    setPairingToken(code);
+    setToast("Pairing code generated.");
+  }, []);
+
+  const addTransaction = useCallback((staff: string, amount: number) => {
+    const tx: Tx = { id: crypto.randomUUID(), staff, amount, time: new Date().toISOString() };
+    setTransactions((p) => [tx, ...p]);
+  }, []);
+
+  const handleFlush = useCallback(() => {
+    setFlushLoading(true);
+    // simulate async settlement
+    setTimeout(() => {
+      setPrivateBalance(0);
+      setFlushLoading(false);
+      setToast("TEE Privacy Shield: Funds flushed to Layer 1 Mainnet.");
+    }, 2500);
+  }, []);
+
+  // 6. Demo transaction simulation (keyboard + optional button)
+  useEffect(() => {
+    if (!DEMO) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "t" || e.key === "T") {
+        addTransaction("Terminal 01", 25.0);
+        setPrivateBalance((prev) => Number((prev + 25.0).toFixed(2)));
+        setToast("New Shielded Payment: $25.00 received.");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addTransaction]);
+
+  // 7. Derived values
+  const formattedBalance = useMemo(() => formatUSDC(privateBalance), [privateBalance]);
+  const shortPub = useMemo(() => (publicKey ? `${publicKey.toBase58().slice(0, 4)}...` : null), [publicKey]);
+
+  // Prevent Hydration Mismatch
+  if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-black text-white p-6 selection:bg-purple-500/30">
       <div className="max-w-6xl mx-auto">
-        
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+        {/* HEADER */}
+        <header className="flex justify-between items-center mb-12 border-b border-white/5 pb-8">
           <div>
-            <h1 className="text-4xl font-black italic tracking-tighter uppercase">Opayque Admin</h1>
-            <div className="flex items-center gap-2 mt-1">
-                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500'}`}></div>
-                <p className="text-zinc-500 text-xs uppercase tracking-widest">
-                    {connected ? `Active Terminal: ${merchantBaseAddress.slice(0,4)}...${merchantBaseAddress.slice(-4)}` : "Terminal Offline - Connect Wallet"}
-                </p>
-            </div>
+            <h1 className="text-4xl font-black italic tracking-tighter uppercase">Opayque</h1>
+            <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] font-bold">
+              {connected ? `Vault Active: ${shortPub}` : "Vault Offline"}
+            </p>
           </div>
+
           <div className="flex items-center gap-4">
-             <button onClick={() => alert("Generating Audit Report...")} className="hidden md:block px-5 py-2 bg-zinc-900 border border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">
-                Compliance Export
-            </button>
-            <WalletMultiButton />
+            {/* Optional demo simulate button */}
+            {DEMO && (
+              <button
+                onClick={() => {
+                  addTransaction("Terminal 01", 25.0);
+                  setPrivateBalance((prev) => Number((prev + 25.0).toFixed(2)));
+                  setToast("New Shielded Payment: $25.00 received.");
+                }}
+                className="px-3 py-2 text-xs bg-white/5 rounded hover:bg-white/10 transition"
+                aria-label="Simulate transaction (T)"
+              >
+                Simulate TX (T)
+              </button>
+            )}
+
+            <WalletMultiButton
+              className="!bg-white !text-black !rounded-full !font-bold !text-xs hover:!bg-zinc-200 transition-all"
+              aria-label="Connect wallet"
+            />
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* MANAGEMENT FORM */}
-          <div className="space-y-6">
-            <section className="bg-zinc-900/50 border border-white/10 p-6 rounded-[2.5rem] backdrop-blur-xl">
-              <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-                <span className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-                Endpoint Registry
-              </h2>
-              <form onSubmit={addEndpoint} className="space-y-4">
-                <input 
-                  value={newName} onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Employee Name / Cause"
-                  className="w-full bg-black border border-white/5 rounded-2xl p-4 outline-none focus:border-purple-500/50 transition-all text-sm"
-                />
-                <input 
-                  value={newAddress} onChange={(e) => setNewAddress(e.target.value)}
-                  placeholder="Solana Address"
-                  className="w-full bg-black border border-white/5 rounded-2xl p-4 outline-none focus:border-purple-500/50 transition-all font-mono text-xs"
-                />
-                <div className="flex gap-2 p-1 bg-black rounded-2xl border border-white/5">
-                  <button type="button" onClick={() => setNewType("employee")} className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${newType === 'employee' ? 'bg-white text-black' : 'text-zinc-500'}`}>Staff</button>
-                  <button type="button" onClick={() => setNewType("cause")} className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${newType === 'cause' ? 'bg-white text-black' : 'text-zinc-500'}`}>Cause</button>
+        {connected ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-700">
+            {/* LEFT: FINANCIALS & HISTORY */}
+            <div className="lg:col-span-8 space-y-8">
+              <div className="p-10 rounded-[3.5rem] bg-zinc-900 border border-white/10 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-5 text-6xl font-black italic group-hover:scale-110 transition-transform">
+                  VAULT
                 </div>
-                <button type="submit" disabled={!connected} className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:opacity-30 rounded-2xl font-bold transition-all mt-4">
-                  Register Endpoint
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">
+                  Private Shielded Volume
+                </p>
+                <h2 className="text-7xl font-mono font-bold tracking-tighter">{formattedBalance}</h2>
+                <button
+                  onClick={handleFlush}
+                  disabled={flushLoading || privateBalance === 0}
+                  aria-label="Execute L1 Settlement"
+                  className="mt-8 px-10 py-4 bg-purple-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all disabled:opacity-20"
+                >
+                  {flushLoading ? "TEE Settlement in Progress..." : "Execute L1 Settlement"}
                 </button>
-              </form>
-            </section>
-          </div>
-
-          <div className="lg:col-span-2 space-y-8">
-            {/* DIRECTORY */}
-            <section className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] overflow-hidden">
-              <div className="p-6 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                <h2 className="text-lg font-bold">Directory Management</h2>
               </div>
-              <div className="divide-y divide-white/5 max-h-[300px] overflow-y-auto">
-                {endpoints.map((ep) => (
-                  <div key={ep.id} className="p-6 flex items-center justify-between hover:bg-white/[0.02]">
-                    <div className="max-w-[60%]">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${ep.type === 'employee' ? 'bg-blue-400' : 'bg-green-400'}`}></span>
-                        <h3 className="font-bold truncate">{ep.name}</h3>
-                      </div>
-                      <p className="text-[10px] font-mono text-zinc-600 truncate">{ep.address}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => setActiveQR(ep)} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold uppercase">Get QR</button>
-                      {ep.id !== "default" && (
-                        <button onClick={() => deleteEndpoint(ep.id)} className="px-4 py-2 text-red-500/40 hover:text-red-500 text-[10px] font-bold uppercase">Delete</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
 
-            {/* AUDIT LOG */}
-            <section className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] overflow-hidden">
-              <div className="p-8 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h2 className="text-xl font-bold">Private Shielded Ledger</h2>
-                <div className="text-right">
-                   <p className="text-[10px] text-zinc-500 uppercase font-bold">Vault Balance</p>
-                   <p className="text-2xl font-mono font-bold">$55.50 <span className="text-sm text-zinc-500 font-normal italic">USDC</span></p>
+              {/* AUDIT LEDGER */}
+              <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
+                <div className="flex justify-between items-center mb-6 px-2">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+                  <span className="text-[9px] text-zinc-600 font-mono">Real-time sync</span>
                 </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-white/5">
-                    <tr>
-                      <th className="p-4 text-[10px] uppercase text-zinc-500">Source</th>
-                      <th className="p-4 text-[10px] uppercase text-zinc-500">Amount</th>
-                      <th className="p-4 text-[10px] uppercase text-zinc-500">Privacy</th>
-                      <th className="p-4 text-[10px] uppercase text-zinc-500">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {transactions.map((tx) => (
-                      <tr key={tx.id} className="hover:bg-white/[0.01]">
-                        <td className="p-4 text-sm font-medium">{tx.type}</td>
-                        <td className="p-4 text-sm font-mono text-green-400 font-bold">+${tx.amount.toFixed(2)}</td>
-                        <td className="p-4">
-                          <span className="px-2 py-1 bg-purple-500/10 text-purple-400 text-[9px] font-bold uppercase rounded border border-purple-500/20">Shielded</span>
-                        </td>
-                        <td className="p-4 text-sm text-zinc-500 font-mono">{tx.date}</td>
+                <div className="overflow-hidden rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-white/5 text-zinc-600 uppercase text-[9px]">
+                        <th className="pb-4 px-4 font-bold">TX ID</th>
+                        <th className="pb-4 px-4 font-bold">Terminal</th>
+                        <th className="pb-4 px-4 font-bold">Amount</th>
+                        <th className="pb-4 px-4 font-bold text-right">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {transactions.length > 0 ? (
+                        transactions.map((tx) => (
+                          <tr key={tx.id} className="hover:bg-white/5 transition-colors group">
+                            <td
+                              className="py-5 px-4 font-mono text-purple-500/50 blur-[2px] hover:blur-none focus:blur-none transition-all cursor-help"
+                              tabIndex={0}
+                              title="Encrypted transaction ID"
+                            >
+                              {tx.id.slice(0, 12)}...
+                            </td>
+                            <td className="py-5 px-4 font-bold">{tx.staff}</td>
+                            <td className="py-5 px-4 text-purple-400 font-bold">{formatUSDC(tx.amount)}</td>
+                            <td className="py-5 px-4 text-right">
+                              <span className="px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-[8px] font-bold uppercase tracking-tighter">
+                                Settled
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="py-20 text-center text-zinc-700 italic font-medium">
+                            No merchant activity detected in this epoch.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="p-8 bg-black/40 border-t border-white/5 flex justify-end gap-4">
-                 <button onClick={() => alert("TEE Settlement Logic Initiated...")} className="px-10 py-4 bg-white text-black font-bold rounded-2xl hover:scale-105 transition-all shadow-xl">
-                   Flush to L1 Mainnet
-                </button>
-              </div>
-            </section>
-          </div>
-        </div>
-
-        {/* QR MODAL */}
-        {activeQR && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-6">
-            <div className="bg-zinc-900 border border-white/10 p-10 rounded-[3rem] max-w-sm w-full text-center animate-in zoom-in duration-300">
-              <h3 className="text-2xl font-bold mb-1">{activeQR.name}</h3>
-              <p className="text-zinc-500 text-[10px] uppercase tracking-widest mb-8">Ready for Shielded Pay</p>
-              <div className="p-6 bg-white rounded-[2.5rem] inline-block mb-10 shadow-[0_0_40px_rgba(255,255,255,0.1)]">
-                <QRCodeSVG value={getSolanaPayUri(activeQR.address, activeQR.name)} size={200} />
-              </div>
-              <button onClick={() => setActiveQR(null)} className="w-full py-4 bg-white/5 text-zinc-400 rounded-2xl font-bold uppercase text-xs">Close</button>
             </div>
+
+            {/* RIGHT: DEVICE MANAGEMENT */}
+            <div className="lg:col-span-4 space-y-8">
+              <div className="p-8 bg-zinc-900 border border-white/5 rounded-[3rem] shadow-2xl">
+                <h3 className="text-xs font-bold uppercase tracking-widest mb-6 text-zinc-400">Terminal Pairing</h3>
+                <p className="text-[10px] text-zinc-600 mb-4 leading-relaxed">
+                  Enter this code on any Opayque Hardware terminal to authorize spending endpoints.
+                </p>
+                <div className="flex items-center justify-between bg-black p-6 rounded-2xl border border-white/5 mb-4 group">
+                  <span className="text-4xl font-mono font-black text-purple-500 tracking-tighter">
+                    {pairingToken || "------"}
+                  </span>
+                  <button
+                    onClick={generatePairingToken}
+                    aria-label="Generate pairing code"
+                    className="p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all group-active:rotate-180 duration-500"
+                  >
+                    🔄
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8 bg-zinc-900 border border-white/5 rounded-[3rem]">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Authorized Staff</h3>
+                  <button
+                    className="text-[9px] font-bold uppercase text-purple-500 hover:underline"
+                    aria-label="Add staff"
+                    onClick={() =>
+                      setStaffList((p) => [
+                        ...p,
+                        { id: crypto.randomUUID(), name: `Staff ${p.length + 1}`, type: "POS" },
+                      ])
+                    }
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {staffList.length > 0 ? (
+                    staffList.map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center gap-3 p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-zinc-800 border border-white/5 flex items-center justify-center text-lg">
+                          👤
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold tracking-tight">{s.name}</p>
+                          <p className="text-[8px] text-zinc-500 uppercase font-black">{s.type}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[10px] text-zinc-600 italic text-center py-4">No staff endpoints registered.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="py-40 flex flex-col items-center justify-center animate-pulse">
+            <div className="w-20 h-20 bg-zinc-900 rounded-full mb-8 border border-white/5 flex items-center justify-center">
+              <span className="text-2xl grayscale opacity-50">🛡️</span>
+            </div>
+            <p className="uppercase font-black tracking-[0.6em] text-zinc-700 text-[10px]">Awaiting Merchant Authorization</p>
+          </div>
+        )}
+      </div>
+
+      {/* Toast */}
+      <div aria-live="polite" className="fixed bottom-6 right-6">
+        {toast && (
+          <div className="bg-zinc-900 border border-white/10 px-4 py-2 rounded-lg text-sm shadow-lg">
+            {toast}
           </div>
         )}
       </div>
