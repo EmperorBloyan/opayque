@@ -1,16 +1,35 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 
+// Dynamic import prevents server rendering and fixes hydration mismatch.
+// Loading placeholder matches button height to avoid layout shift.
+const WalletMultiButtonNoSSR = dynamic(
+  () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="h-14 w-full bg-zinc-800/20 animate-pulse rounded-2xl"
+        aria-hidden="true"
+      />
+    ),
+  }
+);
+
 export default function UnifiedLanding() {
+  const [mounted, setMounted] = useState(false);
   const { connected } = useWallet();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-sans selection:bg-purple-500/30 relative">
-
       {/* Subtle bottom fade */}
       <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black to-transparent pointer-events-none" />
 
@@ -32,41 +51,46 @@ export default function UnifiedLanding() {
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-
         {/* MERCHANT VAULT */}
-        <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3rem]
-                        hover:border-purple-500/50 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(147,51,234,0.15)]
-                        transition-all duration-500 overflow-hidden
-                        animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150 fill-mode-both">
-
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-600/10 rounded-full blur-3xl
-                          group-hover:bg-purple-600/20 transition-all" />
+        <div
+          className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3rem]
+                     hover:border-purple-500/50 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(147,51,234,0.15)]
+                     transition-all duration-500 overflow-hidden
+                     animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150 fill-mode-both"
+        >
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-600/10 rounded-full blur-3xl group-hover:bg-purple-600/20 transition-all" />
 
           <h2 className="text-2xl font-black italic mb-4 uppercase">Merchant Vault</h2>
           <p className="text-zinc-500 text-sm mb-8 leading-relaxed">
-            Connect your authority wallet to manage staff, audit transactions, and settle funds to Mainnet.
+            Connect your wallet to manage staff, audit transactions, and settle funds to Mainnet.
           </p>
 
-          {connected ? (
-            <Link
-              href="/admin"
-              aria-label="Enter Merchant Dashboard"
-              className="block w-full py-4 bg-purple-600 text-center rounded-2xl font-black uppercase text-xs tracking-widest
-                         hover:bg-purple-500 transition-all shadow-[0_10px_30px_rgba(147,51,234,0.2)]
-                         focus:outline-none focus:ring-4 focus:ring-purple-500/30"
-            >
-              Enter Dashboard
-            </Link>
+          {/* mounted check + dynamic wallet button */}
+          {mounted ? (
+            connected ? (
+              <Link
+                href="/admin"
+                aria-label="Enter Merchant Dashboard"
+                className="block w-full py-4 bg-purple-600 text-center rounded-2xl font-black uppercase text-xs tracking-widest
+                           hover:bg-purple-500 transition-all shadow-[0_10px_30px_rgba(147,51,234,0.2)]
+                           focus:outline-none focus:ring-4 focus:ring-purple-500/30"
+              >
+                Enter Dashboard
+              </Link>
+            ) : (
+              <div className="flex flex-col items-center justify-center space-y-3">
+                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest opacity-50">
+                  Connect your wallet to access the Merchant Vault
+                </span>
+
+                <WalletMultiButtonNoSSR
+                  className="!bg-white !text-black !rounded-2xl !font-black !text-[10px] !uppercase !tracking-widest
+                             !h-14 !w-full flex justify-center hover:!bg-zinc-200 transition-colors"
+                />
+              </div>
+            )
           ) : (
-            <div className="flex flex-col items-center justify-center space-y-3">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest opacity-50">
-                Authentication Required
-              </span>
-              <WalletMultiButton
-                className="!bg-white !text-black !rounded-2xl !font-black !text-[10px] !uppercase !tracking-widest
-                           !h-14 !w-full flex justify-center hover:!bg-zinc-200 transition-colors"
-              />
-            </div>
+            <div className="h-14 w-full" aria-hidden />
           )}
         </div>
 
