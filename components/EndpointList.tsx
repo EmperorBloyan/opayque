@@ -1,3 +1,4 @@
+cat > app/components/EndpointList.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -35,7 +36,7 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
   };
 
   const handleBroadcast = (endpoint: Endpoint) => {
-    const checkoutUrl = `${window.location.origin}/vault/checkout?endpoint=${endpoint.id}`;
+    const checkoutUrl = `${window.location.origin}/vault/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`;
     alert(`Broadcasting QR for ${endpoint.name}: ${checkoutUrl}`);
   };
 
@@ -148,7 +149,7 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
               {selectedEndpoint === endpoint.id && (
                 <div className="mt-4 flex flex-col items-center gap-4">
                   <QRCode
-                    value={`${window.location.origin}/vault/checkout?endpoint=${endpoint.id}`}
+                    value={`${window.location.origin}/vault/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`}
                     size={128}
                   />
                   <div className="flex gap-4">
@@ -180,3 +181,4 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
     </div>
   );
 }
+EOF
