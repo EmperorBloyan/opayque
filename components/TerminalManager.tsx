@@ -1,4 +1,3 @@
-cat > app/components/TerminalManager.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -116,4 +115,3 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
     </div>
   );
 }
-EOF
