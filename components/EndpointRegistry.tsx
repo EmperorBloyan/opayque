@@ -1,4 +1,3 @@
-cat > app/components/EndpointRegistry.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -162,4 +161,3 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
     </div>
   );
 }
-EOF
