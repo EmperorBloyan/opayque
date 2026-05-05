@@ -1,4 +1,3 @@
-cat > app/components/EndpointList.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -181,4 +180,3 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
     </div>
   );
 }
-EOF
