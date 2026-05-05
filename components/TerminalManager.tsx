@@ -1,3 +1,4 @@
+cat > app/components/TerminalManager.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -7,7 +8,8 @@ import {
   LucideActivity, 
   LucideWifi, 
   LucideTrash2, 
-  LucideSettings 
+  LucideSettings, 
+  LucideQrCode 
 } from "lucide-react";
 import PairingModal from "./PairingModal";
 import { Terminal } from "@/lib/types";
@@ -24,6 +26,10 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
     const updated = terminals.filter(t => t.id !== id);
     setTerminals(updated);
     localStorage.setItem("opayque_terminals", JSON.stringify(updated));
+  };
+
+  const buildTerminalQR = (t: Terminal) => {
+    return `${window.location.origin}/vault/checkout?address=${t.address}&name=${encodeURIComponent(t.label)}&fixed=${t.fixedPrice || 0}&image=${encodeURIComponent(t.image || "")}`;
   };
 
   return (
@@ -54,8 +60,12 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
         {terminals.length > 0 ? (
           terminals.map((t) => (
             <div key={t.id} className="group flex items-center gap-4 p-5 bg-black/40 rounded-[2rem] border border-white/5 hover:border-purple-500/30 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-purple-400">
-                <LucideHardDrive size={20} />
+              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-purple-400 overflow-hidden">
+                {t.image ? (
+                  <img src={t.image} alt={t.label} className="w-full h-full object-cover rounded-2xl" />
+                ) : (
+                  <LucideHardDrive size={20} />
+                )}
               </div>
               
               <div className="flex-1">
@@ -71,6 +81,17 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
               </div>
 
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={() => {
+                    const qrLink = buildTerminalQR(t);
+                    navigator.clipboard.writeText(qrLink);
+                    alert("Checkout QR link copied to clipboard!");
+                  }}
+                  className="p-2 text-zinc-600 hover:text-purple-500 transition-colors"
+                  title="Copy QR Link"
+                >
+                  <LucideQrCode size={14} />
+                </button>
                 <button className="p-2 text-zinc-600 hover:text-white transition-colors" title="Diagnostics">
                   <LucideSettings size={14} />
                 </button>
@@ -95,3 +116,4 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
     </div>
   );
 }
+EOF
