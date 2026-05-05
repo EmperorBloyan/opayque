@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import EndpointRegistry from "@/components/EndpointRegistry";
 import EndpointList from "@/components/EndpointList";
 import TerminalManager from "@/components/TerminalManager";
 import { Endpoint, Terminal } from "@/lib/types";
+import QRCode from "react-qr-code"; // install with: npm install react-qr-code
 
 export default function RegistryPage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
+  const [authCode, setAuthCode] = useState("MERCHANT-12345");
 
-  // 1. SAFE HYDRATION (Error Handling)
+  // Safe hydration
   useEffect(() => {
     try {
       const savedEndpoints = localStorage.getItem("opayque_endpoints");
@@ -19,13 +21,10 @@ export default function RegistryPage() {
       if (savedEndpoints) setEndpoints(JSON.parse(savedEndpoints));
       if (savedTerminals) setTerminals(JSON.parse(savedTerminals));
       else {
-        // Default terminal if none exist
         setTerminals([{ id: 'term_042', label: 'Terminal_v1_042', status: 'online', lastSeen: Date.now() }]);
       }
     } catch (error) {
       console.error("Failed to load local data:", error);
-      // Optional: Clear corrupted data
-      // localStorage.clear();
     }
   }, []);
 
@@ -41,6 +40,15 @@ export default function RegistryPage() {
     localStorage.setItem("opayque_endpoints", JSON.stringify(updated));
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleBroadcast = () => {
+    // For now, just alert. Later you can integrate Web NFC / Bluetooth.
+    alert(`Broadcasting code: ${authCode}`);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
@@ -52,7 +60,7 @@ export default function RegistryPage() {
           </h2>
           <EndpointRegistry 
             onSave={handleSaveEndpoint} 
-            existingEndpoints={endpoints} // Fixed Prop Mismatch
+            existingEndpoints={endpoints}
           />
         </section>
 
@@ -61,6 +69,30 @@ export default function RegistryPage() {
             Hardware Fleet
           </h2>
           <TerminalManager terminals={terminals} setTerminals={setTerminals} />
+        </section>
+
+        <section>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">
+            Broadcast / Print
+          </h2>
+          <div className="bg-zinc-900/40 p-6 rounded-2xl space-y-4">
+            <div className="font-mono text-purple-400 text-lg">{authCode}</div>
+            <QRCode value={authCode} size={128} />
+            <div className="flex gap-4 mt-4">
+              <button
+                onClick={handlePrint}
+                className="px-6 py-3 bg-zinc-800 rounded-xl hover:bg-zinc-700"
+              >
+                Print
+              </button>
+              <button
+                onClick={handleBroadcast}
+                className="px-6 py-3 bg-purple-600 rounded-xl hover:bg-purple-500"
+              >
+                Broadcast
+              </button>
+            </div>
+          </div>
         </section>
       </div>
 
