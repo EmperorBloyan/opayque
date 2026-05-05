@@ -2,13 +2,15 @@
 
 import React, { useState } from "react";
 import { Endpoint, EndpointCategory } from "@/lib/types";
-import { 
-  LucideTrash2, 
-  LucideExternalLink, 
-  LucideSend, 
+import {
+  LucideTrash2,
+  LucideExternalLink,
+  LucideSend,
   LucideUserCircle2,
-  LucideSearch
+  LucideSearch,
+  LucideQrCode
 } from "lucide-react";
+import QRCode from "react-qr-code";
 
 interface EndpointListProps {
   endpoints: Endpoint[];
@@ -18,13 +20,24 @@ interface EndpointListProps {
 export default function EndpointList({ endpoints, onDelete }: EndpointListProps) {
   const [filter, setFilter] = useState<EndpointCategory | "All">("All");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string | null>(null);
 
-  const filteredEndpoints = endpoints.filter(e => {
+  const filteredEndpoints = endpoints.filter((e) => {
     const matchesFilter = filter === "All" || e.category === filter;
-    const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          e.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.address.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleBroadcast = (endpoint: Endpoint) => {
+    const checkoutUrl = `${window.location.origin}/vault/checkout?endpoint=${endpoint.id}`;
+    alert(`Broadcasting QR for ${endpoint.name}: ${checkoutUrl}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -45,8 +58,11 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
         </div>
 
         <div className="relative w-full md:w-64">
-          <LucideSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
-          <input 
+          <LucideSearch
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
+            size={14}
+          />
+          <input
             type="text"
             placeholder="Search Registry..."
             value={searchTerm}
@@ -60,15 +76,19 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredEndpoints.length > 0 ? (
           filteredEndpoints.map((endpoint) => (
-            <div 
+            <div
               key={endpoint.id}
               className="group relative bg-zinc-900/40 border border-white/5 rounded-[2.5rem] p-6 hover:border-purple-500/30 transition-all hover:shadow-2xl hover:shadow-purple-500/5 overflow-hidden"
             >
               <div className="flex items-center gap-5">
-                {/* PERSISTENT PHOTO */}
+                {/* PHOTO */}
                 <div className="w-16 h-16 rounded-full bg-black border border-white/10 overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
                   {endpoint.image ? (
-                    <img src={endpoint.image} alt={endpoint.name} className="w-full h-full object-cover" />
+                    <img
+                      src={endpoint.image}
+                      alt={endpoint.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <LucideUserCircle2 size={32} className="text-zinc-800" />
                   )}
@@ -90,15 +110,15 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
 
                 {/* QUICK ACTIONS */}
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
+                  <button
                     onClick={() => onDelete(endpoint.id)}
                     className="p-2 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"
                     title="Remove from Registry"
                   >
                     <LucideTrash2 size={14} />
                   </button>
-                  <a 
-                    href={`https://solscan.io/account/${endpoint.address}`} 
+                  <a
+                    href={`https://solscan.io/account/${endpoint.address}`}
                     target="_blank"
                     className="p-2 bg-white/5 text-zinc-400 rounded-xl hover:bg-white/10 hover:text-white transition-all"
                   >
@@ -107,11 +127,46 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
                 </div>
               </div>
 
-              {/* ACTION BUTTON */}
-              <button className="mt-6 w-full py-3 bg-white/5 hover:bg-white text-zinc-400 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 group/btn">
-                <LucideSend size={12} className="group-hover/btn:translate-x-1 transition-transform" />
-                Initiate Settlement
-              </button>
+              {/* ACTION BUTTONS */}
+              <div className="mt-6 flex gap-2">
+                <button
+                  onClick={() => setSelectedEndpoint(endpoint.id)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white text-zinc-400 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 group/btn"
+                >
+                  <LucideQrCode size={12} />
+                  Show QR
+                </button>
+                <button
+                  className="flex-1 py-3 bg-white/5 hover:bg-white text-zinc-400 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 group/btn"
+                >
+                  <LucideSend size={12} />
+                  Initiate Settlement
+                </button>
+              </div>
+
+              {/* CONDITIONAL QR DISPLAY */}
+              {selectedEndpoint === endpoint.id && (
+                <div className="mt-4 flex flex-col items-center gap-4">
+                  <QRCode
+                    value={`${window.location.origin}/vault/checkout?endpoint=${endpoint.id}`}
+                    size={128}
+                  />
+                  <div className="flex gap-4">
+                    <button
+                      onClick={handlePrint}
+                      className="px-4 py-2 bg-zinc-800 rounded hover:bg-zinc-700 text-xs"
+                    >
+                      Print
+                    </button>
+                    <button
+                      onClick={() => handleBroadcast(endpoint)}
+                      className="px-4 py-2 bg-purple-600 rounded hover:bg-purple-500 text-xs"
+                    >
+                      Broadcast
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         ) : (
