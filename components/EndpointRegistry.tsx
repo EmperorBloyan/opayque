@@ -1,3 +1,4 @@
+cat > app/components/EndpointRegistry.tsx <<'EOF'
 "use client";
 
 import React, { useState } from "react";
@@ -31,7 +32,7 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
     try {
       new PublicKey(addr);
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   };
@@ -39,19 +40,16 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
   const handleSave = () => {
     setError(null);
     
-    // 1. Basic Validation
     if (!name || !address) {
       setError("Please fill in all fields");
       return;
     }
 
-    // 2. Solana Format Validation
     if (!validateAddress(address)) {
       setError("Invalid Solana Address");
       return;
     }
 
-    // 3. Duplicate Address Prevention
     const isDuplicate = existingEndpoints.some(e => e.address === address);
     if (isDuplicate) {
       setError("This wallet address is already registered");
@@ -63,16 +61,13 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
       name,
       address,
       category,
-      image,
+      image, // ✅ include uploaded image
       createdAt: Date.now()
     };
 
     onSave(newEndpoint);
-    
-    // 4. Success Animation & Delayed Reset
     setSuccess(true);
-    
-    // Reset form after overlay has been visible for a moment
+
     setTimeout(() => {
       setSuccess(false);
       setName("");
@@ -83,8 +78,6 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
 
   return (
     <div className="p-8 bg-zinc-900/50 border border-white/5 rounded-[3rem] shadow-2xl backdrop-blur-sm relative overflow-hidden">
-      
-      {/* SUCCESS OVERLAY WITH SCALE ANIMATION */}
       {success && (
         <div className="absolute inset-0 bg-purple-600/20 backdrop-blur-xl flex flex-col items-center justify-center z-20 animate-in fade-in zoom-in duration-300">
           <div className="bg-white rounded-full p-4 mb-4 shadow-2xl animate-bounce">
@@ -107,7 +100,6 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
       </div>
 
       <div className="space-y-6">
-        {/* CATEGORY TOGGLE WITH ICONS */}
         <div className="flex bg-black/50 p-1.5 rounded-2xl border border-white/5" role="group">
           {[
             { label: "Staff", icon: <LucideUsers size={12} />, value: "Staff" },
@@ -126,7 +118,6 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
           ))}
         </div>
 
-        {/* INPUTS */}
         <div className="space-y-4">
           <div className="relative group">
             <LucideUser className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-purple-400 transition-colors" size={16} />
@@ -171,3 +162,4 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
     </div>
   );
 }
+EOF
