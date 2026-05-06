@@ -3,95 +3,137 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { LucideShieldCheck, LucideLoader2, LucideLock, LucideMonitorSmartphone } from "lucide-react";
 
-// Dynamic import for wallet button
 const WalletMultiButtonNoSSR = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
   {
     ssr: false,
-    loading: () => (
-      <div className="h-14 w-full bg-zinc-800/20 animate-pulse rounded-2xl" aria-hidden="true" />
-    ),
+    loading: () => <div className="h-14 w-full bg-zinc-800/20 animate-pulse rounded-2xl" />,
   }
 );
 
 export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
-  const { connected } = useWallet();
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const { connected, publicKey } = useWallet();
+  const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // THE AUTHORIZATION CEREMONY
+  const handleVaultEntrance = () => {
+    setIsAuthorizing(true);
+    // Theatre: Simulate TEE Identity verification for 4 seconds
+    setTimeout(() => {
+      router.push("/vault/registry");
+    }, 4000);
+  };
+
+  if (!mounted) return null;
+
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-sans selection:bg-purple-500/30 relative">
-      {/* HEADER */}
-      <header className="text-center mb-16">
-        <h1 className="text-5xl font-black italic uppercase tracking-tighter mb-2">Opayque</h1>
-        <p className="text-[10px] text-zinc-500 uppercase tracking-[0.5em] font-bold">
-          Shielded POS Infrastructure
-        </p>
-        <p className="text-xs text-zinc-600 mt-3">
-          Secure merchant vault + shielded staff terminals
-        </p>
-      </header>
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      
+      {/* 1. BACKGROUND GLOW (Triggers during Authorization) */}
+      {isAuthorizing && (
+        <div className="absolute inset-0 bg-purple-600/10 animate-pulse duration-[2000ms] z-0" />
+      )}
 
-      {/* MAIN GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-        {/* MERCHANT VAULT */}
-        <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3rem]">
-          <h2 className="text-2xl font-black italic mb-4 uppercase">Merchant Vault</h2>
-          <p className="text-zinc-500 text-sm mb-8">
-            Connect your wallet to manage staff, audit transactions, and settle funds to Mainnet.
+      {/* 2. LOGOUT / RESET OVERLAY (Authorization State) */}
+      {isAuthorizing ? (
+        <div className="z-20 flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-8 duration-1000">
+          <div className="w-24 h-24 rounded-full border border-purple-500/30 flex items-center justify-center mb-8 relative">
+            <div className="absolute inset-0 rounded-full border-t-2 border-purple-500 animate-spin" />
+            <LucideShieldCheck size={32} className="text-purple-500" />
+          </div>
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Merchant Authorization</h2>
+          <div className="flex items-center gap-3 text-zinc-500">
+            <LucideLoader2 size={14} className="animate-spin" />
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Shielded Identity...</p>
+          </div>
+          <p className="mt-12 font-mono text-[9px] text-zinc-800 tracking-tighter">
+            SESSION_INIT: {publicKey?.toBase58().slice(0, 12)}...SECURE_TEE
           </p>
-
-          {mounted ? (
-            connected ? (
-              <Link
-                href="/vault/dashboard"
-                aria-label="Enter Merchant Dashboard"
-                className="block w-full py-4 bg-purple-600 text-center rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all"
-              >
-                Enter Dashboard
-              </Link>
-            ) : (
-              <WalletMultiButtonNoSSR className="!bg-white !text-black !rounded-2xl !font-black !text-[10px] !uppercase !tracking-widest !h-14 !w-full flex justify-center hover:!bg-zinc-200 transition-colors" />
-            )
-          ) : (
-            <div className="h-14 w-full" aria-hidden />
-          )}
         </div>
+      ) : (
+        /* 3. STANDARD LANDING UI */
+        <div className="z-10 w-full max-w-4xl animate-in fade-in duration-700">
+          <header className="text-center mb-16">
+            <h1 className="text-6xl font-black italic uppercase tracking-tighter mb-2">Opayque</h1>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-[0.5em] font-bold">
+              Shielded POS Infrastructure
+            </p>
+          </header>
 
-        {/* STAFF TERMINAL */}
-        <Link
-          href="/terminal"
-          aria-label="Go to Staff Terminal"
-          className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3rem]"
-        >
-          <h2 className="text-2xl font-black italic mb-4 uppercase text-zinc-300 group-hover:text-white">
-            Staff Terminal
-          </h2>
-          <p className="text-zinc-500 text-sm mb-12">
-            Pair your device for secure access.
-          </p>
-          <span className="block w-full py-4 bg-zinc-800 text-center rounded-2xl font-black uppercase text-xs tracking-widest text-white">
-            Open Terminal
-          </span>
-        </Link>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* MERCHANT VAULT CARD */}
+            <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:border-purple-500/30 shadow-2xl">
+              <div className="flex justify-between items-start mb-6">
+                <h2 className="text-2xl font-black italic uppercase">Merchant Vault</h2>
+                <LucideLock className="text-zinc-700" size={20} />
+              </div>
+              <p className="text-zinc-500 text-sm mb-12 h-12">
+                Manage staff, pair terminals, and audit transactions via TEE-shielded protocols.
+              </p>
+
+              {connected ? (
+                <button
+                  onClick={handleVaultEntrance}
+                  className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
+                >
+                  Enter Secured Vault
+                </button>
+              ) : (
+                <div className="p-1 bg-gradient-to-b from-white/10 to-transparent rounded-2xl">
+                  <WalletMultiButtonNoSSR className="!bg-white !text-black !rounded-xl !font-black !text-[10px] !uppercase !tracking-widest !h-14 !w-full flex justify-center hover:!bg-zinc-200" />
+                </div>
+              )}
+            </div>
+
+            {/* STAFF TERMINAL CARD */}
+            <Link
+              href="/terminal"
+              className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10"
+            >
+              <div className="flex justify-between items-start mb-6">
+                <h2 className="text-2xl font-black italic uppercase text-zinc-400 group-hover:text-white transition-colors">
+                  Staff Terminal
+                </h2>
+                <LucideMonitorSmartphone className="text-zinc-700" size={20} />
+              </div>
+              <p className="text-zinc-500 text-sm mb-12 h-12">
+                Launch the hardware interface for point-of-sale operations.
+              </p>
+              <span className="block w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
+                Open Terminal
+              </span>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* FOOTER */}
-      <footer className="mt-20 opacity-20 hover:opacity-50 transition-opacity">
-        <a
-          href="https://solana.com/radar"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[9px] font-mono uppercase tracking-widest hover:underline"
-        >
-          Built for Solana Radar 2026
-        </a>
+      <footer className="absolute bottom-10 opacity-20 hover:opacity-100 transition-opacity">
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-500">Global Settlement Layer</span>
+          <a
+            href="https://solana.com/radar"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[9px] font-mono uppercase tracking-widest hover:text-purple-400 transition-colors"
+          >
+            Built for Solana Radar 2026
+          </a>
+        </div>
       </footer>
+
+      {/* Ambient Grid Overlay */}
+      <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:radial-gradient(ellipse_at_center,black,transparent)] pointer-events-none opacity-10" />
     </div>
   );
 }
