@@ -65,18 +65,18 @@ export default function UnifiedLanding() {
 
         {/* STAFF TERMINAL */}
         <Link
-          href="/vault/registry"
-          aria-label="Go to Staff Registry"
+          href="/terminal"
+          aria-label="Go to Staff Terminal"
           className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3rem]"
         >
           <h2 className="text-2xl font-black italic mb-4 uppercase text-zinc-300 group-hover:text-white">
-            Staff Registry
+            Staff Terminal
           </h2>
           <p className="text-zinc-500 text-sm mb-12">
-            Generate or broadcast authorization codes for staff devices.
+            Pair your device for secure access.
           </p>
           <span className="block w-full py-4 bg-zinc-800 text-center rounded-2xl font-black uppercase text-xs tracking-widest text-white">
-            Open Registry
+            Open Terminal
           </span>
         </Link>
       </div>
