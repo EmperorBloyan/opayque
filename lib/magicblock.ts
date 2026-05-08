@@ -1,101 +1,56 @@
-import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
-import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
-import IDL_JSON from "./idl/opayque.json";
+import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
 
-// 2026 Beta Endpoints
-const PER_RPC = "https://rpc.magicblock.app/v1/per";
-const PAYMENTS_GATEWAY = "https://payments.magicblock.app/v1";
+export const PAYMENTS_API = 'https://payments.magicblock.app';
+export const TEE_RPC = 'https://devnet-tee.magicblock.app';
 
-// ✅ Real program ID from your Anchor build
-export const PROGRAM_ID = new PublicKey("5k1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmgp");
+const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
-export const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-
-export function getOpayqueProgram(provider: AnchorProvider) {
-  return new Program(IDL_JSON as Idl, PROGRAM_ID, provider);
-}
-
-/**
- * 1. getPrivateBalance
- * Fetches the shielded (private) balance from the MagicBlock TEE.
- */
-export async function getPrivateBalance(merchantPubkey: string): Promise<number> {
+export async function getPrivateBalance(address: string): Promise<number> {
   try {
-    const response = await fetch(`${PER_RPC}/get-private-account`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        address: merchantPubkey,
-        mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" // USDC Devnet
-      }),
+    const res = await fetch(`${PAYMENTS_API}/balance/private`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, mint: USDC_MINT.toBase58() }),
     });
-    const data = await response.json();
-    return data.shieldedAmount || 0;
+
+    if (!res.ok) throw new Error('Failed to fetch balance');
+    const data = await res.json();
+    return (data.balance || 0) / 1_000_000;
   } catch (error) {
-    console.error("TEE Query Error:", error);
+    console.error("Private balance error:", error);
     return 0;
   }
 }
 
-/**
- * 2. buildShieldedTransfer
- * Initiates a confidential transfer through the Private Payments API.
- * Used on the /checkout page.
- */
-export async function buildShieldedTransfer(
-  sender: string,
-  merchant: string,
-  amount: number
-) {
-  try {
-    const response = await fetch(`${PAYMENTS_GATEWAY}/create-transfer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sender,
-        recipient: merchant,
-        amount,
-        mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        isConfidential: true, // Triggers TEE-shielding
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || "Shielded transfer failed");
-    return data;
-  } catch (error) {
-    console.error("Payment API Error:", error);
-    return { error: error instanceof Error ? error.message : "Unknown transfer error" };
-  }
+export async function buildShieldedTransfer(sender: string, recipient: string, amount: number) {
+  const res = await fetch(`${PAYMENTS_API}/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sender,
+      recipient,
+      amount: Math.floor(amount * 1_000_000),
+      mint: USDC_MINT.toBase58(),
+      private: true
+    })
+  });
+
+  const data = await res.json();
+  return VersionedTransaction.deserialize(Buffer.from(data.transaction, 'base64'));
 }
 
-/**
- * 3. buildWithdraw
- * Withdraws funds from Private TEE balance back to the public wallet.
- * Used on the /merchant dashboard.
- */
-export async function buildWithdraw(
-  owner: string,
-  amount: number
-) {
-  try {
-    const response = await fetch(`${PAYMENTS_GATEWAY}/spl/withdraw`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": `withdraw_${owner}_${Date.now()}`
-      },
-      body: JSON.stringify({
-        owner,
-        mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        amount
-      }),
-    });
+export async function buildWithdraw(merchantPubkey: string, destination: string, amount: number) {
+  const res = await fetch(`${PAYMENTS_API}/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sender: merchantPubkey,
+      destination,
+      amount: Math.floor(amount * 1_000_000),
+      mint: USDC_MINT.toBase58()
+    })
+  });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || "Withdrawal failed");
-    return data;
-  } catch (error) {
-    console.error("Withdrawal API Error:", error);
-    return { error: error instanceof Error ? error.message : "Unknown withdrawal error" };
-  }
+  const data = await res.json();
+  return VersionedTransaction.deserialize(Buffer.from(data.transaction, 'base64'));
 }
