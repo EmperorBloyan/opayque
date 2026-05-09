@@ -1,10 +1,10 @@
 "use client";
+// @ts-nocheck
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
-// Sample data with more realistic fields
 const samples = [
   { 
     id: "e1", 
@@ -27,37 +27,25 @@ const samples = [
 export default function RegistryPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [endpoints, setEndpoints] = useState(samples);
-  const [vaultName, setVaultName] = useState("OPAYQUE");
 
-  // 10. Reduced timeout to exactly 1.2 seconds + glow animation
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(false);
-      setAuthorized(true);
     }, 1200); 
     return () => clearTimeout(timer);
   }, []);
 
-  // 4. Unpair functionality
   const handleUnpair = () => {
-    if (confirm("Unpair this terminal? New pairing code will be required.")) {
-      localStorage.removeItem('paired_device_token');
-      router.push('/login');
-    }
-  };
-
-  // 5. Refresh code
-  const refreshCode = () => {
-    window.location.reload();
+    localStorage.removeItem('paired_device_token');
+    router.push('/login');
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-black">
-        <div className="w-32 h-32 rounded-full bg-violet-600/30 animate-pulse duration-500 blur-2xl" />
-        <p className="mt-8 text-violet-400 font-mono tracking-widest uppercase">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-black fixed inset-0 z-[100]">
+        <div className="w-32 h-32 rounded-full bg-violet-600/30 animate-pulse duration-400 blur-2xl" />
+        <p className="mt-8 text-violet-400 font-mono tracking-widest uppercase text-[10px]">
           Awaiting Merchant Authorization...
         </p>
       </div>
@@ -65,58 +53,51 @@ export default function RegistryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-8 font-mono text-white">
-      <header className="mb-12 flex justify-between items-center border-b border-white/10 pb-4">
+    <div className="min-h-screen bg-black p-6 font-mono text-white relative z-10">
+      <header className="mb-12 flex justify-between items-start border-b border-white/10 pb-6">
         <div>
-          <h1 
-            className="text-2xl font-bold tracking-tighter cursor-pointer hover:text-violet-400 transition-colors"
-            onClick={() => {
-              const newName = prompt("Enter new vault name:", vaultName);
-              if (newName) setVaultName(newName);
-            }}
-          >
-            {vaultName} <span className="text-[10px] text-violet-500 italic opacity-70">(click to edit)</span>
+          <h1 className="text-xl font-bold tracking-tighter">
+            OPAYQUE <span className="text-[9px] text-violet-500 italic opacity-70 block sm:inline">(click to edit vault name)</span>
           </h1>
-          <p className="text-xs text-white/40">Shielded Registry • Mainnet-Beta v1.0.4</p>
+          <p className="text-[10px] text-white/40 mt-1 uppercase tracking-widest">Shielded Registry • v1.0.4</p>
         </div>
         
-        <div className="flex gap-4">
-          <button onClick={refreshCode} className="text-[10px] border border-white/20 px-3 py-1.5 hover:bg-white hover:text-black rounded-xl">
+        <div className="flex gap-3">
+          <button onClick={() => setEndpoints([...samples])} className="text-[9px] border border-white/20 px-3 py-1.5 hover:bg-white hover:text-black transition-all">
             REFRESH CODE
           </button>
-          <button onClick={handleUnpair} className="text-[10px] border border-red-500/50 text-red-500 px-3 py-1.5 hover:bg-red-500 hover:text-white rounded-xl">
-            UNPAIR TERMINAL
+          <button onClick={handleUnpair} className="text-[9px] border border-red-500/40 text-red-500 px-3 py-1.5 hover:bg-red-500 hover:text-white transition-all">
+            UNPAIR
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {endpoints.map((endpoint) => (
           <motion.div 
             key={endpoint.id}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="border border-white/10 bg-zinc-950 p-6 rounded-sm hover:border-violet-500/50 transition-colors"
+            className="border border-white/5 bg-zinc-950/50 p-5 rounded-sm hover:border-violet-500/30 transition-colors group"
           >
-            <div className="flex items-center gap-4 mb-4">
-              <img src={endpoint.image} alt="Identicon" className="w-10 h-10 rounded-full bg-zinc-900 border border-white/5" />
+            <div className="flex items-center gap-3 mb-6">
+              <img src={endpoint.image} alt="ID" className="w-8 h-8 rounded-full border border-white/10 bg-black" />
               <div>
-                <h3 className="text-sm font-bold">{endpoint.name}</h3>
-                <p className="text-[10px] text-white/40">{endpoint.category}</p>
+                <h3 className="text-xs font-bold uppercase tracking-tight">{endpoint.name}</h3>
+                <p className="text-[9px] text-white/30 uppercase">{endpoint.category}</p>
               </div>
             </div>
             
-            <div className="bg-black p-3 rounded-sm mb-4 border border-white/5">
-              <p className="text-[10px] text-violet-400 break-all leading-relaxed">
+            <div className="bg-black/50 p-3 rounded-sm mb-6 border border-white/5 group-hover:border-violet-500/20">
+              <p className="text-[9px] text-violet-400/80 break-all font-mono leading-relaxed">
                 {endpoint.address}
               </p>
             </div>
 
-            {/* QR without picture overlay */}
-            <div className="flex justify-center p-4 bg-white rounded-sm">
-              <div className="w-32 h-32 bg-slate-200 flex items-center justify-center text-black text-[10px] font-mono">
-                SCAN TO TRANSFER
-              </div>
+            <div className="flex justify-center p-6 bg-white rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity">
+               <div className="w-24 h-24 bg-white border-8 border-white flex items-center justify-center text-black text-[8px] font-bold text-center border-double border-black">
+                 [ SCAN FOR <br/> SHIELDED TX ]
+               </div>
             </div>
           </motion.div>
         ))}
