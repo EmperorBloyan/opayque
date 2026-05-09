@@ -5,7 +5,7 @@ export const TEE_RPC = 'https://devnet-tee.magicblock.app';
 
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
-function base64ToUint8Array(base64: string) {
+git statusfunction base64ToUint8Array(base64: string) {
   const binaryString = typeof window !== 'undefined' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
