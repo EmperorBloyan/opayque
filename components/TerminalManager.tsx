@@ -10,13 +10,12 @@ interface TerminalManagerProps {
 export default function TerminalManager({ terminals, setTerminals }: TerminalManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Sample data on load
+  // Sample data + auto update on register
   useEffect(() => {
     if (terminals.length === 0) {
       const sample = [
         { id: "t1", label: "POS Terminal 01", status: "online" },
         { id: "t2", label: "Kiosk Terminal 02", status: "online" },
-        { id: "t3", label: "Drive-Thru Terminal", status: "online" },
       ];
       setTerminals(sample);
       localStorage.setItem("opayque_terminals", JSON.stringify(sample));
@@ -24,7 +23,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
   }, [terminals.length, setTerminals]);
 
   const disconnectTerminal = (id: string) => {
-    if (confirm("Unpair this terminal? It will require a new pairing code to log in again.")) {
+    if (confirm("Unpair this terminal? New pairing code required to log in again.")) {
       const updated = terminals.filter(t => t.id !== id);
       setTerminals(updated);
       localStorage.setItem("opayque_terminals", JSON.stringify(updated));
