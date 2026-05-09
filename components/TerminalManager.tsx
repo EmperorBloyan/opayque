@@ -22,7 +22,7 @@ interface TerminalManagerProps {
 export default function TerminalManager({ terminals, setTerminals }: TerminalManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
-  const [lastTxCount, setLastTxCount] = useState(0);
+  const [lastConfirmedCount, setLastConfirmedCount] = useState(0);
 
   // 1. AUDITORY FEEDBACK: The POS "Ping"
   const playStaffNotification = () => {
@@ -31,21 +31,36 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
     audio.play().catch(e => console.warn("Audio play blocked until user interaction."));
   };
 
-  // 2. LIVE MONITORING: Watch for incoming shielded settlements
+  // 2. LIVE MONITORING: Reactive transaction listener for hardware fleet
   useEffect(() => {
-    const checkTx = () => {
+    const syncWithLedger = () => {
       const txs = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
-      if (txs.length > lastTxCount && lastTxCount !== 0) {
+      const confirmedTxs = txs.filter((t: any) => t.status === 'SHIELDED_CONFIRMED');
+      
+      // Logic: Only ping when the count of CONFIRMED transactions increases
+      // This prevents double-pings for "Pending" states
+      if (lastConfirmedCount > 0 && confirmedTxs.length > lastConfirmedCount) {
         playStaffNotification();
-        // Haptic feedback for mobile-based merchant dashboards
         if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
       }
-      setLastTxCount(txs.length);
+      
+      setLastConfirmedCount(confirmedTxs.length);
     };
 
-    const interval = setInterval(checkTx, 2000); // Poll every 2s
-    return () => clearInterval(interval);
-  }, [lastTxCount]);
+    // Initial sync
+    syncWithLedger();
+
+    // Listen for storage events (triggered by ShieldedCheckout in other tabs)
+    window.addEventListener("storage", syncWithLedger);
+
+    // Fallback polling (every 3s) for the active tab
+    const poll = setInterval(syncWithLedger, 3000);
+
+    return () => {
+      window.removeEventListener("storage", syncWithLedger);
+      clearInterval(poll);
+    };
+  }, [lastConfirmedCount]);
 
   const disconnectTerminal = (id: string) => {
     if (confirm("De-authorize this hardware terminal? It will lose TEE access immediately.")) {
@@ -82,7 +97,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
       <div className="flex justify-between items-start mb-10">
         <div>
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-1 flex items-center gap-2">
-            Hardware Fleet <LucideBell size={10} className={lastTxCount > 0 ? "text-green-500 animate-bounce" : ""} />
+            Hardware Fleet <LucideBell size={10} className={lastConfirmedCount > 0 ? "text-green-500 animate-bounce" : ""} />
           </h3>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${terminals.length > 0 ? 'bg-green-500 animate-pulse' : 'bg-zinc-800'}`} />

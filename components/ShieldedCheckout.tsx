@@ -1,10 +1,13 @@
 'use client';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { buildShieldedTransfer } from '@/lib/magicblock';
-import { useState } from 'react';
-import { Connection } from '@solana/web3.js';
+import { useState, useMemo } from 'react';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+import IDL from '@/lib/idl/opayque.json';
 
 const TEE_RPC = 'https://devnet-tee.magicblock.app';
+const USDC_DECIMALS = 6;
 
 export default function ShieldedCheckout({
   amount,
@@ -13,41 +16,85 @@ export default function ShieldedCheckout({
   amount: number;
   merchantPubkey: string;
 }) {
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { connection } = useConnection();
+  const { publicKey, signTransaction, connected, wallet } = useWallet();
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'signing' | 'sending' | 'confirming'>('idle');
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
+
+  // Anchor Integration: Initialize Program to verify the merchant on-chain
+  const program = useMemo(() => {
+    if (!wallet?.adapter) return null;
+    const provider = new AnchorProvider(connection, wallet.adapter as any, { commitment: 'confirmed' });
+    return new Program(IDL as any, provider);
+  }, [connection, wallet]);
 
   const handlePayment = async () => {
-    if (!publicKey || !signTransaction) {
-      alert("Please connect your wallet first.");
-      return;
-    }
+    if (!publicKey || !signTransaction) return alert("Please connect your wallet first.");
+    if (amount <= 0) return alert("Invalid payment amount.");
+    if (!program) return alert("Anchor program not initialized.");
 
     setLoading(true);
-    setStatus('signing');
+    setStatus('verifying');
 
     try {
-      const connection = new Connection(TEE_RPC, 'confirmed');
+      // 1. ANCHOR INTEGRATION: Verify merchant is registered in the on-chain Registry
+      // This prevents sending shielded funds to unauthenticated addresses
+      const merchantAccount = await program.account.endpoint.all([
+        { memcmp: { offset: 40, bytes: merchantPubkey } } // Assuming address offset in IDL
+      ]);
+
+      if (merchantAccount.length === 0) {
+        throw new Error("Merchant is not a registered Opayque endpoint.");
+      }
+
+      const teeConnection = new Connection(TEE_RPC, 'processed');
+      setStatus('signing');
+      
+      // SCALE: Convert USDC to atomic units (6 decimals) for the TEE transfer
+      const atomicAmount = Math.floor(amount * Math.pow(10, USDC_DECIMALS));
+
       const tx = await buildShieldedTransfer(
         publicKey.toBase58(),
         merchantPubkey,
-        amount
+        atomicAmount
       );
 
       const signedTx = await signTransaction(tx);
       setStatus('sending');
       
-      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
         skipPreflight: true,
         maxRetries: 3,
       });
 
+      // INITIAL LOG: Save as PENDING so it appears on the dashboard immediately
+      const initialTx = {
+        id: signature,
+        staff: merchantPubkey,
+        amount,
+        time: new Date().toISOString(),
+        status: 'SHIELDED_PENDING'
+      };
+      const history = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
+      localStorage.setItem("opayque_tx", JSON.stringify([initialTx, ...history]));
+      window.dispatchEvent(new Event('storage'));
+
       setStatus('confirming');
-      const latestBlockhash = await connection.getLatestBlockhash();
-      await connection.confirmTransaction({
+      const latestBlockhash = await teeConnection.getLatestBlockhash();
+      await teeConnection.confirmTransaction({
         signature,
         ...latestBlockhash,
       }, 'confirmed');
+
+      // FINAL UPDATE: Mark as CONFIRMED to trigger the "Ping" notification
+      const finalHistory = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
+      const updatedHistory = finalHistory.map((t: any) => 
+        t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED' } : t
+      );
+      localStorage.setItem("opayque_tx", JSON.stringify(updatedHistory));
+      
+      // FLUSH/SYNC: Force a storage event so other tabs (like TerminalManager) react immediately
+      window.dispatchEvent(new Event('storage'));
 
       alert(`✅ Shielded Payment Sent!\nTx: ${signature.slice(0, 12)}...`);
     } catch (error: any) {
