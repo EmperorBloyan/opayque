@@ -72,7 +72,7 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
       setName("");
       setAddress("");
       setImage(undefined);
-    }, 2000);
+    }, 1200);
   };
 
   return (

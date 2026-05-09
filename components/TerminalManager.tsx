@@ -134,7 +134,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
                   {copySuccess === t.id ? <LucideCheckCircle2 size={16} /> : <LucideQrCode size={16} />}
                 </button>
                 <button 
-                  onClick={() => disconnectTerminal(id)}
+                  onClick={() => disconnectTerminal(t.id)}
                   className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
                   title="De-pair Terminal"
                 >
