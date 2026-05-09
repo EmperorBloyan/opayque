@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   LucideHardDrive, 
   LucidePlusCircle, 
@@ -23,6 +22,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [lastConfirmedCount, setLastConfirmedCount] = useState(0);
+  const prevCountRef = useRef(0);
 
   // 1. AUDITORY FEEDBACK: The POS "Ping"
   const playStaffNotification = () => {
@@ -39,11 +39,12 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
       
       // Logic: Only ping when the count of CONFIRMED transactions increases
       // This prevents double-pings for "Pending" states
-      if (lastConfirmedCount > 0 && confirmedTxs.length > lastConfirmedCount) {
+      if (prevCountRef.current > 0 && confirmedTxs.length > prevCountRef.current) {
         playStaffNotification();
         if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
       }
       
+      prevCountRef.current = confirmedTxs.length;
       setLastConfirmedCount(confirmedTxs.length);
     };
 
@@ -60,7 +61,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
       window.removeEventListener("storage", syncWithLedger);
       clearInterval(poll);
     };
-  }, [lastConfirmedCount]);
+  }, []);
 
   const disconnectTerminal = (id: string) => {
     if (confirm("De-authorize this hardware terminal? It will lose TEE access immediately.")) {
@@ -81,7 +82,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
       fixed: (t.fixedPrice || 0).toString(),
       image: t.image || ""
     });
-    const qrLink = `${baseUrl}/vault/checkout?${params.toString()}`;
+    const qrLink = `${baseUrl}/checkout?${params.toString()}`;
     
     await navigator.clipboard.writeText(qrLink);
     setCopySuccess(t.id);

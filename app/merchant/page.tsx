@@ -1,6 +1,7 @@
 "use client";
 
-import { useWallet, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { Connection } from '@solana/web3.js';

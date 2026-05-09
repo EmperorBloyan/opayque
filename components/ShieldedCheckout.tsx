@@ -1,5 +1,5 @@
 'use client';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
 import { buildShieldedTransfer } from '@/lib/magicblock';
 import { useState, useMemo } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -17,16 +17,17 @@ export default function ShieldedCheckout({
   merchantPubkey: string;
 }) {
   const { connection } = useConnection();
-  const { publicKey, signTransaction, connected, wallet } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
+  const anchorWallet = useAnchorWallet();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
 
   // Anchor Integration: Initialize Program to verify the merchant on-chain
   const program = useMemo(() => {
-    if (!wallet?.adapter) return null;
-    const provider = new AnchorProvider(connection, wallet.adapter as any, { commitment: 'confirmed' });
+    if (!anchorWallet) return null;
+    const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' });
     return new Program(IDL as any, provider);
-  }, [connection, wallet]);
+  }, [connection, anchorWallet]);
 
   const handlePayment = async () => {
     if (!publicKey || !signTransaction) return alert("Please connect your wallet first.");

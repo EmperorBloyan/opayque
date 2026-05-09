@@ -10,7 +10,7 @@ import {
   LucideSearch,
   LucideQrCode
 } from "lucide-react";
-import QRCode from "react-qr-code";
+import { QRCodeSVG } from "qrcode.react";
 
 interface EndpointListProps {
   endpoints: Endpoint[];
@@ -35,7 +35,7 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
   };
 
   const handleBroadcast = (endpoint: Endpoint) => {
-    const checkoutUrl = `${window.location.origin}/vault/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`;
+    const checkoutUrl = `${window.location.origin}/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`;
     alert(`Broadcasting QR for ${endpoint.name}: ${checkoutUrl}`);
   };
 
@@ -47,7 +47,7 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
           {["All", "Staff", "Cause", "Tips"].map((cat) => (
             <button
               key={cat}
-              onClick={() => setFilter(cat as any)}
+              onClick={() => setFilter(cat as EndpointCategory | "All")}
               className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
                 filter === cat ? "bg-white text-black" : "text-zinc-500 hover:text-white"
               }`}
@@ -147,8 +147,8 @@ export default function EndpointList({ endpoints, onDelete }: EndpointListProps)
               {/* CONDITIONAL QR DISPLAY */}
               {selectedEndpoint === endpoint.id && (
                 <div className="mt-4 flex flex-col items-center gap-4">
-                  <QRCode
-                    value={`${window.location.origin}/vault/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`}
+                  <QRCodeSVG
+                    value={`${window.location.origin}/checkout?address=${endpoint.address}&name=${encodeURIComponent(endpoint.name)}&image=${encodeURIComponent(endpoint.image || "")}`}
                     size={128}
                   />
                   <div className="flex gap-4">
