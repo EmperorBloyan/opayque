@@ -8,7 +8,8 @@ import {
   LucideTrash2, 
   LucideQrCode,
   LucideCheckCircle2,
-  LucideBell
+  LucideBell,
+  LucideRefreshCw
 } from "lucide-react";
 import PairingModal from "./PairingModal";
 import { Terminal } from "@/lib/types";
@@ -24,21 +25,17 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
   const [lastConfirmedCount, setLastConfirmedCount] = useState(0);
   const prevCountRef = useRef(0);
 
-  // 1. AUDITORY FEEDBACK: The POS "Ping"
   const playStaffNotification = () => {
     const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3");
     audio.volume = 0.4;
-    audio.play().catch(e => console.warn("Audio play blocked until user interaction."));
+    audio.play().catch(() => {});
   };
 
-  // 2. LIVE MONITORING: Reactive transaction listener for hardware fleet
   useEffect(() => {
     const syncWithLedger = () => {
       const txs = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
       const confirmedTxs = txs.filter((t: any) => t.status === 'SHIELDED_CONFIRMED');
       
-      // Logic: Only ping when the count of CONFIRMED transactions increases
-      // This prevents double-pings for "Pending" states
       if (prevCountRef.current > 0 && confirmedTxs.length > prevCountRef.current) {
         playStaffNotification();
         if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
@@ -48,13 +45,8 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
       setLastConfirmedCount(confirmedTxs.length);
     };
 
-    // Initial sync
     syncWithLedger();
-
-    // Listen for storage events (triggered by ShieldedCheckout in other tabs)
     window.addEventListener("storage", syncWithLedger);
-
-    // Fallback polling (every 3s) for the active tab
     const poll = setInterval(syncWithLedger, 3000);
 
     return () => {
@@ -64,14 +56,19 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
   }, []);
 
   const disconnectTerminal = (id: string) => {
-    if (confirm("De-authorize this hardware terminal? It will lose TEE access immediately.")) {
+    if (confirm("De-authorize this hardware terminal? It will require a new pairing code to log in again.")) {
       const updated = terminals.filter(t => t.id !== id);
       setTerminals(updated);
       localStorage.setItem("opayque_terminals", JSON.stringify(updated));
       
+      // Clear pairing data so staff needs new code
       localStorage.removeItem("opayque_pairing_meta");
       localStorage.removeItem("active_pairing_code");
     }
+  };
+
+  const refreshPairingCode = () => {
+    setIsModalOpen(true);
   };
 
   const handleCopyLink = async (t: Terminal) => {
@@ -91,8 +88,6 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
 
   return (
     <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem] shadow-xl relative overflow-hidden group/fleet">
-      
-      {/* Visual Accent */}
       <div className="absolute -top-24 -left-24 w-48 h-48 bg-purple-600/5 blur-[80px] -z-10 group-hover/fleet:bg-purple-600/10 transition-colors" />
 
       <div className="flex justify-between items-start mb-10">
@@ -108,13 +103,21 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
           </div>
         </div>
         
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
-        >
-          <LucidePlusCircle size={14} /> 
-          Pair New
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={refreshPairingCode}
+            className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
+          >
+            <LucideRefreshCw size={14} /> Refresh Code
+          </button>
+          
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
+          >
+            <LucidePlusCircle size={14} /> Pair New
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
@@ -152,7 +155,7 @@ export default function TerminalManager({ terminals, setTerminals }: TerminalMan
                 <button 
                   onClick={() => disconnectTerminal(t.id)}
                   className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
-                  title="De-pair Terminal"
+                  title="Unpair Terminal (requires new code)"
                 >
                   <LucideTrash2 size={16} />
                 </button>

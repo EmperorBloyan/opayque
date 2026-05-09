@@ -5,6 +5,15 @@ export const TEE_RPC = 'https://devnet-tee.magicblock.app';
 
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
+function base64ToUint8Array(base64: string) {
+  const binaryString = typeof window !== 'undefined' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export async function getPrivateBalance(address: string): Promise<number> {
   try {
     const res = await fetch(`${PAYMENTS_API}/balance/private`, {
@@ -36,7 +45,7 @@ export async function buildShieldedTransfer(sender: string, recipient: string, a
   });
 
   const data = await res.json();
-  return VersionedTransaction.deserialize(Buffer.from(data.transaction, 'base64'));
+  return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
 }
 
 export async function buildWithdraw(merchantPubkey: string, destination: string, amount: number) {
@@ -52,5 +61,5 @@ export async function buildWithdraw(merchantPubkey: string, destination: string,
   });
 
   const data = await res.json();
-  return VersionedTransaction.deserialize(Buffer.from(data.transaction, 'base64'));
+  return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
 }

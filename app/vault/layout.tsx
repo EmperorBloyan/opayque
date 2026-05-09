@@ -16,11 +16,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const { connected, publicKey } = useWallet();
   
-  // State for Dynamic Branding
   const [merchantName, setMerchantName] = useState("Opayque");
   const [logo, setLogo] = useState<string | null>(null);
 
-  // Load Merchant Settings on Mount
+  // Load Merchant Settings
   useEffect(() => {
     const savedLogo = localStorage.getItem("merchant_logo");
     const savedName = localStorage.getItem("merchant_name");
@@ -42,10 +41,26 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newName = e.target.value;
+    const newName = e.target.value.trim() || "Opayque";
     setMerchantName(newName);
     localStorage.setItem("merchant_name", newName);
   };
+
+  // Fix 10: Exact 1200ms entrance with tuned glow
+  const handleVaultEntrance = () => {
+    const glow = document.getElementById('vault-glow');
+    if (glow) {
+      glow.classList.add('animate-pulse');
+      setTimeout(() => {
+        glow.classList.remove('animate-pulse');
+      }, 1200); // Exactly as requested
+    }
+  };
+
+  // Trigger entrance animation on load
+  useEffect(() => {
+    handleVaultEntrance();
+  }, []);
 
   const addressContent = publicKey 
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}` 
@@ -53,11 +68,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-black text-white p-6 selection:bg-purple-500/30">
+      <div id="vault-glow" className="fixed inset-0 bg-purple-500/5 pointer-events-none transition-all duration-500"></div>
+
       <div className="max-w-6xl mx-auto">
         
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
           <div className="flex items-center gap-5">
-            {/* MERCHANT LOGO PERSISTENCE */}
+            {/* MERCHANT LOGO */}
             <div className="relative group cursor-pointer">
               <div className="w-16 h-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden hover:border-purple-500 transition-all shadow-inner">
                 {logo ? (
@@ -76,7 +93,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             </div>
             
             <div>
-              {/* DYNAMIC MERCHANT NAME */}
+              {/* Editable Merchant Name - Fix 6 */}
               <input 
                 value={merchantName}
                 onChange={handleNameChange}
@@ -86,9 +103,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
               />
               <div className="flex items-center gap-2 mt-2">
                 {connected ? (
-                  <LucideShieldCheck size={12} className="text-green-500" aria-label="Secure wallet connection active" />
+                  <LucideShieldCheck size={12} className="text-green-500" />
                 ) : (
-                  <LucideShieldAlert size={12} className="text-zinc-600" aria-label="Wallet connection required" />
+                  <LucideShieldAlert size={12} className="text-zinc-600" />
                 )}
                 <p className="text-zinc-500 text-[9px] uppercase tracking-[0.2em] font-bold">
                   Vault ID: <span className="font-mono text-zinc-400">{addressContent}</span>
@@ -97,7 +114,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
 
-          {/* ROBUST NAV DETECTION */}
+          {/* NAV */}
           <nav className="flex bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
             <Link 
               href="/vault/dashboard" 
@@ -131,15 +148,8 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             Powered by Solana TEE Infrastructure
           </p>
           <div className="flex gap-4">
-            {/* FOOTER INTERACTIVITY */}
-            <div 
-              className={`w-2 h-2 rounded-full transition-colors duration-500 ${connected ? 'bg-green-500 animate-pulse' : 'bg-zinc-700'}`} 
-              title={connected ? "Network Online" : "Network Offline"} 
-            />
-            <div 
-              className={`w-2 h-2 rounded-full transition-colors duration-500 ${connected ? 'bg-purple-500' : 'bg-zinc-700'}`} 
-              title={connected ? "TEE Synced" : "TEE Disconnected"} 
-            />
+            <div className={`w-2 h-2 rounded-full transition-colors duration-500 ${connected ? 'bg-green-500 animate-pulse' : 'bg-zinc-700'}`} />
+            <div className={`w-2 h-2 rounded-full transition-colors duration-500 ${connected ? 'bg-purple-500' : 'bg-zinc-700'}`} />
           </div>
         </footer>
       </div>
