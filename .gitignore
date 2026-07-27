@@ -123,3 +123,5 @@ coverage
 
 # Supabase
 supabase/.env
+.env.local
+.env
