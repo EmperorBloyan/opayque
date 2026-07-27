@@ -1,44 +1,121 @@
 "use client";
-// @ts-nocheck
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { clearActiveSession, getActiveSession } from "@/lib/crypto/session";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { MerchantRecord, TerminalRecord } from "@/types/database";
 
-const samples = [
-  { 
-    id: "e1", 
-    name: "Main Vault", 
-    address: "8YAV5vV3Nf2zPx9WCjyqkFKTAa55Hjnhm8FDCAEHEM76", 
-    image: "https://api.dicebear.com/7.x/identicon/svg?seed=vault",
-    category: "Shielded Infrastructure",
-    createdAt: new Date().toISOString()
-  },
-  { 
-    id: "e2", 
-    name: "Lagos Terminal 01", 
-    address: "Bv7V5vV3Nf2zPx9WCjyqkFKTAa55Hjnhm8FDCAEHEM76", 
-    image: "https://api.dicebear.com/7.x/identicon/svg?seed=terminal",
-    category: "Retail Endpoint",
-    createdAt: new Date().toISOString()
-  }
-];
+interface RegistryItem {
+  id: string;
+  name: string;
+  address: string;
+  image: string;
+  category: string;
+  createdAt: string;
+}
 
 export default function RegistryPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [endpoints, setEndpoints] = useState(samples);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [merchant, setMerchant] = useState<MerchantRecord | null>(null);
+  const [endpoints, setEndpoints] = useState<RegistryItem[]>([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const session = getActiveSession();
+    if (!session) {
+      setAuthError("No active merchant session. Return to the landing page and authorize the wallet challenge first.");
       setLoading(false);
-    }, 1200); 
-    return () => clearTimeout(timer);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: merchantData, error: merchantError } = await supabase
+          .from("merchants")
+          .select("*")
+          .eq("wallet_address", session.walletAddress)
+          .maybeSingle();
+
+        if (merchantError) {
+          throw merchantError;
+        }
+
+        if (merchantData) {
+          setMerchant(merchantData as MerchantRecord);
+        }
+
+        const { data: terminalData, error: terminalError } = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", merchantData?.id ?? "")
+          .order("last_active", { ascending: false });
+
+        if (terminalError) {
+          throw terminalError;
+        }
+
+        const mapped = (terminalData ?? []).map((terminal: TerminalRecord) => ({
+          id: terminal.id,
+          name: terminal.terminal_label,
+          address: terminal.device_token,
+          image: `https://api.dicebear.com/7.x/identicon/svg?seed=${terminal.id}`,
+          category: terminal.status,
+          createdAt: terminal.last_active,
+        }));
+
+        setEndpoints(mapped);
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Vault registry initialization failed.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const handleUnpair = () => {
-    localStorage.removeItem('paired_device_token');
-    router.push('/login');
+    clearActiveSession();
+    setAuthError("Merchant session cleared.");
+    router.push("/");
+  };
+
+  const handleRefresh = async () => {
+    setLoading(true);
+    const session = getActiveSession();
+    if (!session) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data: merchantData } = await supabase
+        .from("merchants")
+        .select("*")
+        .eq("wallet_address", session.walletAddress)
+        .maybeSingle();
+
+      setMerchant(merchantData as MerchantRecord | null);
+      const { data: terminalData } = await supabase
+        .from("terminals")
+        .select("*")
+        .eq("merchant_id", merchantData?.id ?? "")
+        .order("last_active", { ascending: false });
+
+      setEndpoints((terminalData ?? []).map((terminal: TerminalRecord) => ({
+        id: terminal.id,
+        name: terminal.terminal_label,
+        address: terminal.device_token,
+        image: `https://api.dicebear.com/7.x/identicon/svg?seed=${terminal.id}`,
+        category: terminal.status,
+        createdAt: terminal.last_active,
+      })));
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -46,8 +123,23 @@ export default function RegistryPage() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-black fixed inset-0 z-[100]">
         <div className="w-32 h-32 rounded-full bg-violet-600/30 animate-pulse duration-400 blur-2xl" />
         <p className="mt-8 text-violet-400 font-mono tracking-widest uppercase text-[10px]">
-          Awaiting Merchant Authorization...
+          Preparing Vault Registry...
         </p>
+      </div>
+    );
+  }
+
+  if (!getActiveSession()) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-black px-6 text-center text-white">
+        <h1 className="text-2xl font-black uppercase tracking-[0.3em]">Vault access denied</h1>
+        <p className="mt-4 max-w-md text-sm text-zinc-400">{authError}</p>
+        <button
+          onClick={() => router.push("/")}
+          className="mt-8 rounded-2xl bg-violet-600 px-6 py-3 text-xs font-black uppercase tracking-[0.3em]"
+        >
+          Return Home
+        </button>
       </div>
     );
   }
@@ -57,13 +149,13 @@ export default function RegistryPage() {
       <header className="mb-12 flex justify-between items-start border-b border-white/10 pb-6">
         <div>
           <h1 className="text-xl font-bold tracking-tighter">
-            OPAYQUE <span className="text-[9px] text-violet-500 italic opacity-70 block sm:inline">(click to edit vault name)</span>
+            {merchant?.merchant_name ?? "OPAYQUE"} <span className="text-[9px] text-violet-500 italic opacity-70 block sm:inline">(vault synced to Supabase)</span>
           </h1>
           <p className="text-[10px] text-white/40 mt-1 uppercase tracking-widest">Shielded Registry • v1.0.4</p>
         </div>
-        
+
         <div className="flex gap-3">
-          <button onClick={() => setEndpoints([...samples])} className="text-[9px] border border-white/20 px-3 py-1.5 hover:bg-white hover:text-black transition-all">
+          <button onClick={() => void handleRefresh()} className="text-[9px] border border-white/20 px-3 py-1.5 hover:bg-white hover:text-black transition-all">
             REFRESH CODE
           </button>
           <button onClick={handleUnpair} className="text-[9px] border border-red-500/40 text-red-500 px-3 py-1.5 hover:bg-red-500 hover:text-white transition-all">
@@ -72,9 +164,11 @@ export default function RegistryPage() {
         </div>
       </header>
 
+      {authError ? <p className="mb-6 text-sm text-amber-400">{authError}</p> : null}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {endpoints.map((endpoint) => (
-          <motion.div 
+          <motion.div
             key={endpoint.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -87,7 +181,7 @@ export default function RegistryPage() {
                 <p className="text-[9px] text-white/30 uppercase">{endpoint.category}</p>
               </div>
             </div>
-            
+
             <div className="bg-black/50 p-3 rounded-sm mb-6 border border-white/5 group-hover:border-violet-500/20">
               <p className="text-[9px] text-violet-400/80 break-all font-mono leading-relaxed">
                 {endpoint.address}
@@ -95,9 +189,9 @@ export default function RegistryPage() {
             </div>
 
             <div className="flex justify-center p-6 bg-white rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity">
-               <div className="w-24 h-24 bg-white border-8 border-white flex items-center justify-center text-black text-[8px] font-bold text-center border-double border-black">
-                 [ SCAN FOR <br/> SHIELDED TX ]
-               </div>
+              <div className="w-24 h-24 bg-white border-8 border-white flex items-center justify-center text-black text-[8px] font-bold text-center border-double border-black">
+                [ SCAN FOR <br /> SHIELDED TX ]
+              </div>
             </div>
           </motion.div>
         ))}

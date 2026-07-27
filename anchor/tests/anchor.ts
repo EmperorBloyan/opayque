@@ -1,16 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Anchor } from "../target/types/anchor";
+import { expect } from "chai";
+import { Opayque } from "../target/types/opayque";
 
-describe("anchor", () => {
-  // Configure the client to use the local cluster.
+describe("opayque anchor smoke test", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
 
-  const program = anchor.workspace.anchor as Program<Anchor>;
+  const program = anchor.workspace.opayque as Program<Opayque>;
 
-  it("Is initialized!", async () => {
-    // Add your test here.
-    const tx = await program.methods.initialize().rpc();
-    console.log("Your transaction signature", tx);
+  it("loads the opayque program", async () => {
+    const idl = await program.account.protocolConfig.all();
+    expect(idl).toBeDefined();
   });
 });

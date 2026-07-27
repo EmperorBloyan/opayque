@@ -2,65 +2,128 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { getActiveSession } from "@/lib/crypto/session";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { generatePaymentURL } from "@/lib/solana/pay";
+import type { TransactionRecord } from "@/types/database";
 
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"PAIRING" | "POS" | "PAYING">("PAIRING");
   const [pairingCode, setPairingCode] = useState("");
   const [amount, setAmount] = useState("");
+  const [asset, setAsset] = useState<"USDC" | "USDT" | "SOL">("USDC");
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
+  const activeSession = getActiveSession();
+  const expectedPairingCode = activeSession?.id.slice(-6).toUpperCase() ?? null;
 
-  // Demo mode toggle
-  const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-
-  // Derived numeric values
   const numericAmount = Number(amount);
   const isAmountValid =
     Number.isFinite(numericAmount) &&
     numericAmount > 0 &&
     numericAmount < 1_000_000;
 
-  // Build QR URI
   const buildUri = useCallback(() => {
-    const mint = encodeURIComponent("USDC-DEMO");
-    const amt = isAmountValid ? encodeURIComponent(numericAmount.toFixed(2)) : "0.00";
-    const label = encodeURIComponent("Opayque POS");
-    return `solana:${mint}?amount=${amt}&label=${label}`;
-  }, [numericAmount, isAmountValid]);
+    const recipient = activeSession?.walletAddress ?? "11111111111111111111111111111111";
+    return generatePaymentURL({
+      recipient,
+      amount: isAmountValid ? numericAmount.toFixed(2) : "0.00",
+      splToken: asset === "SOL" ? null : asset,
+      reference: transactionId ?? undefined,
+      label: `Opayque POS ${asset}`,
+      message: `Secure ${asset} checkout via Opayque`,
+    });
+  }, [activeSession?.walletAddress, asset, isAmountValid, numericAmount, transactionId]);
 
-  // Pairing handler
   const handlePairing = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pairingCode === "123456" || (DEMO && pairingCode === "123456")) {
+    const normalizedCode = pairingCode.trim().toUpperCase();
+
+    if (expectedPairingCode && normalizedCode === expectedPairingCode) {
       setStep("POS");
-      localStorage.setItem("terminal_paired", "true");
       setToast("Terminal paired successfully");
-    } else {
-      setToast("Invalid Auth Token");
+      return;
     }
+
+    if (!expectedPairingCode && normalizedCode.length >= 4) {
+      setStep("POS");
+      setToast("Terminal paired successfully");
+      return;
+    }
+
+    setToast("Pairing code rejected");
   };
 
-  // Trigger success (simulate payment)
-  const triggerSuccess = useCallback(() => {
+  const triggerSuccess = useCallback(async () => {
     if (isPaid || !isAmountValid) return;
-    setIsPaid(true);
-    setToast("Payment received");
-    setTimeout(() => {
-      successRef.current?.focus();
-    }, 120);
-  }, [isPaid, isAmountValid]);
 
-  // Mount + auto sign-in
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("transactions")
+        .insert({
+          merchant_id: activeSession?.merchantId ?? "00000000-0000-0000-0000-000000000000",
+          terminal_id: null,
+          signature: null,
+          token_symbol: asset,
+          amount: numericAmount,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setTransactionId((data as TransactionRecord).id);
+      setToast("Pending transaction registered in Supabase");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Transaction registration failed.");
+    }
+
+    setIsPaid(true);
+    requestAnimationFrame(() => {
+      successRef.current?.focus();
+    });
+  }, [activeSession?.merchantId, asset, isAmountValid, isPaid, numericAmount]);
+
   useEffect(() => {
     setMounted(true);
-    if (localStorage.getItem("terminal_paired") === "true") {
+    if (activeSession) {
       setStep("POS");
     }
-  }, []);
+  }, [activeSession]);
+
+  useEffect(() => {
+    if (!transactionId) {
+      return;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`transactions:${transactionId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "transactions", filter: `id=eq.${transactionId}` },
+        (payload) => {
+          const record = payload.new as TransactionRecord | null;
+          if (record?.status) {
+            setToast(`Transaction status: ${record.status}`);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [transactionId]);
 
   if (!mounted) return null;
 
@@ -69,23 +132,24 @@ export default function TerminalPage() {
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
       <div className="w-full max-w-md">
-        {/* PAIRING */}
         {step === "PAIRING" && (
           <form onSubmit={handlePairing} className="text-center">
             <input
               ref={pairingRef}
               aria-label="Pairing Code"
-              inputMode="numeric"
-              pattern="\d*"
+              inputMode="text"
               type="text"
-              maxLength={6}
+              maxLength={12}
               placeholder="000000"
               value={pairingCode}
-              onChange={(e) =>
-                setPairingCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-              }
-              className="w-full bg-zinc-900 border border-white/5 rounded-3xl py-10 text-center text-6xl font-mono font-black outline-none mb-6"
+              onChange={(e) => setPairingCode(e.target.value.toUpperCase().slice(0, 12))}
+              className="w-full bg-zinc-900 border border-white/5 rounded-3xl py-10 text-center text-4xl font-mono font-black outline-none mb-6"
             />
+            {expectedPairingCode ? (
+              <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
+                Code: {expectedPairingCode}
+              </p>
+            ) : null}
             <button
               type="submit"
               className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest"
@@ -95,7 +159,6 @@ export default function TerminalPage() {
           </form>
         )}
 
-        {/* POS */}
         {step === "POS" && (
           <div className="text-center">
             <input
@@ -117,7 +180,6 @@ export default function TerminalPage() {
           </div>
         )}
 
-        {/* PAYING */}
         {step === "PAYING" && (
           <div className="text-center">
             {!isPaid ? (
@@ -146,7 +208,6 @@ export default function TerminalPage() {
           </div>
         )}
 
-        {/* Toast */}
         {toast && (
           <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
             {toast}

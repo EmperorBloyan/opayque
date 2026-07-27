@@ -18,8 +18,16 @@ export interface Endpoint {
 export interface Terminal {
   id: string;
   label: string;
-  status: 'online' | 'offline';
+  status: "online" | "offline";
   lastSeen: number;
+}
+
+/**
+ * Represents the client-side state of the merchant vault authorization flow.
+ */
+export interface VaultAuthState {
+  status: "idle" | "authorizing" | "authenticated" | "error";
+  message: string | null;
 }
 
 export type EndpointCategory = "Staff" | "Cause" | "Tips";

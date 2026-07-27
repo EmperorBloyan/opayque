@@ -6,7 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-opayque = "5k1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmgp"
+opayque = "5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp"
+
+[programs.devnet]
+opayque = "5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp"
 
 [registry]
 url = "https://api.apr.dev"
