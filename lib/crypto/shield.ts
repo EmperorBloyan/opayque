@@ -54,7 +54,7 @@ export async function createShieldKey(): Promise<CryptoKey> {
 }
 
 export async function exportShieldKey(key: CryptoKey): Promise<JsonWebKey> {
-  return crypto.subtle.exportKey("jwk", key);
+  return crypto.subtle.exportKey("jwk", key) as Promise<JsonWebKey>;
 }
 
 export async function importShieldKey(jwk: JsonWebKey): Promise<CryptoKey> {

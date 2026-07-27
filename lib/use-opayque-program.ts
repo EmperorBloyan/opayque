@@ -1,10 +1,17 @@
-import { Program, AnchorProvider } from '@coral-xyz/anchor';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Program, AnchorProvider, type Idl } from '@coral-xyz/anchor';
+import { PublicKey } from '@solana/web3.js';
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useMemo } from 'react';
-import idl from '../anchor/target/idl/opayque.json';
 
 const PROGRAM_ID = new PublicKey("5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp");
+const OPAYQUE_IDL: Idl = {
+  version: '0.1.0',
+  name: 'opayque',
+  instructions: [],
+  accounts: [],
+  types: [],
+  metadata: { address: PROGRAM_ID.toBase58() },
+} as Idl;
 
 export function useOpayqueProgram() {
   const { connection } = useConnection();
@@ -17,7 +24,7 @@ export function useOpayqueProgram() {
       commitment: 'confirmed',
     });
 
-    return new Program(idl as any, PROGRAM_ID, provider);
+    return new Program(OPAYQUE_IDL, PROGRAM_ID, provider);
   }, [connection, wallet]);
 
   return { program };

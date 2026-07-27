@@ -39,7 +39,7 @@ function normalizeMessage(message: ArrayBuffer | Uint8Array | string): Uint8Arra
     return new Uint8Array(message);
   }
 
-  return message;
+  return new Uint8Array(message);
 }
 
 function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
@@ -50,7 +50,7 @@ function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
     binary += String.fromCharCode(byte);
   });
 
-  return btoa(binary);
+  return globalThis.btoa(binary);
 }
 
 function createSessionId(): string {
@@ -79,7 +79,7 @@ export async function createTerminalSession(input: CreateTerminalSessionInput): 
     ["sign", "verify"]
   );
 
-  const publicKeyJwk = await crypto.subtle.exportKey("jwk", sessionKeyPair.publicKey);
+  const publicKeyJwk = await crypto.subtle.exportKey("jwk", sessionKeyPair.publicKey) as JsonWebKey;
 
   const session: TerminalSession = {
     id: createSessionId(),
@@ -106,7 +106,9 @@ export async function createTerminalSession(input: CreateTerminalSessionInput): 
     },
     verify: async (message, signature) => {
       const bytes = normalizeMessage(message);
-      const signatureBuffer = signature instanceof ArrayBuffer ? signature : signature.buffer.slice(signature.byteOffset, signature.byteOffset + signature.byteLength);
+      const signatureBuffer = signature instanceof ArrayBuffer
+        ? signature
+        : signature.buffer.slice(signature.byteOffset, signature.byteOffset + signature.byteLength);
 
       return crypto.subtle.verify(
         {

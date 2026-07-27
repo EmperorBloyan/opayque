@@ -3,7 +3,7 @@ import { useWallet, useConnection, useAnchorWallet } from '@solana/wallet-adapte
 import { buildShieldedTransfer } from '@/lib/magicblock';
 import { useState, useMemo } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { Program, AnchorProvider } from '@coral-xyz/anchor';
+import { Program, AnchorProvider, type Idl } from '@coral-xyz/anchor';
 import IDL from '@/lib/idl/opayque.json';
 
 const TEE_RPC = 'https://devnet-tee.magicblock.app';
@@ -22,11 +22,12 @@ export default function ShieldedCheckout({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
 
-  // Anchor Integration: Initialize Program to verify the merchant on-chain
+  const PROGRAM_ID = new PublicKey('5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp');
+
   const program = useMemo(() => {
     if (!anchorWallet) return null;
     const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' });
-    return new Program(IDL as any, provider);
+    return new Program(IDL as unknown as Idl, PROGRAM_ID, provider) as unknown as Program<Idl>;
   }, [connection, anchorWallet]);
 
   const handlePayment = async () => {
@@ -40,8 +41,8 @@ export default function ShieldedCheckout({
     try {
       // 1. ANCHOR INTEGRATION: Verify merchant is registered in the on-chain Registry
       // This prevents sending shielded funds to unauthenticated addresses
-      const merchantAccount = await program.account.endpoint.all([
-        { memcmp: { offset: 40, bytes: merchantPubkey } } // Assuming address offset in IDL
+      const merchantAccount = await (program as any).account.endpoint.all([
+        { memcmp: { offset: 40, bytes: merchantPubkey } }
       ]);
 
       if (merchantAccount.length === 0) {

@@ -1,14 +1,14 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program, BN } from "@coral-xyz/anchor";
+import { Program, BN, type Idl } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
-import { Opayque } from "../target/types/opayque";
 
 describe("opayque program", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.opayque as Program<Opayque>;
+  const workspace = anchor.workspace as Record<string, unknown>;
+  const program = workspace.opayque as unknown as Program<Idl>;
   const admin = Keypair.generate();
   const merchant = Keypair.generate();
   const terminal = Keypair.generate();
