@@ -1,33 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
-interface ComplianceScreenRequest {
-  senderAddress?: string;
-  amount?: number;
-  merchantId?: string;
-}
+const schema = z.object({
+  merchantId: z.string(),
+  businessName: z.string().min(2),
+  country: z.string().length(2),
+});
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const body = (await request.json()) as ComplianceScreenRequest;
-    const senderAddress = body.senderAddress?.trim();
+    const body = await req.json();
+    const data = schema.parse(body);
 
-    if (!senderAddress) {
-      return NextResponse.json({ success: false, error: "senderAddress is required" }, { status: 400 });
-    }
-
-    const restricted = ["0xdeadbeef", "OFAC-TEST-001"].includes(senderAddress.toUpperCase());
-    const riskScore = senderAddress.length > 32 ? 0.6 : 0.2;
+    const highRisk = ['IR','NK','SY'].includes(data.country.toUpperCase());
 
     return NextResponse.json({
       success: true,
-      data: {
-        allowed: !restricted,
-        restricted,
-        riskScore,
-        recommendation: restricted ? "block" : riskScore > 0.5 ? "manual_review" : "allow",
-      },
+      data: { status: highRisk ? 'rejected' : 'approved', riskScore: highRisk ? 'high' : 'low' }
     });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Compliance screening failed" }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }
 }
