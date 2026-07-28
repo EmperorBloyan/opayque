@@ -6,6 +6,7 @@ import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
 import { registerMwa } from "@solana-mobile/wallet-standard-mobile";
+import { SolanaMobileWalletAdapter } from "@solana-mobile/wallet-adapter";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
@@ -34,7 +35,16 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
     [network]
   );
 
-  const wallets = useMemo(() => [], []);
+  const wallets = useMemo(() => {
+    const base: any[] = [];
+    try {
+      base.push(new SolanaMobileWalletAdapter());
+    } catch (e) {
+      // If adapter isn't available in the environment, continue gracefully.
+      console.warn("SolanaMobileWalletAdapter failed to initialize:", e);
+    }
+    return base;
+  }, []);
 
   const onError = useCallback((error: WalletError) => {
     if (/rejected/i.test(error?.message || "") || error.name === "WalletConnectionError") {

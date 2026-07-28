@@ -22,7 +22,7 @@ export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { connected, publicKey, signMessage } = useWallet();
+  const { connected, publicKey, signMessage, connect } = useWallet();
   const router = useRouter();
 
   useEffect(() => {
@@ -33,9 +33,25 @@ export default function UnifiedLanding() {
   }, []);
 
   const handleVaultEntrance = async () => {
+    // Ensure wallet connected and has signing capabilities. If not, try to prompt connection once.
     if (!connected || !publicKey || !signMessage) {
-      setAuthError("Connect a wallet and approve the cryptographic challenge to continue.");
-      return;
+      if (connect) {
+        try {
+          await connect();
+        } catch (e) {
+          setAuthError("Please connect a wallet to continue.");
+          return;
+        }
+
+        // Retry once after prompting connect
+        if (!publicKey || !signMessage) {
+          setAuthError("Connected wallet lacks signing capabilities.");
+          return;
+        }
+      } else {
+        setAuthError("Please connect a wallet to continue.");
+        return;
+      }
     }
 
     setAuthError(null);
