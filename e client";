@@ -1,0 +1,7 @@
+[35mapp/layout.tsx[m[36m:[mimport [1;31mWalletProvider[mWrapper from "../components/[1;31mWalletProvider[m";
+[35mapp/layout.tsx[m[36m:[m        <[1;31mWalletProvider[mWrapper>
+[35mapp/layout.tsx[m[36m:[m        </[1;31mWalletProvider[mWrapper>
+[35mcomponents/WalletProvider.tsx[m[36m:[mimport { ConnectionProvider, [1;31mWalletProvider[m } from "@solana/wallet-adapter-react";
+[35mcomponents/WalletProvider.tsx[m[36m:[mexport default function [1;31mWalletProvider[mWrapper({ children }: { children: React.ReactNode }) {
+[35mcomponents/WalletProvider.tsx[m[36m:[m      <[1;31mWalletProvider[m wallets={wallets} autoConnect onError={onError}>
+[35mcomponents/WalletProvider.tsx[m[36m:[m      </[1;31mWalletProvider[m>
