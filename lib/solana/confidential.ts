@@ -2,6 +2,8 @@ import { Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress, getMint, TOKEN_2022_PROGRAM_ID, createTransferInstruction } from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
 
+type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction" | "signAndSendTransaction">;
+
 export interface ConfidentialAccountConfig {
   accountAddress: string;
   supported: boolean;
@@ -24,7 +26,7 @@ export interface ConfidentialTransferInstructionBundle {
 export async function configureConfidentialAccount(
   connection: Connection,
   payer: any,
-  wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
+  wallet: ConfidentialWallet,
   mint: PublicKey
 ): Promise<ConfidentialTransferSummary> {
   if (!wallet.publicKey) {
@@ -34,7 +36,7 @@ export async function configureConfidentialAccount(
     };
   }
 
-  if (!wallet.signTransaction && !wallet.signAndSendTransaction) {
+  if (!wallet.signMessage && !wallet.signTransaction && !wallet.signAndSendTransaction) {
     return {
       status: "unsupported",
       message: "Connected wallet does not support signing. Please use Phantom or another supported wallet.",
@@ -118,7 +120,7 @@ export async function createShieldedPaymentInstruction(
 
 export async function applyPendingBalance(
   connection: Connection,
-  wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
+  wallet: ConfidentialWallet,
   tokenAccount: PublicKey
 ): Promise<ConfidentialTransferSummary> {
   if (!wallet.publicKey) {
@@ -128,7 +130,7 @@ export async function applyPendingBalance(
     };
   }
 
-  if (!wallet.signTransaction && !wallet.signAndSendTransaction) {
+  if (!wallet.signMessage && !wallet.signTransaction && !wallet.signAndSendTransaction) {
     return {
       status: "unsupported",
       message: "Wallet does not support signing.",

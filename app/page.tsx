@@ -97,7 +97,7 @@ export default function UnifiedLanding() {
       return;
     }
 
-    if (!canSignTransaction) {
+    if (!canSignMessage && !canSignTransaction) {
       setAuthError("This wallet cannot sign the confidential account setup. Please use Phantom or another supported wallet.");
       return;
     }
