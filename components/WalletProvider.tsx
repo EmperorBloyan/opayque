@@ -5,10 +5,22 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
+import { registerMwa } from "@solana-mobile/wallet-standard-mobile";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
+
+  // Register Mobile Wallet Adapter for browser deep-linking on client mount
+  useEffect(() => {
+    registerMwa({
+      appIdentity: {
+        name: "Opayque",
+        uri: window.location.origin,
+        icon: "/favicon.ico",
+      },
+    });
+  }, []);
 
   const network = useMemo(() => {
     const envNetwork = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
