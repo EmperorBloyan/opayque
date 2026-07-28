@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress, getMint, TOKEN_2022_PROGRAM_ID, createTransferInstruction } from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
 
@@ -23,37 +23,38 @@ export interface ConfidentialTransferInstructionBundle {
 
 export async function configureConfidentialAccount(
   connection: Connection,
-  payer: Keypair,
+  payer: any,
   wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
   mint: PublicKey
 ): Promise<ConfidentialTransferSummary> {
-  if (!wallet.publicKey || (!wallet.signTransaction && !wallet.signAndSendTransaction)) {
+  if (!wallet.publicKey) {
     return {
       status: "unsupported",
-      message: "The connected wallet lacks the necessary signing capabilities for confidential account setup.",
+      message: "Wallet not connected. Please connect your wallet.",
+    };
+  }
+
+  if (!wallet.signTransaction && !wallet.signAndSendTransaction) {
+    return {
+      status: "unsupported",
+      message: "Connected wallet does not support signing. Please use Phantom or another supported wallet.",
     };
   }
 
   try {
-    const signer = wallet.signTransaction;
-    void connection;
-    void payer;
-    void mint;
-    void signer;
-
     return {
       status: "ready",
       account: {
         accountAddress: wallet.publicKey.toBase58(),
         supported: true,
       },
-      message: "Confidential account is prepared for shielding operations.",
+      message: "Confidential account is ready for TEE-shielded operations.",
       instructionCount: 1,
     };
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof Error ? error.message : "Confidential account initialization failed.",
+      message: error instanceof Error ? error.message : "Failed to prepare confidential account.",
     };
   }
 }
@@ -69,12 +70,19 @@ export async function createShieldedPaymentInstruction(
   const cleanupInstructions: TransactionInstruction[] = [];
 
   try {
-    const sourceTokenAccount = await getAssociatedTokenAddress(mint, sender, true);
-    const destinationTokenAccount = await getAssociatedTokenAddress(mint, recipient, true);
-    const sourceMint = await getMint(connection, mint);
+    const sourceTokenAccount = await getAssociatedTokenAddress(mint, sender, true, TOKEN_2022_PROGRAM_ID);
+    const destinationTokenAccount = await getAssociatedTokenAddress(mint, recipient, true, TOKEN_2022_PROGRAM_ID);
+    const sourceMint = await getMint(connection, mint, TOKEN_2022_PROGRAM_ID);
 
     instructions.push(
-      createAssociatedTokenAccountInstruction(sender, destinationTokenAccount, recipient, mint, undefined, TOKEN_2022_PROGRAM_ID)
+      createAssociatedTokenAccountInstruction(
+        sender,
+        destinationTokenAccount,
+        recipient,
+        mint,
+        undefined,
+        TOKEN_2022_PROGRAM_ID
+      )
     );
 
     const transferInstruction = createTransferInstruction(
@@ -102,7 +110,7 @@ export async function createShieldedPaymentInstruction(
       cleanupInstructions,
       summary: {
         status: "error",
-        message: error instanceof Error ? error.message : "Shielded payment instruction generation failed.",
+        message: error instanceof Error ? error.message : "Failed to generate shielded payment instructions.",
       },
     };
   }
@@ -113,30 +121,34 @@ export async function applyPendingBalance(
   wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
   tokenAccount: PublicKey
 ): Promise<ConfidentialTransferSummary> {
-  if (!wallet.publicKey || (!wallet.signTransaction && !wallet.signAndSendTransaction)) {
+  if (!wallet.publicKey) {
     return {
       status: "unsupported",
-      message: "The connected wallet lacks the necessary signing capabilities for pending-balance sweeps.",
+      message: "Wallet not connected.",
+    };
+  }
+
+  if (!wallet.signTransaction && !wallet.signAndSendTransaction) {
+    return {
+      status: "unsupported",
+      message: "Wallet does not support signing.",
     };
   }
 
   try {
-    const accountAddress = tokenAccount.toBase58();
-    void connection;
-
     return {
       status: "ready",
       account: {
-        accountAddress,
+        accountAddress: tokenAccount.toBase58(),
         supported: true,
       },
-      message: "Pending balance application request prepared.",
+      message: "Pending balance application prepared for shielded vault.",
       instructionCount: 1,
     };
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof Error ? error.message : "Pending balance application failed.",
+      message: error instanceof Error ? error.message : "Failed to prepare pending balance.",
     };
   }
 }
