@@ -16,6 +16,7 @@ export interface PayoutResponse {
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+import { getOfframpConfig } from '@/lib/env/server';
 
 export async function initiateFiatPayout(req: PayoutRequest): Promise<PayoutResponse> {
   if (!req.merchantId || req.amount <= 0 || !req.bankAccountId) {
@@ -37,11 +38,12 @@ export async function initiateFiatPayout(req: PayoutRequest): Promise<PayoutResp
     }
 
     // Production: call the configured off-ramp provider
-    const apiUrl = process.env.FIAT_OFFRAMP_API_URL_PROD;
-    const apiKey = process.env.FIAT_OFFRAMP_API_KEY_PROD;
-    if (!apiUrl || !apiKey) {
-      throw new Error('Production off-ramp not configured (missing FIAT_OFFRAMP_API_URL_PROD or FIAT_OFFRAMP_API_KEY_PROD)');
+    const cfg = getOfframpConfig();
+    if (cfg.error) {
+      return { success: false, error: cfg.error };
     }
+
+    const { apiUrl, apiKey } = cfg.config!;
 
     const res = await fetch(`${apiUrl}/payouts`, {
       method: 'POST',

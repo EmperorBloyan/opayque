@@ -5,21 +5,21 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
-import { registerMwa } from "@solana-mobile/wallet-standard-mobile";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  CoinbaseWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
+import {
+  createDefaultAuthorizationCache,
+  createDefaultChainSelector,
+  createDefaultWalletNotFoundHandler,
+  registerMwa,
+} from "@solana-mobile/wallet-standard-mobile";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    registerMwa({
-      appIdentity: {
-        name: "Opayque",
-        uri: window.location.origin,
-        icon: "/favicon.ico",
-      },
-    });
-  }, []);
 
   const network = useMemo(() => {
     const envNetwork = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
@@ -29,12 +29,43 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
     return WalletAdapterNetwork.Devnet;
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const chainId = network === "mainnet-beta"
+      ? "solana:mainnet-beta"
+      : network === "testnet"
+        ? "solana:testnet"
+        : "solana:devnet";
+
+    registerMwa({
+      appIdentity: {
+        name: "Opayque",
+        uri: window.location.origin,
+        icon: "/favicon.ico",
+      },
+      authorizationCache: createDefaultAuthorizationCache(),
+      chains: [chainId] as never,
+      chainSelector: createDefaultChainSelector(),
+      onWalletNotFound: createDefaultWalletNotFoundHandler(),
+    });
+  }, [network]);
+
   const endpoint = useMemo(
     () => process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl(network),
     [network]
   );
 
-  const wallets = useMemo(() => [], []);
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter({ network }),
+      new CoinbaseWalletAdapter(),
+    ],
+    [network]
+  );
 
   const onError = useCallback((error: WalletError) => {
     if (/rejected/i.test(error?.message || "") || error.name === "WalletConnectionError") {

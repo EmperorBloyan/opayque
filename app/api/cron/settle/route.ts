@@ -12,13 +12,15 @@ export async function POST(req: Request) {
     // TODO: Replace with real DB query later
     const pending = [{ merchantId: "merch_test", amount: 1250, currency: "USD", bankAccountId: "bank1" }];
     let successCount = 0;
+    const results: Array<{ merchantId: string; success: boolean; error?: string }> = [];
 
     for (const p of pending) {
       const result = await initiateFiatPayout(p);
+      results.push({ merchantId: p.merchantId, success: result.success, error: result.error });
       if (result.success) successCount++;
     }
 
-    return NextResponse.json({ success: true, processed: successCount });
+    return NextResponse.json({ success: true, processed: successCount, results });
   } catch (e: any) {
     Sentry.captureException(e);
     return NextResponse.json({ error: e.message }, { status: 500 });

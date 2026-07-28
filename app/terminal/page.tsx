@@ -21,6 +21,7 @@ export default function TerminalPage() {
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
   const expectedPairingCode = activeSession?.id.slice(-6).toUpperCase() ?? null;
+  const terminalPin = process.env.NEXT_PUBLIC_STAFF_TERMINAL_PIN?.trim().toUpperCase() ?? null;
 
   const numericAmount = Number(amount);
   const isAmountValid =
@@ -50,9 +51,14 @@ export default function TerminalPage() {
       return;
     }
 
-    if (!expectedPairingCode && normalizedCode.length >= 4) {
+    if (terminalPin && normalizedCode === terminalPin) {
       setStep("POS");
       setToast("Terminal paired successfully");
+      return;
+    }
+
+    if (!expectedPairingCode && !terminalPin) {
+      setToast("No terminal pairing code is configured.");
       return;
     }
 
@@ -83,14 +89,14 @@ export default function TerminalPage() {
 
       setTransactionId((data as TransactionRecord).id);
       setToast("Pending transaction registered in Supabase");
+      setIsPaid(true);
+      requestAnimationFrame(() => {
+        successRef.current?.focus();
+      });
+      return;
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Transaction registration failed.");
     }
-
-    setIsPaid(true);
-    requestAnimationFrame(() => {
-      successRef.current?.focus();
-    });
   }, [activeSession?.merchantId, asset, isAmountValid, isPaid, numericAmount]);
 
   useEffect(() => {
@@ -148,6 +154,10 @@ export default function TerminalPage() {
             {expectedPairingCode ? (
               <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
                 Code: {expectedPairingCode}
+              </p>
+            ) : terminalPin ? (
+              <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
+                Enter your staff terminal PIN.
               </p>
             ) : null}
             <button

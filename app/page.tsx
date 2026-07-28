@@ -18,12 +18,42 @@ const WalletMultiButtonNoSSR = dynamic(
   }
 );
 
+function getMobileWalletContext() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return { isMobile: false, isInAppBrowser: false };
+  }
+
+  const ua = navigator.userAgent || "";
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const isInAppBrowser = /Instagram|FBAN|FBAV|Line|TikTok|Twitter|Discord|WeChat|WhatsApp|Telegram|KAKAOTALK|Meta|FxiOS|CriOS|SamsungBrowser|FB_IAB|FB4A/i.test(ua);
+  const isStandalone = Boolean((window as Window & { navigator?: { standalone?: boolean } }).navigator?.standalone);
+
+  return {
+    isMobile,
+    isInAppBrowser: isInAppBrowser || isStandalone,
+  };
+}
+
+function openPhantomUniversalLink(targetUrl: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(targetUrl)}`;
+  const popup = window.open(phantomUrl, "_blank", "noopener,noreferrer");
+
+  if (!popup) {
+    window.location.assign(phantomUrl);
+  }
+}
+
 export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { connected, publicKey, signMessage, connect } = useWallet();
+  const { connected, publicKey, signMessage, signTransaction, signAndSendTransaction, connect } = useWallet();
   const router = useRouter();
+  const mobileWalletContext = getMobileWalletContext();
 
   useEffect(() => {
     setMounted(true);
@@ -33,8 +63,16 @@ export default function UnifiedLanding() {
   }, []);
 
   const handleVaultEntrance = async () => {
-    // Ensure wallet connected and has signing capabilities. If not, try to prompt connection once.
-    if (!connected || !publicKey || !signMessage) {
+    const canSignMessage = Boolean(signMessage);
+    const canSignTransaction = Boolean(signTransaction || signAndSendTransaction);
+
+    if (!connected || !publicKey) {
+      if (mobileWalletContext.isMobile && !mobileWalletContext.isInAppBrowser) {
+        setAuthError("Opening Phantom for a seamless mobile sign-in...");
+        openPhantomUniversalLink(window.location.href);
+        return;
+      }
+
       if (connect) {
         try {
           await connect();
@@ -42,16 +80,26 @@ export default function UnifiedLanding() {
           setAuthError("Please connect a wallet to continue.");
           return;
         }
-
-        // Retry once after prompting connect
-        if (!publicKey || !signMessage) {
-          setAuthError("Connected wallet lacks signing capabilities.");
-          return;
-        }
       } else {
         setAuthError("Please connect a wallet to continue.");
         return;
       }
+    }
+
+    if (!publicKey || !canSignMessage) {
+      if (mobileWalletContext.isMobile && !mobileWalletContext.isInAppBrowser) {
+        setAuthError("Phantom is required for secure mobile signing. Opening Phantom...");
+        openPhantomUniversalLink(window.location.href);
+        return;
+      }
+
+      setAuthError("Connected wallet lacks signing capabilities. Please use Phantom or another supported wallet.");
+      return;
+    }
+
+    if (!canSignTransaction) {
+      setAuthError("This wallet cannot sign the confidential account setup. Please use Phantom or another supported wallet.");
+      return;
     }
 
     setAuthError(null);
@@ -72,7 +120,7 @@ export default function UnifiedLanding() {
       const confidentialSummary = await configureConfidentialAccount(
         new PublicKey("11111111111111111111111111111111") as never,
         {} as never,
-        { publicKey, signTransaction: null as never },
+        { publicKey, signTransaction, signAndSendTransaction },
         mint
       );
 
