@@ -24,13 +24,13 @@ export interface ConfidentialTransferInstructionBundle {
 export async function configureConfidentialAccount(
   connection: Connection,
   payer: Keypair,
-  wallet: Pick<WalletContextState, "publicKey" | "signTransaction">,
+  wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
   mint: PublicKey
 ): Promise<ConfidentialTransferSummary> {
-  if (!wallet.publicKey || !wallet.signTransaction) {
+  if (!wallet.publicKey || (!wallet.signTransaction && !wallet.signAndSendTransaction)) {
     return {
       status: "unsupported",
-      message: "The connected wallet cannot sign transactions for confidential account setup.",
+      message: "The connected wallet lacks the necessary signing capabilities for confidential account setup.",
     };
   }
 
@@ -110,13 +110,13 @@ export async function createShieldedPaymentInstruction(
 
 export async function applyPendingBalance(
   connection: Connection,
-  wallet: Pick<WalletContextState, "publicKey" | "signTransaction">,
+  wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
   tokenAccount: PublicKey
 ): Promise<ConfidentialTransferSummary> {
-  if (!wallet.publicKey || !wallet.signTransaction) {
+  if (!wallet.publicKey || (!wallet.signTransaction && !wallet.signAndSendTransaction)) {
     return {
       status: "unsupported",
-      message: "The connected wallet cannot sign pending-balance sweeps.",
+      message: "The connected wallet lacks the necessary signing capabilities for pending-balance sweeps.",
     };
   }
 
