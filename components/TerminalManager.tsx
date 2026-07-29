@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { LucideHardDrive, LucidePlusCircle, LucideRefreshCw, LucideTrash2 } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveSession } from "@/lib/crypto/session";
 import type { Terminal } from "@/lib/types";
+import PairingModal from "./PairingModal";
 
 interface TerminalManagerProps {
   terminals?: Terminal[];
@@ -34,6 +35,38 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
 export default function TerminalManager({ terminals = [], setTerminals }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
   const merchantId = getActiveSession()?.merchantId ?? "00000000-0000-0000-0000-000000000000";
+  const [isPairingOpen, setIsPairingOpen] = useState(false);
+  const [authCode, setAuthCode] = useState(""
+  );
+  const [timeLeft, setTimeLeft] = useState("09M 57S");
+
+  useEffect(() => {
+    if (!authCode) {
+      setAuthCode(createAccessCode());
+    }
+  }, [authCode]);
+
+  useEffect(() => {
+    if (!isPairingOpen) return;
+    const target = Date.now() + 9 * 60 * 1000 + 57 * 1000;
+    const tick = () => {
+      const remaining = Math.max(0, target - Date.now());
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      setTimeLeft(`${String(mins).padStart(2, "0")}M ${String(secs).padStart(2, "0")}S`);
+      if (remaining === 0) {
+        setAuthCode(createAccessCode());
+      }
+    };
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [isPairingOpen]);
+
+  const refreshAuthCode = () => {
+    setAuthCode(createAccessCode());
+    setTimeLeft("09M 57S");
+  };
 
   const loadFromSupabase = async () => {
     try {
@@ -105,6 +138,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       status: "offline" as const,
     }));
     await persistTerminals(updated);
+    refreshAuthCode();
   };
 
   const pairNewTerminal = async () => {
@@ -121,6 +155,9 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       },
     ];
     await persistTerminals(updated);
+    setAuthCode(createAccessCode());
+    setTimeLeft("09M 57S");
+    setIsPairingOpen(true);
   };
 
   const disconnectTerminal = async (id: string) => {
@@ -141,58 +178,73 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   };
 
   return (
-    <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem] shadow-xl relative overflow-hidden group/fleet">
-      <div className="flex justify-between items-start mb-10">
+    <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#0d0d11] p-6 shadow-2xl shadow-black/40">
+      <div className="mb-5 flex items-start justify-between">
         <div>
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-1">Hardware Fleet</h3>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${safeTerminals.length > 0 ? "bg-green-500 animate-pulse" : "bg-zinc-800"}`} />
-            <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em]">
-              {safeTerminals.length} SECURED NODES
-            </span>
+            <LucideBell size={14} className="text-zinc-500" />
+            <h3 className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Hardware Fleet</h3>
           </div>
+          <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">
+            • {safeTerminals.length} secured nodes
+          </p>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => void refreshCodes()}
-            className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
-          >
-            <LucideRefreshCw size={14} /> Refresh Code
-          </button>
-          <button
-            onClick={() => void pairNewTerminal()}
-            className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
-          >
-            <LucidePlusCircle size={14} /> Pair New
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setAuthCode(createAccessCode());
+            setTimeLeft("09M 57S");
+            setIsPairingOpen(true);
+          }}
+          className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200"
+        >
+          <LucidePlus size={14} /> Pair New
+        </button>
       </div>
 
-      <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-        {safeTerminals.map((terminal) => (
-          <div key={terminal.id} className="flex items-center justify-between p-5 bg-black/40 rounded-[2.5rem] border border-white/5 hover:border-purple-500/30 transition-all">
-            <div className="flex items-center gap-3">
-              <LucideHardDrive size={22} />
-              <div>
-                <p className="font-medium">{terminal.label}</p>
-                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-zinc-500 mt-1">
-                  Code: {terminal.accessCode}
-                </p>
-                <p className={`text-xs ${terminal.isActive ? "text-amber-500" : "text-green-500"}`}>
-                  {terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
-                </p>
-              </div>
+      <div className="rounded-[2rem] border border-white/10 bg-[#050507] p-6">
+        {safeTerminals.length === 0 ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/40 text-zinc-500">
+              <LucideHardDrive size={24} />
             </div>
-            <button
-              onClick={() => void disconnectTerminal(terminal.id)}
-              className="text-red-500 hover:text-red-400 p-2"
-            >
-              <LucideTrash2 size={18} />
-            </button>
+            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-700">No Nodes Connected</p>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-3">
+            {safeTerminals.map((terminal) => (
+              <div key={terminal.id} className="flex items-center justify-between rounded-[1.5rem] border border-white/10 bg-black/40 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-400">
+                    <LucideHardDrive size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">{terminal.label}</p>
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+                      {terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => void disconnectTerminal(terminal.id)}
+                  className="text-zinc-600 transition-all hover:text-red-500"
+                  aria-label="Remove terminal"
+                >
+                  <LucideTrash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      <PairingModal
+        isOpen={isPairingOpen}
+        onClose={() => setIsPairingOpen(false)}
+        authCode={authCode}
+        onRefresh={refreshAuthCode}
+        timeLeft={timeLeft}
+      />
     </div>
   );
 }
