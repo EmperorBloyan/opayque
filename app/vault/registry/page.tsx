@@ -7,7 +7,6 @@ import TerminalManager from "@/components/TerminalManager";
 import ReportingHub from "@/components/ReportingHub"; // We'll assume this is in your components
 import { Endpoint, Terminal } from "@/lib/types";
 import { 
-  LucideFingerprint, 
   LucideLock, 
   LucideFileSpreadsheet, 
   LucideTrash2, 
@@ -23,49 +22,12 @@ export default function RegistryPage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [selectedEndpoint, setSelectedEndpoint] = useState<Endpoint | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
-
-  // 1. BIOMETRIC SECURITY CHALLENGE
-  useEffect(() => {
-    const triggerBiometrics = async () => {
-      try {
-        if (typeof window === "undefined") {
-          setIsAuthenticated(true);
-          return;
-        }
-
-        const canUsePasskey = Boolean(
-          window.PublicKeyCredential &&
-          navigator.credentials &&
-          typeof navigator.credentials.get === "function"
-        );
-
-        if (!canUsePasskey) {
-          setIsAuthenticated(true);
-          return;
-        }
-
-        const available = await navigator.credentials.get({
-          publicKey: {
-            challenge: new Uint8Array([1, 2, 3, 4]),
-            timeout: 60000,
-            allowCredentials: [],
-          }
-        });
-
-        setIsAuthenticated(Boolean(available));
-      } catch (err) {
-        console.warn("Biometric check bypassed for demo", err);
-        setIsAuthenticated(true);
-      }
-    };
-
-    void triggerBiometrics();
-  }, []);
+  const [isMounted, setIsMounted] = useState(false);
 
   // Hydration
   useEffect(() => {
+    setIsMounted(true);
     const savedEndpoints = localStorage.getItem("opayque_endpoints");
     const savedTerminals = localStorage.getItem("opayque_terminals");
     if (savedEndpoints) setEndpoints(JSON.parse(savedEndpoints));
@@ -84,15 +46,6 @@ export default function RegistryPage() {
     localStorage.setItem("opayque_endpoints", JSON.stringify(updated));
     if (selectedEndpoint?.id === id) setSelectedEndpoint(null);
   };
-
-  if (!isAuthenticated) return (
-    <div className="min-h-screen flex items-center justify-center bg-black">
-      <div className="flex flex-col items-center animate-pulse">
-        <LucideFingerprint size={60} className="text-purple-500 mb-4" />
-        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-500">Awaiting Biometric Auth</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
@@ -202,16 +155,22 @@ export default function RegistryPage() {
             <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-10">Opayque Protected Endpoint</p>
             
             <div className="relative p-8 bg-white rounded-[3rem] mb-10 inline-block">
-              <QRCodeSVG 
-                value={`${window.location.origin}/vault/checkout?address=${selectedEndpoint.address}&name=${selectedEndpoint.name}`} 
-                size={200}
-                level="H"
-              />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center border-4 border-white shadow-xl">
-                  <span className="text-white text-lg font-black italic">O</span>
-                </div>
-              </div>
+              {isMounted && typeof window !== "undefined" ? (
+                <>
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}`} 
+                    size={200}
+                    level="H"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center border-4 border-white shadow-xl">
+                      <span className="text-white text-lg font-black italic">O</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="w-[200px] h-[200px] rounded-[2rem] border border-zinc-200 bg-zinc-100" />
+              )}
             </div>
 
             <button 
