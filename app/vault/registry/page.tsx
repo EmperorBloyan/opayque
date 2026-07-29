@@ -29,25 +29,43 @@ export default function RegistryPage() {
   // 1. BIOMETRIC SECURITY CHALLENGE
   useEffect(() => {
     const triggerBiometrics = async () => {
-      if (window.PublicKeyCredential) {
-        try {
-          await navigator.credentials.get({
-            publicKey: {
-              challenge: new Uint8Array([1, 2, 3, 4]),
-              timeout: 60000,
-              allowCredentials: [],
-            }
-          });
+      try {
+        if (typeof window === "undefined") {
           setIsAuthenticated(true);
-        } catch (err) {
-          console.warn("Biometric check bypassed for demo");
-          setIsAuthenticated(true); 
+          return;
         }
-      } else {
+
+        if (typeof window.PublicKeyCredential === "undefined") {
+          setIsAuthenticated(true);
+          return;
+        }
+
+        if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
+          setIsAuthenticated(true);
+          return;
+        }
+
+        const available = await navigator.credentials.get({
+          publicKey: {
+            challenge: new Uint8Array([1, 2, 3, 4]),
+            timeout: 60000,
+            allowCredentials: [],
+          }
+        });
+
+        if (available) {
+          setIsAuthenticated(true);
+          return;
+        }
+
+        setIsAuthenticated(true);
+      } catch (err) {
+        console.warn("Biometric check bypassed for demo", err);
         setIsAuthenticated(true);
       }
     };
-    triggerBiometrics();
+
+    void triggerBiometrics();
   }, []);
 
   // Hydration
