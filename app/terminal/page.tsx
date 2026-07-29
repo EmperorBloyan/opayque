@@ -7,6 +7,10 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
 import type { TransactionRecord } from "@/types/database";
 
+function normalizePairingCode(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"PAIRING" | "POS" | "PAYING">("PAIRING");
@@ -41,7 +45,7 @@ export default function TerminalPage() {
 
   const handlePairing = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedCode = pairingCode.trim().toUpperCase();
+    const normalizedCode = normalizePairingCode(pairingCode);
 
     if (typeof window === "undefined") {
       setToast("Pairing code rejected");
@@ -51,13 +55,26 @@ export default function TerminalPage() {
     try {
       const supabase = createSupabaseBrowserClient();
       const merchantId = activeSession?.merchantId ?? "00000000-0000-0000-0000-000000000000";
-      const { data: terminalRows, error: listError } = await supabase
-        .from("terminals")
-        .select("id, device_token, status")
-        .eq("merchant_id", merchantId);
+      let terminalRows: Array<{ id: string; device_token?: string | null; status?: string | null }> = [];
 
-      if (listError) {
-        throw listError;
+      const merchantCandidates = merchantId && merchantId !== "00000000-0000-0000-0000-000000000000"
+        ? [merchantId, "00000000-0000-0000-0000-000000000000"]
+        : ["00000000-0000-0000-0000-000000000000"];
+
+      for (const candidateMerchantId of merchantCandidates) {
+        const { data, error: listError } = await supabase
+          .from("terminals")
+          .select("id, device_token, status")
+          .eq("merchant_id", candidateMerchantId);
+
+        if (listError) {
+          throw listError;
+        }
+
+        if (data && data.length > 0) {
+          terminalRows = data as Array<{ id: string; device_token?: string | null; status?: string | null }>;
+          break;
+        }
       }
 
       if (!terminalRows || terminalRows.length === 0) {
@@ -65,9 +82,10 @@ export default function TerminalPage() {
         return;
       }
 
-      const matchedTerminal = terminalRows.find(
-        (terminal: any) => terminal.device_token?.toUpperCase() === normalizedCode
-      );
+      const matchedTerminal = terminalRows.find((terminal) => {
+        const storedCode = normalizePairingCode(String(terminal.device_token ?? ""));
+        return storedCode === normalizedCode;
+      });
 
       if (!matchedTerminal) {
         setToast("Invalid or expired pairing code");

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveSession } from "@/lib/crypto/session";
+import { clearActiveSession, getActiveSession } from "@/lib/crypto/session";
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -78,7 +78,10 @@ export default function RegistryPage() {
       <div className="flex justify-between items-center mb-12 px-4">
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => router.push("/")}
+            onClick={() => {
+              clearActiveSession();
+              router.push("/");
+            }}
             className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-red-500 transition-all"
           >
             <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault

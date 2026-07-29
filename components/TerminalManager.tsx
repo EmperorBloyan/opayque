@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveSession } from "@/lib/crypto/session";
@@ -92,6 +92,9 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       }));
 
       setTerminals?.(mapped);
+      if (mapped.length > 0 && !authCode) {
+        setAuthCode(mapped[0].accessCode ?? createAccessCode());
+      }
     } catch (error) {
       console.error("Failed to load terminals from Supabase", error);
     }
@@ -138,24 +141,24 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       status: "offline" as const,
     }));
     await persistTerminals(updated);
-    refreshAuthCode();
+    setAuthCode(updated[0]?.accessCode ?? createAccessCode());
+    setTimeLeft("09M 57S");
   };
 
   const pairNewTerminal = async () => {
-    const updated = [
-      ...safeTerminals,
-      {
-        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
-        label: `Fleet Terminal ${safeTerminals.length + 1}`,
-        status: "offline" as const,
-        lastSeen: Date.now(),
-        accessCode: createAccessCode(),
-        isActive: false,
-        lastLoginAt: null,
-      },
-    ];
+    const newTerminal = {
+      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
+      label: `Fleet Terminal ${safeTerminals.length + 1}`,
+      status: "offline" as const,
+      lastSeen: Date.now(),
+      accessCode: createAccessCode(),
+      isActive: false,
+      lastLoginAt: null,
+    };
+
+    const updated = [...safeTerminals, newTerminal];
     await persistTerminals(updated);
-    setAuthCode(createAccessCode());
+    setAuthCode(newTerminal.accessCode);
     setTimeLeft("09M 57S");
     setIsPairingOpen(true);
   };
