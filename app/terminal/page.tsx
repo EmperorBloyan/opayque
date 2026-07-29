@@ -39,7 +39,7 @@ export default function TerminalPage() {
     });
   }, [activeSession?.walletAddress, asset, isAmountValid, numericAmount, transactionId]);
 
-  const handlePairing = (e: React.FormEvent) => {
+  const handlePairing = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedCode = pairingCode.trim().toUpperCase();
 
@@ -49,34 +49,47 @@ export default function TerminalPage() {
     }
 
     try {
-      const storedTerminals = JSON.parse(window.localStorage.getItem("opayque_terminals") || "[]") as Array<{
-        id: string;
-        accessCode?: string;
-        isActive?: boolean;
-      }>;
-      const matchedTerminal = storedTerminals.find(
-        (terminal) => terminal.accessCode?.toUpperCase() === normalizedCode && !terminal.isActive
-      );
+      const supabase = createSupabaseBrowserClient();
+      const merchantId = activeSession?.merchantId ?? "00000000-0000-0000-0000-000000000000";
+      const { data: terminalRows, error: listError } = await supabase
+        .from("terminals")
+        .select("id, device_token, status")
+        .eq("merchant_id", merchantId);
 
-      if (matchedTerminal) {
-        const updatedTerminals = storedTerminals.map((terminal) =>
-          terminal.id === matchedTerminal.id
-            ? { ...terminal, isActive: true, lastLoginAt: Date.now() }
-            : terminal
-        );
-        window.localStorage.setItem("opayque_terminals", JSON.stringify(updatedTerminals));
-        window.dispatchEvent(new Event("opayque-terminal-login"));
-        setStep("POS");
-        setToast("Terminal paired successfully");
+      if (listError) {
+        throw listError;
+      }
+
+      if (!terminalRows || terminalRows.length === 0) {
+        setToast("No terminal pairing code is configured.");
         return;
       }
 
-      if (storedTerminals.some((terminal) => Boolean(terminal.accessCode))) {
+      const matchedTerminal = terminalRows.find(
+        (terminal: any) => terminal.device_token?.toUpperCase() === normalizedCode
+      );
+
+      if (!matchedTerminal) {
         setToast("Invalid or expired pairing code");
         return;
       }
 
-      setToast("No terminal pairing code is configured.");
+      if (matchedTerminal.status === "online") {
+        setToast("This terminal is already active");
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("terminals")
+        .update({ status: "online", last_active: new Date().toISOString() })
+        .eq("id", matchedTerminal.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setStep("POS");
+      setToast("Terminal paired successfully");
     } catch {
       setToast("Pairing code rejected");
     }

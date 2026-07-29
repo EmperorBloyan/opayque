@@ -2,6 +2,8 @@
 
 import React, { useEffect } from "react";
 import { LucideHardDrive, LucidePlusCircle, LucideRefreshCw, LucideTrash2 } from "lucide-react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getActiveSession } from "@/lib/crypto/session";
 import type { Terminal } from "@/lib/types";
 
 interface TerminalManagerProps {
@@ -31,110 +33,110 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
 
 export default function TerminalManager({ terminals = [], setTerminals }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
+  const merchantId = getActiveSession()?.merchantId ?? "00000000-0000-0000-0000-000000000000";
 
-  const persistTerminals = (updated: Terminal[]) => {
+  const loadFromSupabase = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("terminals")
+        .select("*")
+        .eq("merchant_id", merchantId)
+        .order("last_active", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      const mapped = (data ?? []).map((row: any) => ({
+        id: row.id,
+        label: row.terminal_label ?? "Fleet Terminal",
+        status: row.status === "online" ? "online" : "offline",
+        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+        accessCode: row.device_token ?? createAccessCode(),
+        isActive: row.status === "online",
+        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+      }));
+
+      setTerminals?.(mapped);
+    } catch (error) {
+      console.error("Failed to load terminals from Supabase", error);
+    }
+  };
+
+  const persistTerminals = async (updated: Terminal[]) => {
     setTerminals?.(updated);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("opayque_terminals", JSON.stringify(updated));
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await Promise.all(
+        updated.map(async (terminal) => {
+          const payload = {
+            id: terminal.id,
+            merchant_id: merchantId,
+            terminal_label: terminal.label,
+            device_token: terminal.accessCode ?? createAccessCode(),
+            status: terminal.isActive ? "online" : "offline",
+            last_active: terminal.lastLoginAt ? new Date(terminal.lastLoginAt).toISOString() : new Date().toISOString(),
+          };
+
+          const { error } = await supabase.from("terminals").upsert(payload, { onConflict: "id" });
+          if (error) {
+            throw error;
+          }
+        })
+      );
+      await loadFromSupabase();
+    } catch (error) {
+      console.error("Failed to sync terminals to Supabase", error);
     }
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    void loadFromSupabase();
+  }, [merchantId]);
 
-    try {
-      const stored = window.localStorage.getItem("opayque_terminals");
-      if (stored) {
-        const parsed = JSON.parse(stored) as Terminal[];
-        const normalized = normalizeTerminals(parsed);
-        setTerminals?.(normalized);
-        if (JSON.stringify(normalized) !== stored) {
-          window.localStorage.setItem("opayque_terminals", JSON.stringify(normalized));
-        }
-        return;
-      }
-    } catch {
-      // Ignore malformed storage data.
-    }
-
-    if (terminals.length === 0) {
-      const sample: Terminal[] = [
-        {
-          id: "t1",
-          label: "POS Terminal 01",
-          status: "online",
-          lastSeen: Date.now(),
-          accessCode: createAccessCode(),
-          isActive: false,
-          lastLoginAt: null,
-        },
-        {
-          id: "t2",
-          label: "Kiosk Terminal 02",
-          status: "online",
-          lastSeen: Date.now(),
-          accessCode: createAccessCode(),
-          isActive: false,
-          lastLoginAt: null,
-        },
-      ];
-      persistTerminals(sample);
-    }
-  }, [setTerminals, terminals.length]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const syncFromStorage = () => {
-      try {
-        const stored = window.localStorage.getItem("opayque_terminals");
-        if (stored) {
-          const parsed = JSON.parse(stored) as Terminal[];
-          setTerminals?.(normalizeTerminals(parsed));
-        }
-      } catch {
-        // Ignore malformed storage data.
-      }
-    };
-
-    window.addEventListener("storage", syncFromStorage);
-    window.addEventListener("opayque-terminal-login", syncFromStorage as EventListener);
-    return () => {
-      window.removeEventListener("storage", syncFromStorage);
-      window.removeEventListener("opayque-terminal-login", syncFromStorage as EventListener);
-    };
-  }, [setTerminals]);
-
-  const refreshCodes = () => {
+  const refreshCodes = async () => {
     const updated = safeTerminals.map((terminal) => ({
       ...terminal,
       accessCode: createAccessCode(),
       isActive: false,
       lastLoginAt: null,
+      status: "offline" as const,
     }));
-    persistTerminals(updated);
+    await persistTerminals(updated);
   };
 
-  const pairNewTerminal = () => {
+  const pairNewTerminal = async () => {
     const updated = [
       ...safeTerminals,
       {
-        id: `t${Date.now()}`,
+        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
         label: `Fleet Terminal ${safeTerminals.length + 1}`,
-        status: "online" as const,
+        status: "offline" as const,
         lastSeen: Date.now(),
         accessCode: createAccessCode(),
         isActive: false,
         lastLoginAt: null,
       },
     ];
-    persistTerminals(updated);
+    await persistTerminals(updated);
   };
 
-  const disconnectTerminal = (id: string) => {
+  const disconnectTerminal = async (id: string) => {
     if (confirm("Unpair this terminal? New pairing code required to log in again.")) {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { error } = await supabase.from("terminals").delete().eq("id", id);
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        console.error("Failed to delete terminal from Supabase", error);
+      }
+
       const updated = safeTerminals.filter((terminal) => terminal.id !== id);
-      persistTerminals(updated);
+      await persistTerminals(updated);
     }
   };
 
@@ -153,13 +155,13 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
 
         <div className="flex gap-2">
           <button
-            onClick={refreshCodes}
+            onClick={() => void refreshCodes()}
             className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
           >
             <LucideRefreshCw size={14} /> Refresh Code
           </button>
           <button
-            onClick={pairNewTerminal}
+            onClick={() => void pairNewTerminal()}
             className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
           >
             <LucidePlusCircle size={14} /> Pair New
@@ -183,7 +185,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
               </div>
             </div>
             <button
-              onClick={() => disconnectTerminal(terminal.id)}
+              onClick={() => void disconnectTerminal(terminal.id)}
               className="text-red-500 hover:text-red-400 p-2"
             >
               <LucideTrash2 size={18} />

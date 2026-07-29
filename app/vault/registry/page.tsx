@@ -16,6 +16,8 @@ import {
   LucidePrinter
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getActiveSession } from "@/lib/crypto/session";
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -25,25 +27,47 @@ export default function RegistryPage() {
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Hydration
   useEffect(() => {
     setIsMounted(true);
-    const savedEndpoints = localStorage.getItem("opayque_endpoints");
-    const savedTerminals = localStorage.getItem("opayque_terminals");
-    if (savedEndpoints) setEndpoints(JSON.parse(savedEndpoints));
-    if (savedTerminals) setTerminals(JSON.parse(savedTerminals));
+
+    const loadTerminalData = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const merchantId = getActiveSession()?.merchantId ?? "00000000-0000-0000-0000-000000000000";
+        const { data, error } = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", merchantId)
+          .order("last_active", { ascending: false });
+
+        if (!error) {
+          const mapped = (data ?? []).map((row: any) => ({
+            id: row.id,
+            label: row.terminal_label ?? "Fleet Terminal",
+            status: row.status === "online" ? "online" : "offline",
+            lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+            accessCode: row.device_token ?? "",
+            isActive: row.status === "online",
+            lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+          }));
+          setTerminals(mapped);
+        }
+      } catch (error) {
+        console.error("Failed to hydrate registry terminals", error);
+      }
+    };
+
+    void loadTerminalData();
   }, []);
 
   const handleSaveEndpoint = (newEndpoint: Endpoint) => {
     const updated = [newEndpoint, ...endpoints];
     setEndpoints(updated);
-    localStorage.setItem("opayque_endpoints", JSON.stringify(updated));
   };
 
   const handleDeleteEndpoint = (id: string) => {
     const updated = endpoints.filter((e) => e.id !== id);
     setEndpoints(updated);
-    localStorage.setItem("opayque_endpoints", JSON.stringify(updated));
     if (selectedEndpoint?.id === id) setSelectedEndpoint(null);
   };
 
