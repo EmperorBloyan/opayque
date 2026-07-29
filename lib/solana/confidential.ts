@@ -36,7 +36,8 @@ export async function configureConfidentialAccount(
     };
   }
 
-  if (!wallet.signMessage && !wallet.signTransaction && !wallet.signAndSendTransaction) {
+  const canSign = Boolean(wallet.signMessage || wallet.signTransaction || wallet.signAndSendTransaction);
+  if (!canSign) {
     return {
       status: "unsupported",
       message: "Connected wallet does not support signing. Please use Phantom or another supported wallet.",

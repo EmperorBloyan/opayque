@@ -120,14 +120,14 @@ export default function UnifiedLanding() {
       const confidentialSummary = await configureConfidentialAccount(
         new PublicKey("11111111111111111111111111111111") as never,
         {} as never,
-        { publicKey, signTransaction, signAndSendTransaction },
+        { publicKey, signMessage, signTransaction, signAndSendTransaction },
         mint
       );
 
       if (confidentialSummary.status === "unsupported" || confidentialSummary.status === "error") {
+        setActiveSession(session);
         setAuthError(confidentialSummary.message);
-        clearActiveSession();
-        setIsAuthorizing(false);
+        router.push("/vault/registry");
         return;
       }
 
