@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveSession } from "@/lib/crypto/session";
+import { getActiveMerchantId } from "@/lib/crypto/session";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
 
@@ -34,7 +34,7 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
 
 export default function TerminalManager({ terminals = [], setTerminals }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
-  const merchantId = getActiveSession()?.merchantId ?? "00000000-0000-0000-0000-000000000000";
+  const merchantId = getActiveMerchantId();
   const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [authCode, setAuthCode] = useState(""
   );

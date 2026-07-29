@@ -26,6 +26,7 @@ export interface CreateTerminalSessionInput {
 }
 
 let activeSession: TerminalSession | null = null;
+const ACTIVE_MERCHANT_ID_KEY = "opayque.activeMerchantId";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -39,7 +40,8 @@ function normalizeMessage(message: ArrayBuffer | Uint8Array | string): Uint8Arra
     return new Uint8Array(message);
   }
 
-  return new Uint8Array(message);
+  const view = message as Uint8Array;
+  return new Uint8Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength));
 }
 
 function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
@@ -93,22 +95,31 @@ export async function createTerminalSession(input: CreateTerminalSessionInput): 
     sessionKeyPair,
     sign: async (message) => {
       const bytes = normalizeMessage(message);
+      const messageBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
       const signature = await crypto.subtle.sign(
         {
           name: "ECDSA",
           hash: "SHA-256",
         },
         sessionKeyPair.privateKey,
-        bytes
+        messageBuffer
       );
 
       return new Uint8Array(signature);
     },
     verify: async (message, signature) => {
       const bytes = normalizeMessage(message);
-      const signatureBuffer = signature instanceof ArrayBuffer
+      const normalizedSignature = signature instanceof ArrayBuffer
         ? signature
-        : signature.buffer.slice(signature.byteOffset, signature.byteOffset + signature.byteLength);
+        : (() => {
+            const view = signature as Uint8Array;
+            return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+          })();
+
+      const signatureBytes = new Uint8Array(normalizedSignature instanceof ArrayBuffer ? normalizedSignature : normalizedSignature.slice(0));
+      const messageBytes = new Uint8Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      const signatureBuffer = signatureBytes.buffer as ArrayBuffer;
+      const messageBuffer = messageBytes.buffer as ArrayBuffer;
 
       return crypto.subtle.verify(
         {
@@ -117,7 +128,7 @@ export async function createTerminalSession(input: CreateTerminalSessionInput): 
         },
         sessionKeyPair.publicKey,
         signatureBuffer,
-        bytes
+        messageBuffer
       );
     },
   };
@@ -127,6 +138,9 @@ export async function createTerminalSession(input: CreateTerminalSessionInput): 
 
 export function setActiveSession(session: TerminalSession): TerminalSession {
   activeSession = session;
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ACTIVE_MERCHANT_ID_KEY, session.merchantId);
+  }
   return session;
 }
 
@@ -145,6 +159,21 @@ export function getActiveSession(): TerminalSession | null {
 
 export function clearActiveSession(): void {
   activeSession = null;
+}
+
+export function getActiveMerchantId(): string {
+  if (activeSession?.merchantId) {
+    return activeSession.merchantId;
+  }
+
+  if (typeof window !== "undefined") {
+    const storedMerchantId = window.localStorage.getItem(ACTIVE_MERCHANT_ID_KEY)?.trim();
+    if (storedMerchantId) {
+      return storedMerchantId;
+    }
+  }
+
+  return "merchant-vault";
 }
 
 export function isSessionActive(): boolean {

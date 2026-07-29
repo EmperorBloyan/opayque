@@ -2,7 +2,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { buildShieldedTransfer } from '@/lib/magicblock';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Connection } from '@solana/web3.js';
 
 const TEE_RPC = 'https://devnet-tee.magicblock.app';
@@ -32,14 +32,23 @@ function writeStoredHistory(items: Array<Record<string, unknown>>) {
 export default function ShieldedCheckout({
   amount,
   merchantPubkey,
+  allowCustomAmount = false,
 }: {
   amount: number;
   merchantPubkey: string;
+  allowCustomAmount?: boolean;
 }) {
   const { publicKey, signTransaction, connected } = useWallet() as { publicKey: { toBase58(): string } | null; signTransaction?: (tx: any) => Promise<any>; connected: boolean; };
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draftAmount, setDraftAmount] = useState(() => (Number.isFinite(amount) && amount > 0 ? amount : 10));
+
+  useEffect(() => {
+    if (!allowCustomAmount) {
+      setDraftAmount(Number.isFinite(amount) && amount > 0 ? amount : 10);
+    }
+  }, [allowCustomAmount, amount]);
 
   const handlePayment = async () => {
     if (!publicKey) {
@@ -47,7 +56,9 @@ export default function ShieldedCheckout({
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const effectiveAmount = allowCustomAmount ? draftAmount : amount;
+
+    if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
       setErrorMessage('Invalid payment amount.');
       return;
     }
@@ -63,7 +74,7 @@ export default function ShieldedCheckout({
 
     try {
       const teeConnection = new Connection(TEE_RPC, 'processed');
-      const atomicAmount = Math.floor(amount * Math.pow(10, USDC_DECIMALS));
+      const atomicAmount = Math.floor(effectiveAmount * Math.pow(10, USDC_DECIMALS));
 
       const tx = await buildShieldedTransfer(
         publicKey.toBase58(),
@@ -82,7 +93,7 @@ export default function ShieldedCheckout({
       const initialTx = {
         id: signature,
         staff: merchantPubkey,
-        amount,
+        amount: effectiveAmount,
         time: new Date().toISOString(),
         status: 'SHIELDED_PENDING',
       };
@@ -122,6 +133,24 @@ export default function ShieldedCheckout({
             <p className="text-zinc-500 text-sm mt-1">Secured via MagicBlock TEE</p>
           </div>
 
+          {allowCustomAmount ? (
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-100 p-4 text-left dark:border-zinc-800 dark:bg-zinc-900/70">
+              <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Amount (USDC)</label>
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                value={draftAmount}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value);
+                  setDraftAmount(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+                }}
+                className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-center text-2xl font-black text-zinc-900 outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+                placeholder="Enter amount"
+              />
+            </div>
+          ) : null}
+
           {!connected ? (
             <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
               <p className="text-sm text-amber-600 dark:text-amber-400">Connect your Solana wallet to continue.</p>
@@ -142,7 +171,7 @@ export default function ShieldedCheckout({
                 <span className="capitalize">{status}...</span>
               </div>
             ) : (
-              `Pay ${amount} USDC (Shielded)`
+              `Pay ${allowCustomAmount ? draftAmount : amount} USDC (Shielded)`
             )}
           </button>
 

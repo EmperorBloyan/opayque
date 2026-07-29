@@ -15,8 +15,9 @@ export interface PayoutResponse {
   error?: string;
 }
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 import { getOfframpConfig } from '@/lib/env/server';
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 export async function initiateFiatPayout(req: PayoutRequest): Promise<PayoutResponse> {
   if (!req.merchantId || req.amount <= 0 || !req.bankAccountId) {
@@ -25,16 +26,7 @@ export async function initiateFiatPayout(req: PayoutRequest): Promise<PayoutResp
 
   try {
     if (!IS_PRODUCTION) {
-      // Sandbox behaviour: fake a payout for testing
-      await new Promise((r) => setTimeout(r, 900));
-      return {
-        success: true,
-        data: {
-          payoutId: `po_${Date.now()}`,
-          status: 'processing',
-          estimatedArrival: new Date(Date.now() + 172800000).toISOString(),
-        },
-      };
+      return { success: false, error: 'Off-ramp provider is not configured for non-production environments.' };
     }
 
     // Production: call the configured off-ramp provider

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { getActiveSession } from "@/lib/crypto/session";
+import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
 import type { TransactionRecord } from "@/types/database";
@@ -32,7 +32,7 @@ export default function TerminalPage() {
     numericAmount < 1_000_000;
 
   const buildUri = useCallback(() => {
-    const recipient = activeSession?.walletAddress ?? "11111111111111111111111111111111";
+    const recipient = activeSession?.walletAddress ?? "";
     return generatePaymentURL({
       recipient,
       amount: isAmountValid ? numericAmount.toFixed(2) : "0.00",
@@ -54,17 +54,15 @@ export default function TerminalPage() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const merchantId = activeSession?.merchantId ?? "00000000-0000-0000-0000-000000000000";
-      let terminalRows: Array<{ id: string; device_token?: string | null; status?: string | null }> = [];
+      const merchantId = getActiveMerchantId();
+      let terminalRows: Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }> = [];
 
-      const merchantCandidates = merchantId && merchantId !== "00000000-0000-0000-0000-000000000000"
-        ? [merchantId, "00000000-0000-0000-0000-000000000000"]
-        : ["00000000-0000-0000-0000-000000000000"];
+      const merchantCandidates = [merchantId, "merchant-vault"].filter(Boolean);
 
       for (const candidateMerchantId of merchantCandidates) {
         const { data, error: listError } = await supabase
           .from("terminals")
-          .select("id, device_token, status")
+          .select("id, device_token, status, merchant_id")
           .eq("merchant_id", candidateMerchantId);
 
         if (listError) {
@@ -72,9 +70,21 @@ export default function TerminalPage() {
         }
 
         if (data && data.length > 0) {
-          terminalRows = data as Array<{ id: string; device_token?: string | null; status?: string | null }>;
+          terminalRows = data as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }>;
           break;
         }
+      }
+
+      if (!terminalRows || terminalRows.length === 0) {
+        const { data: fallbackRows, error: fallbackError } = await supabase
+          .from("terminals")
+          .select("id, device_token, status, merchant_id");
+
+        if (fallbackError) {
+          throw fallbackError;
+        }
+
+        terminalRows = (fallbackRows ?? []) as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }>;
       }
 
       if (!terminalRows || terminalRows.length === 0) {
@@ -194,7 +204,7 @@ export default function TerminalPage() {
               inputMode="text"
               type="text"
               maxLength={12}
-              placeholder="000000"
+              placeholder="Enter pairing code"
               value={pairingCode}
               onChange={(e) => setPairingCode(e.target.value.toUpperCase().slice(0, 12))}
               className="w-full bg-zinc-900 border border-white/5 rounded-3xl py-10 text-center text-4xl font-mono font-black outline-none mb-6"

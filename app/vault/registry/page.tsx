@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { clearActiveSession, getActiveSession } from "@/lib/crypto/session";
+import { clearActiveSession, getActiveMerchantId } from "@/lib/crypto/session";
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -33,7 +33,7 @@ export default function RegistryPage() {
     const loadTerminalData = async () => {
       try {
         const supabase = createSupabaseBrowserClient();
-        const merchantId = getActiveSession()?.merchantId ?? "00000000-0000-0000-0000-000000000000";
+        const merchantId = getActiveMerchantId();
         const { data, error } = await supabase
           .from("terminals")
           .select("*")

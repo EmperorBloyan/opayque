@@ -7,7 +7,7 @@ import ShieldedCheckout from "@/components/ShieldedCheckout";
 function CheckoutContent() {
   const searchParams = useSearchParams();
 
-  const recipientAddress = searchParams.get("address") || "8YAV5vV3Nf2zPx9WCjyqkFKTAa55Hjnhm8FDCAEHEM76";
+  const recipientAddress = searchParams.get("address") || "";
   const recipientName = searchParams.get("name") || "Opayque Recipient";
   const rawAmount = searchParams.get("amount") || searchParams.get("fixed") || "0";
   const amount = Number.parseFloat(rawAmount);
@@ -20,7 +20,7 @@ function CheckoutContent() {
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-600">Secure Checkout</p>
         <h1 className="mt-2 text-3xl font-black italic uppercase tracking-tighter">{recipientName}</h1>
       </div>
-      <ShieldedCheckout amount={safeAmount} merchantPubkey={recipientAddress} />
+      <ShieldedCheckout amount={safeAmount} merchantPubkey={recipientAddress} allowCustomAmount={false} />
     </div>
   );
 }
