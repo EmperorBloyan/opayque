@@ -1,5 +1,6 @@
 'use client';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { buildShieldedTransfer } from '@/lib/magicblock';
 import { useState } from 'react';
 import { Connection } from '@solana/web3.js';
@@ -35,7 +36,7 @@ export default function ShieldedCheckout({
   amount: number;
   merchantPubkey: string;
 }) {
-  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet() as { publicKey: { toBase58(): string } | null; signTransaction?: (tx: any) => Promise<any>; connected: boolean; };
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export default function ShieldedCheckout({
       return;
     }
 
-    if (!signTransaction && !signAndSendTransaction) {
+    if (!signTransaction) {
       setErrorMessage('Connected wallet cannot sign transactions.');
       return;
     }
@@ -70,22 +71,13 @@ export default function ShieldedCheckout({
         atomicAmount
       );
 
-      let signature: string;
-
-      if (signTransaction) {
-        setStatus('signing');
-        const signedTx = await signTransaction(tx);
-        setStatus('sending');
-        signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
-          skipPreflight: true,
-          maxRetries: 3,
-        });
-      } else if (signAndSendTransaction) {
-        setStatus('sending');
-        signature = await signAndSendTransaction(tx);
-      } else {
-        throw new Error('Connected wallet cannot sign transactions.');
-      }
+      setStatus('signing');
+      const signedTx = await signTransaction(tx);
+      setStatus('sending');
+      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: true,
+        maxRetries: 3,
+      });
 
       const initialTx = {
         id: signature,
@@ -129,6 +121,15 @@ export default function ShieldedCheckout({
             <h3 className="text-2xl font-bold text-zinc-900 dark:text-white">Shielded Checkout</h3>
             <p className="text-zinc-500 text-sm mt-1">Secured via MagicBlock TEE</p>
           </div>
+
+          {!connected ? (
+            <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
+              <p className="text-sm text-amber-600 dark:text-amber-400">Connect your Solana wallet to continue.</p>
+              <div className="mt-4 flex justify-center">
+                <WalletMultiButton className="!bg-zinc-900 !text-white !rounded-xl !font-semibold !text-sm !px-4 !py-3" />
+              </div>
+            </div>
+          ) : null}
 
           <button
             onClick={handlePayment}

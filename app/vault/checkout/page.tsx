@@ -1,103 +1,26 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { buildShieldedTransfer } from "@/lib/magicblock";
-import { Connection } from "@solana/web3.js";
-import { LucideShieldCheck, LucideLoader2, LucideCheckCircle2 } from "lucide-react";
+import ShieldedCheckout from "@/components/ShieldedCheckout";
 
 function CheckoutContent() {
   const searchParams = useSearchParams();
-  const { publicKey, signTransaction, connected } = useWallet();
 
   const recipientAddress = searchParams.get("address") || "8YAV5vV3Nf2zPx9WCjyqkFKTAa55Hjnhm8FDCAEHEM76";
   const recipientName = searchParams.get("name") || "Opayque Recipient";
-  const fixedAmount = searchParams.get("fixed");
-  const isFixed = !!fixedAmount && fixedAmount !== "0";
+  const rawAmount = searchParams.get("amount") || searchParams.get("fixed") || "0";
+  const amount = Number.parseFloat(rawAmount);
 
-  const [amount, setAmount] = useState<number>(isFixed ? Number(fixedAmount) : 50);
-  const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
-  const [txSignature, setTxSignature] = useState("");
-
-  const handleShieldedPayment = async () => {
-    if (!publicKey || !signTransaction) {
-      setStatus("error");
-      setMessage("Please connect your wallet");
-      return;
-    }
-
-    setStatus("processing");
-    setMessage("Building shielded transaction...");
-
-    try {
-      const tx = await buildShieldedTransfer(publicKey.toBase58(), recipientAddress, amount);
-      const signedTx = await signTransaction(tx);
-
-      const connection = new Connection("https://devnet-tee.magicblock.app", "confirmed");
-      const signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true });
-
-      setTxSignature(signature);
-      setStatus("success");
-    } catch (err: any) {
-      console.error(err);
-      setStatus("error");
-      setMessage(err.message || "Transaction failed");
-    }
-  };
+  const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 font-sans">
-      <div className="w-full max-w-md bg-zinc-900/80 border border-white/5 rounded-[3.5rem] backdrop-blur-3xl shadow-2xl overflow-hidden relative z-10">
-        <div className="pt-10 pb-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full mb-4">
-            <LucideShieldCheck size={12} className="text-purple-400" />
-            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-400">SHIELDED SESSION</span>
-          </div>
-          <h1 className="text-3xl font-black italic tracking-tighter uppercase leading-none">
-            {recipientName}
-          </h1>
-        </div>
-
-        {status === "success" ? (
-          <div className="p-10 flex flex-col items-center text-center">
-            <LucideCheckCircle2 size={80} className="text-green-500 mb-6" />
-            <h2 className="text-4xl font-black">PAID</h2>
-            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">
-              Shielded transfer of <span className="text-white">$${amount}</span> USDC finalized
-            </p>
-          </div>
-        ) : (
-          <div className="p-10">
-            <div className="bg-black/40 rounded-[2.5rem] border border-white/5 p-10 mb-8 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-6">
-                {isFixed ? "FIXED TERMINAL TOTAL" : "SET AMOUNT (USDC)"}
-              </p>
-              <input 
-                type="number"
-                value={amount}
-                disabled={isFixed}
-                onChange={(e) => setAmount(Number(e.target.value))}
-                className="bg-transparent text-7xl font-mono font-black outline-none w-full text-center"
-              />
-            </div>
-
-            <button 
-              onClick={handleShieldedPayment}
-              disabled={!connected || status === "processing"}
-              className="w-full py-6 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 text-white rounded-3xl font-black uppercase tracking-widest text-sm transition-all shadow-xl"
-            >
-              {status === "processing" ? (
-                <span className="flex items-center justify-center gap-3">
-                  <LucideLoader2 className="animate-spin" size={18} /> FINALIZING WITH TEE...
-                </span>
-              ) : "FINALIZE WITH TEE"}
-            </button>
-          </div>
-        )}
+      <div className="mb-6 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-600">Secure Checkout</p>
+        <h1 className="mt-2 text-3xl font-black italic uppercase tracking-tighter">{recipientName}</h1>
       </div>
+      <ShieldedCheckout amount={safeAmount} merchantPubkey={recipientAddress} />
     </div>
   );
 }

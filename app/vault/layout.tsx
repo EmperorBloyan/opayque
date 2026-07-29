@@ -15,6 +15,7 @@ import {
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { connected, publicKey } = useWallet();
+  const isStandaloneCheckout = pathname === '/vault/checkout';
   
   const [merchantName, setMerchantName] = useState("Opayque");
   const [logo, setLogo] = useState<string | null>(null);
@@ -65,6 +66,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const addressContent = publicKey 
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}` 
     : "Not Connected";
+
+  if (isStandaloneCheckout) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-6 selection:bg-purple-500/30">
