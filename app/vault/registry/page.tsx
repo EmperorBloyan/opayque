@@ -35,12 +35,13 @@ export default function RegistryPage() {
           return;
         }
 
-        if (typeof window.PublicKeyCredential === "undefined") {
-          setIsAuthenticated(true);
-          return;
-        }
+        const canUsePasskey = Boolean(
+          window.PublicKeyCredential &&
+          navigator.credentials &&
+          typeof navigator.credentials.get === "function"
+        );
 
-        if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
+        if (!canUsePasskey) {
           setIsAuthenticated(true);
           return;
         }
@@ -53,12 +54,7 @@ export default function RegistryPage() {
           }
         });
 
-        if (available) {
-          setIsAuthenticated(true);
-          return;
-        }
-
-        setIsAuthenticated(true);
+        setIsAuthenticated(Boolean(available));
       } catch (err) {
         console.warn("Biometric check bypassed for demo", err);
         setIsAuthenticated(true);
