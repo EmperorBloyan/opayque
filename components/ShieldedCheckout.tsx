@@ -1,13 +1,32 @@
 'use client';
-import { useWallet, useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { buildShieldedTransfer } from '@/lib/magicblock';
-import { useState, useMemo } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
-import { Program, AnchorProvider, type Idl } from '@coral-xyz/anchor';
-import IDL from '@/lib/idl/opayque.json';
+import { useState } from 'react';
+import { Connection } from '@solana/web3.js';
 
 const TEE_RPC = 'https://devnet-tee.magicblock.app';
 const USDC_DECIMALS = 6;
+
+function readStoredHistory() {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    return JSON.parse(window.localStorage.getItem('opayque_tx') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredHistory(items: Array<Record<string, unknown>>) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem('opayque_tx', JSON.stringify(items));
+    window.dispatchEvent(new Event('storage'));
+  } catch {
+    // Ignore storage failures and keep the payment flow moving.
+  }
+}
 
 export default function ShieldedCheckout({
   amount,
@@ -16,43 +35,33 @@ export default function ShieldedCheckout({
   amount: number;
   merchantPubkey: string;
 }) {
-  const { connection } = useConnection();
-  const { publicKey, signTransaction, connected } = useWallet();
-  const anchorWallet = useAnchorWallet();
+  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
-
-  const PROGRAM_ID = new PublicKey('5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp');
-
-  const program = useMemo(() => {
-    if (!anchorWallet) return null;
-    const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' });
-    return new Program(IDL as unknown as Idl, PROGRAM_ID, provider) as unknown as Program<Idl>;
-  }, [connection, anchorWallet]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handlePayment = async () => {
-    if (!publicKey || !signTransaction) return alert("Please connect your wallet first.");
-    if (amount <= 0) return alert("Invalid payment amount.");
-    if (!program) return alert("Anchor program not initialized.");
+    if (!publicKey) {
+      setErrorMessage('Please connect your wallet first.');
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErrorMessage('Invalid payment amount.');
+      return;
+    }
+
+    if (!signTransaction && !signAndSendTransaction) {
+      setErrorMessage('Connected wallet cannot sign transactions.');
+      return;
+    }
 
     setLoading(true);
     setStatus('verifying');
+    setErrorMessage(null);
 
     try {
-      // 1. ANCHOR INTEGRATION: Verify merchant is registered in the on-chain Registry
-      // This prevents sending shielded funds to unauthenticated addresses
-      const merchantAccount = await (program as any).account.endpoint.all([
-        { memcmp: { offset: 40, bytes: merchantPubkey } }
-      ]);
-
-      if (merchantAccount.length === 0) {
-        throw new Error("Merchant is not a registered Opayque endpoint.");
-      }
-
       const teeConnection = new Connection(TEE_RPC, 'processed');
-      setStatus('signing');
-      
-      // SCALE: Convert USDC to atomic units (6 decimals) for the TEE transfer
       const atomicAmount = Math.floor(amount * Math.pow(10, USDC_DECIMALS));
 
       const tx = await buildShieldedTransfer(
@@ -61,25 +70,33 @@ export default function ShieldedCheckout({
         atomicAmount
       );
 
-      const signedTx = await signTransaction(tx);
-      setStatus('sending');
-      
-      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: true,
-        maxRetries: 3,
-      });
+      let signature: string;
 
-      // INITIAL LOG: Save as PENDING so it appears on the dashboard immediately
+      if (signTransaction) {
+        setStatus('signing');
+        const signedTx = await signTransaction(tx);
+        setStatus('sending');
+        signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: true,
+          maxRetries: 3,
+        });
+      } else if (signAndSendTransaction) {
+        setStatus('sending');
+        signature = await signAndSendTransaction(tx);
+      } else {
+        throw new Error('Connected wallet cannot sign transactions.');
+      }
+
       const initialTx = {
         id: signature,
         staff: merchantPubkey,
         amount,
         time: new Date().toISOString(),
-        status: 'SHIELDED_PENDING'
+        status: 'SHIELDED_PENDING',
       };
-      const history = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
-      localStorage.setItem("opayque_tx", JSON.stringify([initialTx, ...history]));
-      window.dispatchEvent(new Event('storage'));
+
+      const history = readStoredHistory();
+      writeStoredHistory([initialTx, ...history]);
 
       setStatus('confirming');
       const latestBlockhash = await teeConnection.getLatestBlockhash();
@@ -88,20 +105,16 @@ export default function ShieldedCheckout({
         ...latestBlockhash,
       }, 'confirmed');
 
-      // FINAL UPDATE: Mark as CONFIRMED to trigger the "Ping" notification
-      const finalHistory = JSON.parse(localStorage.getItem("opayque_tx") || "[]");
-      const updatedHistory = finalHistory.map((t: any) => 
+      const finalHistory = readStoredHistory();
+      const updatedHistory = finalHistory.map((t: any) =>
         t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED' } : t
       );
-      localStorage.setItem("opayque_tx", JSON.stringify(updatedHistory));
-      
-      // FLUSH/SYNC: Force a storage event so other tabs (like TerminalManager) react immediately
-      window.dispatchEvent(new Event('storage'));
+      writeStoredHistory(updatedHistory);
 
-      alert(`✅ Shielded Payment Sent!\nTx: ${signature.slice(0, 12)}...`);
-    } catch (error: any) {
-      console.error("TEE Payment Error:", error);
-      alert("Payment failed: " + (error.message || "The TEE RPC timed out or rejected the transaction."));
+      window.alert(`✅ Shielded Payment Sent!\nTx: ${signature.slice(0, 12)}...`);
+    } catch (error: unknown) {
+      console.error('TEE Payment Error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'The TEE RPC timed out or rejected the transaction.');
     } finally {
       setLoading(false);
       setStatus('idle');
@@ -131,6 +144,10 @@ export default function ShieldedCheckout({
               `Pay ${amount} USDC (Shielded)`
             )}
           </button>
+
+          {errorMessage ? (
+            <p className="text-sm text-red-500">{errorMessage}</p>
+          ) : null}
         </div>
       </div>
     </div>
