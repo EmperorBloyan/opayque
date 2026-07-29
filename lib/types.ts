@@ -20,6 +20,9 @@ export interface Terminal {
   label: string;
   status: "online" | "offline";
   lastSeen: number;
+  accessCode?: string;
+  isActive?: boolean;
+  lastLoginAt?: number | null;
 }
 
 /**

@@ -20,8 +20,6 @@ export default function TerminalPage() {
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
-  const expectedPairingCode = activeSession?.id.slice(-6).toUpperCase() ?? null;
-  const terminalPin = process.env.NEXT_PUBLIC_STAFF_TERMINAL_PIN?.trim().toUpperCase() ?? null;
 
   const numericAmount = Number(amount);
   const isAmountValid =
@@ -45,24 +43,43 @@ export default function TerminalPage() {
     e.preventDefault();
     const normalizedCode = pairingCode.trim().toUpperCase();
 
-    if (expectedPairingCode && normalizedCode === expectedPairingCode) {
-      setStep("POS");
-      setToast("Terminal paired successfully");
+    if (typeof window === "undefined") {
+      setToast("Pairing code rejected");
       return;
     }
 
-    if (terminalPin && normalizedCode === terminalPin) {
-      setStep("POS");
-      setToast("Terminal paired successfully");
-      return;
-    }
+    try {
+      const storedTerminals = JSON.parse(window.localStorage.getItem("opayque_terminals") || "[]") as Array<{
+        id: string;
+        accessCode?: string;
+        isActive?: boolean;
+      }>;
+      const matchedTerminal = storedTerminals.find(
+        (terminal) => terminal.accessCode?.toUpperCase() === normalizedCode && !terminal.isActive
+      );
 
-    if (!expectedPairingCode && !terminalPin) {
+      if (matchedTerminal) {
+        const updatedTerminals = storedTerminals.map((terminal) =>
+          terminal.id === matchedTerminal.id
+            ? { ...terminal, isActive: true, lastLoginAt: Date.now() }
+            : terminal
+        );
+        window.localStorage.setItem("opayque_terminals", JSON.stringify(updatedTerminals));
+        window.dispatchEvent(new Event("opayque-terminal-login"));
+        setStep("POS");
+        setToast("Terminal paired successfully");
+        return;
+      }
+
+      if (storedTerminals.some((terminal) => Boolean(terminal.accessCode))) {
+        setToast("Invalid or expired pairing code");
+        return;
+      }
+
       setToast("No terminal pairing code is configured.");
-      return;
+    } catch {
+      setToast("Pairing code rejected");
     }
-
-    setToast("Pairing code rejected");
   };
 
   const triggerSuccess = useCallback(async () => {
@@ -151,15 +168,9 @@ export default function TerminalPage() {
               onChange={(e) => setPairingCode(e.target.value.toUpperCase().slice(0, 12))}
               className="w-full bg-zinc-900 border border-white/5 rounded-3xl py-10 text-center text-4xl font-mono font-black outline-none mb-6"
             />
-            {expectedPairingCode ? (
-              <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-                Code: {expectedPairingCode}
-              </p>
-            ) : terminalPin ? (
-              <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-                Enter your staff terminal PIN.
-              </p>
-            ) : null}
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
+              Use the generated fleet code to unlock the staff terminal.
+            </p>
             <button
               type="submit"
               className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest"
