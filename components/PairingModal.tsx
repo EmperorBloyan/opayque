@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { LucideCopy, LucideRefreshCw, LucideShieldCheck, LucideClock3, LucideX, LucideSmartphone, LucideBell } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { LucideCopy, LucideRefreshCw, LucideShieldCheck, LucideClock3, LucideX, LucideSmartphone } from "lucide-react";
 
 interface PairingModalProps {
   isOpen: boolean;

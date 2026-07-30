@@ -5,7 +5,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
-import { matchesPairingCode } from "@/lib/terminal/pairing";
 import type { TransactionRecord } from "@/types/database";
 
 export default function TerminalPage() {
@@ -61,70 +60,22 @@ export default function TerminalPage() {
     setToast("Pairing terminal...");
 
     try {
-      const supabase = createSupabaseBrowserClient();
       const merchantId = getActiveMerchantId();
-      let terminalRows: Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }> = [];
+      const response = await fetch("/api/terminal/pairing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", merchant_id: merchantId, code: normalizedCode }),
+      });
 
-      const merchantCandidates = [merchantId, "merchant-vault"].filter(Boolean);
-
-      for (const candidateMerchantId of merchantCandidates) {
-        const { data, error: listError } = await supabase
-          .from("terminals")
-          .select("id, device_token, status, merchant_id")
-          .eq("merchant_id", candidateMerchantId);
-
-        if (listError) {
-          throw listError;
-        }
-
-        if (data && data.length > 0) {
-          terminalRows = data as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }>;
-          break;
-        }
-      }
-
-      if (!terminalRows || terminalRows.length === 0) {
-        const { data: fallbackRows, error: fallbackError } = await supabase
-          .from("terminals")
-          .select("id, device_token, status, merchant_id");
-
-        if (fallbackError) {
-          throw fallbackError;
-        }
-
-        terminalRows = (fallbackRows ?? []) as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null }>;
-      }
-
-      if (!terminalRows || terminalRows.length === 0) {
-        setToast("No terminal pairing code is configured.");
-        return;
-      }
-
-      const matchedTerminal = terminalRows.find((terminal) => matchesPairingCode(normalizedCode, terminal.device_token));
-
-      if (!matchedTerminal) {
-        setToast("Invalid or expired pairing code");
-        return;
-      }
-
-      if (matchedTerminal.status === "online") {
-        setToast("This terminal is already active");
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("terminals")
-        .update({ status: "online", last_active: new Date().toISOString() })
-        .eq("id", matchedTerminal.id);
-
-      if (updateError) {
-        throw updateError;
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || "PAIRING CODE REJECTED");
       }
 
       setStep("POS");
       setToast("Terminal paired successfully");
-    } catch {
-      setToast("Pairing code rejected");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "PAIRING CODE REJECTED");
     } finally {
       setIsPairing(false);
     }

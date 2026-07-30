@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
+import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveMerchantId } from "@/lib/crypto/session";
 import { normalizePairingCode } from "@/lib/terminal/pairing";
@@ -38,35 +38,63 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const merchantId = getActiveMerchantId();
   const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [authCode, setAuthCode] = useState("");
-  const [timeLeft, setTimeLeft] = useState("09M 57S");
-
-  useEffect(() => {
-    if (!authCode) {
-      setAuthCode(createAccessCode());
-    }
-  }, [authCode]);
+  const [timeLeft, setTimeLeft] = useState("10M 00S");
+  const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
+  const [isRefreshingCode, setIsRefreshingCode] = useState(false);
 
   useEffect(() => {
     if (!isPairingOpen) return;
-    const target = Date.now() + 9 * 60 * 1000 + 57 * 1000;
+    if (!pairingExpiresAt) {
+      setTimeLeft("10M 00S");
+      return;
+    }
+
     const tick = () => {
-      const remaining = Math.max(0, target - Date.now());
+      const remaining = Math.max(0, pairingExpiresAt - Date.now());
       const mins = Math.floor(remaining / 60000);
       const secs = Math.floor((remaining % 60000) / 1000);
       setTimeLeft(`${String(mins).padStart(2, "0")}M ${String(secs).padStart(2, "0")}S`);
       if (remaining === 0) {
-        setAuthCode(createAccessCode());
+        setAuthCode("");
+        setPairingExpiresAt(null);
       }
     };
+
     tick();
     const interval = window.setInterval(tick, 1000);
     return () => window.clearInterval(interval);
-  }, [isPairingOpen]);
+  }, [isPairingOpen, pairingExpiresAt]);
 
-  const refreshAuthCode = () => {
-    const nextCode = createAccessCode();
-    setAuthCode(nextCode);
-    setTimeLeft("09M 57S");
+  const refreshAuthCode = async () => {
+    if (isRefreshingCode) return;
+    setIsRefreshingCode(true);
+
+    try {
+      const response = await fetch("/api/terminal/pairing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", merchant_id: merchantId }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || "Unable to create pairing code");
+      }
+
+      const nextCode = String(payload.code ?? createAccessCode());
+      setAuthCode(nextCode);
+      const expiresAt = typeof payload.expiresAt === "string" ? new Date(payload.expiresAt).getTime() : Date.now() + 10 * 60 * 1000;
+      setPairingExpiresAt(expiresAt);
+      setTimeLeft("10M 00S");
+    } catch (error) {
+      console.error("Failed to generate pairing code", error);
+      const fallback = createAccessCode();
+      setAuthCode(fallback);
+      setPairingExpiresAt(Date.now() + 10 * 60 * 1000);
+      setTimeLeft("10M 00S");
+    } finally {
+      setIsRefreshingCode(false);
+    }
   };
 
   const loadFromSupabase = async () => {
@@ -143,7 +171,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
     }));
     await persistTerminals(updated);
     setAuthCode(updated[0]?.accessCode ?? createAccessCode());
-    setTimeLeft("09M 57S");
+    setTimeLeft("10M 00S");
   };
 
   const pairNewTerminal = async () => {
@@ -196,13 +224,13 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
 
         <button
           onClick={() => {
-            setAuthCode(createAccessCode());
-            setTimeLeft("09M 57S");
             setIsPairingOpen(true);
+            void refreshAuthCode();
           }}
-          className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200"
+          disabled={isRefreshingCode}
+          className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200 disabled:opacity-60"
         >
-          <LucidePlus size={14} /> Pair New
+          <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
         </button>
       </div>
 
@@ -246,7 +274,9 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
         isOpen={isPairingOpen}
         onClose={() => setIsPairingOpen(false)}
         authCode={authCode}
-        onRefresh={refreshAuthCode}
+        onRefresh={() => {
+          void refreshAuthCode();
+        }}
         timeLeft={timeLeft}
       />
     </div>

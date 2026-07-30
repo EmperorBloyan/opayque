@@ -28,6 +28,16 @@ create table if not exists transactions (
   created_at timestamptz not null default now()
 );
 
+create table if not exists terminal_pairing_codes (
+  code text primary key,
+  merchant_id uuid,
+  terminal_id uuid,
+  status text not null default 'PENDING' check (status in ('PENDING', 'USED', 'EXPIRED')),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
 alter table terminals enable row level security;
 alter table merchants enable row level security;
 alter table transactions enable row level security;
+alter table terminal_pairing_codes enable row level security;
