@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveMerchantId } from "@/lib/crypto/session";
+import { normalizePairingCode } from "@/lib/terminal/pairing";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
 
@@ -36,8 +37,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const safeTerminals = normalizeTerminals(terminals);
   const merchantId = getActiveMerchantId();
   const [isPairingOpen, setIsPairingOpen] = useState(false);
-  const [authCode, setAuthCode] = useState(""
-  );
+  const [authCode, setAuthCode] = useState("");
   const [timeLeft, setTimeLeft] = useState("09M 57S");
 
   useEffect(() => {
@@ -64,7 +64,8 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   }, [isPairingOpen]);
 
   const refreshAuthCode = () => {
-    setAuthCode(createAccessCode());
+    const nextCode = createAccessCode();
+    setAuthCode(nextCode);
     setTimeLeft("09M 57S");
   };
 
@@ -86,7 +87,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
         label: row.terminal_label ?? "Fleet Terminal",
         status: row.status === "online" ? "online" : "offline",
         lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
-        accessCode: row.device_token ?? createAccessCode(),
+        accessCode: normalizePairingCode(row.device_token ?? "") || createAccessCode(),
         isActive: row.status === "online",
         lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
       }));
@@ -111,7 +112,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
             id: terminal.id,
             merchant_id: merchantId,
             terminal_label: terminal.label,
-            device_token: terminal.accessCode ?? createAccessCode(),
+            device_token: normalizePairingCode(terminal.accessCode ?? "") || createAccessCode(),
             status: terminal.isActive ? "online" : "offline",
             last_active: terminal.lastLoginAt ? new Date(terminal.lastLoginAt).toISOString() : new Date().toISOString(),
           };

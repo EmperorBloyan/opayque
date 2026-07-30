@@ -5,11 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
+import { matchesPairingCode } from "@/lib/terminal/pairing";
 import type { TransactionRecord } from "@/types/database";
-
-function normalizePairingCode(value: string) {
-  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
 
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
@@ -20,6 +17,7 @@ export default function TerminalPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [isPairing, setIsPairing] = useState(false);
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
@@ -45,12 +43,22 @@ export default function TerminalPage() {
 
   const handlePairing = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedCode = normalizePairingCode(pairingCode);
+    if (isPairing) return;
+
+    const normalizedCode = pairingCode.trim();
 
     if (typeof window === "undefined") {
       setToast("Pairing code rejected");
       return;
     }
+
+    if (!normalizedCode) {
+      setToast("Enter a pairing code");
+      return;
+    }
+
+    setIsPairing(true);
+    setToast("Pairing terminal...");
 
     try {
       const supabase = createSupabaseBrowserClient();
@@ -92,10 +100,7 @@ export default function TerminalPage() {
         return;
       }
 
-      const matchedTerminal = terminalRows.find((terminal) => {
-        const storedCode = normalizePairingCode(String(terminal.device_token ?? ""));
-        return storedCode === normalizedCode;
-      });
+      const matchedTerminal = terminalRows.find((terminal) => matchesPairingCode(normalizedCode, terminal.device_token));
 
       if (!matchedTerminal) {
         setToast("Invalid or expired pairing code");
@@ -120,6 +125,8 @@ export default function TerminalPage() {
       setToast("Terminal paired successfully");
     } catch {
       setToast("Pairing code rejected");
+    } finally {
+      setIsPairing(false);
     }
   };
 
@@ -214,9 +221,10 @@ export default function TerminalPage() {
             </p>
             <button
               type="submit"
-              className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest"
+              disabled={isPairing}
+              className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-60"
             >
-              Pair Device
+              {isPairing ? "Pairing..." : "Pair Device"}
             </button>
           </form>
         )}
