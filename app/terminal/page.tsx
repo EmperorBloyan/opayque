@@ -82,10 +82,14 @@ export default function TerminalPage() {
 
       const resolvedMerchantId = typeof payload?.merchantId === "string" && payload.merchantId.trim()
         ? payload.merchantId.trim()
-        : getActiveMerchantId();
+        : activeSession?.merchantId ?? null;
       const pairedWalletAddress = typeof payload?.walletAddress === "string" && payload.walletAddress.trim()
         ? payload.walletAddress.trim()
-        : null;
+        : activeSession?.walletAddress ?? null;
+
+      if (!resolvedMerchantId || resolvedMerchantId === "merchant-vault") {
+        throw new Error("Merchant ID unavailable after pairing");
+      }
 
       if (!pairedWalletAddress) {
         throw new Error("Merchant wallet address unavailable");
