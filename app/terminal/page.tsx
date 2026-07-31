@@ -117,11 +117,16 @@ export default function TerminalPage() {
     if (isPaid || !isAmountValid) return;
 
     try {
+      const merchantId = activeSession?.merchantId;
+      if (!merchantId) {
+        throw new Error("Active merchant session is required to register a transaction.");
+      }
+
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase
         .from("transactions")
         .insert({
-          merchant_id: activeSession?.merchantId ?? "00000000-0000-0000-0000-000000000000",
+          merchant_id: merchantId,
           terminal_id: null,
           signature: null,
           token_symbol: asset,
@@ -131,8 +136,8 @@ export default function TerminalPage() {
         .select()
         .single();
 
-      if (error) {
-        throw error;
+      if (error || !data) {
+        throw new Error(error?.message || "Transaction insertion failed");
       }
 
       setTransactionId((data as TransactionRecord).id);

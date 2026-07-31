@@ -24,9 +24,17 @@ function createChainableFallbackClient(error: Error) {
 export function createSupabaseBrowserClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const missingVars: string[] = [];
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return createChainableFallbackClient(new Error("Supabase environment variables are not configured."));
+  if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!supabaseAnonKey) missingVars.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+  if (missingVars.length > 0) {
+    const message = `Supabase browser client missing environment variables: ${missingVars.join(", ")}. Add these to your runtime environment.`;
+    if (typeof window !== "undefined") {
+      console.warn(message);
+    }
+    throw new Error(message);
   }
 
   return createBrowserClient(supabaseUrl, supabaseAnonKey);

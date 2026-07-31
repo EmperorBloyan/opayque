@@ -17,13 +17,17 @@ function createPayloadHash(payload: unknown): string {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SolanaWebhookPayload;
-    const payloadHash = createPayloadHash(body);
 
+    if (!body.merchant_id) {
+      return NextResponse.json({ success: false, error: "merchant_id is required" }, { status: 400 });
+    }
+
+    const payloadHash = createPayloadHash(body);
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
       .from("transactions")
       .insert({
-        merchant_id: body.merchant_id ?? "00000000-0000-0000-0000-000000000000",
+        merchant_id: body.merchant_id,
         terminal_id: body.terminal_id ?? null,
         signature: body.signature ?? null,
         token_symbol: body.token_symbol ?? "SOL",
@@ -34,8 +38,8 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (error || !data) {
+      return NextResponse.json({ success: false, error: error?.message || "Transaction insertion failed" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data: { transaction: data, payload_hash: payloadHash } });

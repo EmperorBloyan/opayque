@@ -32,13 +32,19 @@ export async function POST(request: Request) {
         .select()
         .single();
 
-      if (error) {
-        return NextResponse.json({ success: true, data: { terminal: null, device_token: deviceToken, fallback: true, message: error.message } });
+      if (error || !data) {
+        return NextResponse.json(
+          { success: false, error: error?.message || "Terminal creation failed" },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({ success: true, data: { terminal: data, device_token: deviceToken } });
     } catch (error) {
-      return NextResponse.json({ success: true, data: { terminal: null, device_token: deviceToken, fallback: true, message: error instanceof Error ? error.message : "Pairing failed" } });
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Pairing failed" },
+        { status: 500 }
+      );
     }
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Pairing failed" }, { status: 500 });

@@ -25,11 +25,15 @@ export async function POST(request: Request) {
     const supabase = await createSupabaseServerClient();
 
     if (action === "create") {
+      if (!isValidMerchantId(merchantId)) {
+        return NextResponse.json({ success: false, error: "merchant_id is required for pairing code creation" }, { status: 400 });
+      }
+
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const { error } = await supabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
-        merchant_id: isValidMerchantId(merchantId) ? merchantId : null,
+        merchant_id: merchantId,
         status: "PENDING",
         expires_at: expiresAt,
       });

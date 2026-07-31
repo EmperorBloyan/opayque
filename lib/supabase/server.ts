@@ -19,9 +19,15 @@ function createChainableFallbackClient(error: Error) {
 export function createSupabaseServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const missingVars: string[] = [];
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return createChainableFallbackClient(new Error('Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'));
+  if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!supabaseServiceKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (missingVars.length > 0) {
+    const message = `Supabase server client missing environment variables: ${missingVars.join(", ")}. Add these to your runtime environment.`;
+    console.error(message);
+    throw new Error(message);
   }
 
   return createClient(supabaseUrl, supabaseServiceKey, {

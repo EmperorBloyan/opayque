@@ -32,8 +32,13 @@ export default function RegistryPage() {
 
     const loadTerminalData = async () => {
       try {
-        const supabase = createSupabaseBrowserClient();
         const merchantId = getActiveMerchantId();
+        if (!merchantId) {
+          console.warn("Registry page skipped terminal load because merchant ID is unavailable.");
+          return;
+        }
+
+        const supabase = createSupabaseBrowserClient();
         const { data, error } = await supabase
           .from("terminals")
           .select("*")
