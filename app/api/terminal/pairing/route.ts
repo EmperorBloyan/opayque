@@ -60,16 +60,32 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
       }
 
+      const resolvedMerchantId = merchantId ?? data.merchant_id;
+
       const { error: updateError } = await supabase
         .from("terminal_pairing_codes")
-        .update({ status: "USED", merchant_id: merchantId ?? data.merchant_id })
+        .update({ status: "USED", merchant_id: resolvedMerchantId })
         .eq("code", code);
 
       if (updateError) {
         return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
       }
 
-      return NextResponse.json({ success: true, code, merchantId: merchantId ?? data.merchant_id });
+      if (!resolvedMerchantId) {
+        return NextResponse.json({ success: false, error: "Merchant ID is required" }, { status: 400 });
+      }
+
+      const { data: merchantData, error: merchantError } = await supabase
+        .from("merchants")
+        .select("wallet_address")
+        .eq("id", resolvedMerchantId)
+        .single();
+
+      if (merchantError || !merchantData?.wallet_address) {
+        return NextResponse.json({ success: false, error: "Merchant wallet address not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({ success: true, code, merchantId: resolvedMerchantId, walletAddress: merchantData.wallet_address });
     }
 
     return NextResponse.json({ success: false, error: "Unsupported action" }, { status: 400 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
+import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
 import type { TransactionRecord } from "@/types/database";
@@ -79,6 +79,26 @@ export default function TerminalPage() {
         throw new Error(message);
       }
 
+      const resolvedMerchantId = typeof payload?.merchantId === "string" && payload.merchantId.trim()
+        ? payload.merchantId.trim()
+        : getActiveMerchantId();
+      const walletAddress = typeof payload?.walletAddress === "string" && payload.walletAddress.trim()
+        ? payload.walletAddress.trim()
+        : null;
+
+      if (!walletAddress) {
+        throw new Error("Merchant wallet address unavailable");
+      }
+
+      const challenge = createSessionChallenge();
+      const session = await createTerminalSession({
+        merchantId: resolvedMerchantId,
+        walletAddress,
+        nonce: challenge.nonce,
+        walletSignature: new TextEncoder().encode(`terminal-pair:${resolvedMerchantId}`),
+      });
+
+      setActiveSession(session);
       setStep("POS");
       setToast("Terminal paired successfully");
     } catch (error) {
