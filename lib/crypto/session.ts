@@ -27,6 +27,7 @@ export interface CreateTerminalSessionInput {
 
 let activeSession: TerminalSession | null = null;
 const ACTIVE_MERCHANT_ID_KEY = "opayque.activeMerchantId";
+const ACTIVE_SESSION_KEY = "opayque.activeSession";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -140,11 +141,22 @@ export function setActiveSession(session: TerminalSession): TerminalSession {
   activeSession = session;
   if (typeof window !== "undefined") {
     window.localStorage.setItem(ACTIVE_MERCHANT_ID_KEY, session.merchantId);
+    window.localStorage.setItem(ACTIVE_SESSION_KEY, serializeSession(session));
   }
   return session;
 }
 
 export function getActiveSession(): TerminalSession | null {
+  if (!activeSession && typeof window !== "undefined") {
+    const serialized = window.localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (serialized) {
+      const restored = deserializeSession(serialized);
+      if (restored) {
+        activeSession = restored;
+      }
+    }
+  }
+
   if (!activeSession) {
     return null;
   }
@@ -159,6 +171,10 @@ export function getActiveSession(): TerminalSession | null {
 
 export function clearActiveSession(): void {
   activeSession = null;
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(ACTIVE_SESSION_KEY);
+    window.localStorage.removeItem(ACTIVE_MERCHANT_ID_KEY);
+  }
 }
 
 export function getActiveMerchantId(): string {
