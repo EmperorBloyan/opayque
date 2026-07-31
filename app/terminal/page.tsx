@@ -47,7 +47,7 @@ export default function TerminalPage() {
     const normalizedCode = pairingCode.trim();
 
     if (typeof window === "undefined") {
-      setToast("Pairing code rejected");
+      setToast("Window context is unavailable for pairing.");
       return;
     }
 
@@ -67,15 +67,22 @@ export default function TerminalPage() {
         body: JSON.stringify({ action: "verify", merchant_id: merchantId, code: normalizedCode }),
       });
 
-      const payload = await response.json();
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || "PAIRING CODE REJECTED");
+        const message = payload?.error || `Pairing request failed with status ${response.status}`;
+        throw new Error(message);
       }
 
       setStep("POS");
       setToast("Terminal paired successfully");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "PAIRING CODE REJECTED");
+      setToast(error instanceof Error ? error.message : "Pairing failed");
     } finally {
       setIsPairing(false);
     }

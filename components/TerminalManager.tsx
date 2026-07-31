@@ -76,9 +76,15 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
         body: JSON.stringify({ action: "create", merchant_id: merchantId }),
       });
 
-      const payload = await response.json();
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || "Unable to create pairing code");
+        throw new Error(payload?.error || `Unable to create pairing code (status ${response.status})`);
       }
 
       const nextCode = String(payload.code ?? createAccessCode());
@@ -88,6 +94,8 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       setTimeLeft("10M 00S");
     } catch (error) {
       console.error("Failed to generate pairing code", error);
+      const message = error instanceof Error ? error.message : "Unknown pairing-code generation error";
+      window.alert(message);
       const fallback = createAccessCode();
       setAuthCode(fallback);
       setPairingExpiresAt(Date.now() + 10 * 60 * 1000);
