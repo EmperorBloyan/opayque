@@ -60,11 +60,12 @@ export default function TerminalPage() {
     setToast("Pairing terminal...");
 
     try {
-      const merchantId = getActiveMerchantId();
+      const merchantId = activeSession?.merchantId;
+      const activeWalletAddress = activeSession?.walletAddress;
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "verify", merchant_id: merchantId, code: normalizedCode }),
+        body: JSON.stringify({ action: "verify", merchant_id: merchantId, wallet_address: activeWalletAddress, code: normalizedCode }),
       });
 
       let payload: any = null;
@@ -82,18 +83,18 @@ export default function TerminalPage() {
       const resolvedMerchantId = typeof payload?.merchantId === "string" && payload.merchantId.trim()
         ? payload.merchantId.trim()
         : getActiveMerchantId();
-      const walletAddress = typeof payload?.walletAddress === "string" && payload.walletAddress.trim()
+      const pairedWalletAddress = typeof payload?.walletAddress === "string" && payload.walletAddress.trim()
         ? payload.walletAddress.trim()
         : null;
 
-      if (!walletAddress) {
+      if (!pairedWalletAddress) {
         throw new Error("Merchant wallet address unavailable");
       }
 
       const challenge = createSessionChallenge();
       const session = await createTerminalSession({
         merchantId: resolvedMerchantId,
-        walletAddress,
+        walletAddress: pairedWalletAddress,
         nonce: challenge.nonce,
         walletSignature: new TextEncoder().encode(`terminal-pair:${resolvedMerchantId}`),
       });

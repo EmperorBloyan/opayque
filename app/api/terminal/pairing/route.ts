@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function isValidMerchantId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function createPairingCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -15,6 +19,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const action = typeof body?.action === "string" ? body.action : "create";
     const merchantId = typeof body?.merchant_id === "string" ? body.merchant_id : null;
+    const walletAddress = typeof body?.wallet_address === "string" ? body.wallet_address.trim() : null;
     const code = typeof body?.code === "string" ? body.code.toUpperCase() : null;
 
     const supabase = await createSupabaseServerClient();
@@ -24,7 +29,7 @@ export async function POST(request: Request) {
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const { error } = await supabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
-        merchant_id: merchantId,
+        merchant_id: isValidMerchantId(merchantId) ? merchantId : null,
         status: "PENDING",
         expires_at: expiresAt,
       });
@@ -60,7 +65,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
       }
 
-      const resolvedMerchantId = merchantId ?? data.merchant_id;
+      const requestedMerchantId = isValidMerchantId(merchantId) ? merchantId : null;
+      const storedMerchantId = isValidMerchantId(data.merchant_id) ? data.merchant_id : null;
+      let resolvedMerchantId = requestedMerchantId ?? storedMerchantId;
+
+      if (!resolvedMerchantId && walletAddress) {
+        const { data: merchantByWallet, error: walletFetchError } = await supabase
+          .from("merchants")
+          .select("id")
+          .eq("wallet_address", walletAddress)
+          .single();
+
+        if (!walletFetchError && merchantByWallet?.id && isValidMerchantId(merchantByWallet.id)) {
+          resolvedMerchantId = merchantByWallet.id;
+        }
+      }
+
+      if (!resolvedMerchantId) {
+        return NextResponse.json({ success: false, error: "Merchant ID is required" }, { status: 400 });
+      }
 
       const { error: updateError } = await supabase
         .from("terminal_pairing_codes")
@@ -69,10 +92,6 @@ export async function POST(request: Request) {
 
       if (updateError) {
         return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
-      }
-
-      if (!resolvedMerchantId) {
-        return NextResponse.json({ success: false, error: "Merchant ID is required" }, { status: 400 });
       }
 
       const { data: merchantData, error: merchantError } = await supabase

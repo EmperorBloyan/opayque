@@ -10,6 +10,33 @@ import { clearActiveSession, createSessionChallenge, createTerminalSession, getA
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
 import { PublicKey } from "@solana/web3.js";
 
+function getSavedMerchantName() {
+  if (typeof window === "undefined") {
+    return "Opayque Merchant";
+  }
+
+  const merchantName = window.localStorage.getItem("merchant_name")?.trim();
+  return merchantName || "Opayque Merchant";
+}
+
+async function registerMerchant(walletAddress: string): Promise<string> {
+  const response = await fetch("/api/merchant/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      merchant_name: getSavedMerchantName(),
+    }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload?.success || !payload?.data?.merchant?.id) {
+    throw new Error(payload?.error || "Failed to register merchant");
+  }
+
+  return payload.data.merchant.id;
+}
+
 const WalletMultiButtonNoSSR = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
   {
@@ -106,11 +133,12 @@ export default function UnifiedLanding() {
     setIsAuthorizing(true);
 
     try {
+      const merchantId = await registerMerchant(publicKey.toBase58());
       const challenge = createSessionChallenge();
       const message = new TextEncoder().encode(challenge.nonce);
       const signature = await signMessage(message);
       const session = await createTerminalSession({
-        merchantId: "merchant-vault",
+        merchantId,
         walletAddress: publicKey.toBase58(),
         nonce: challenge.nonce,
         walletSignature: signature,

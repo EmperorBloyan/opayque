@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveMerchantId } from "@/lib/crypto/session";
+import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
 import { normalizePairingCode } from "@/lib/terminal/pairing";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
@@ -22,6 +22,10 @@ function createAccessCode() {
   return code;
 }
 
+function isValidUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   return items.map((terminal) => ({
     ...terminal,
@@ -33,9 +37,48 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   }));
 }
 
+async function resolveMerchantId(): Promise<string | null> {
+  const session = getActiveSession();
+  if (session?.merchantId && isValidUuid(session.merchantId)) {
+    return session.merchantId;
+  }
+
+  if (!session?.walletAddress) {
+    return null;
+  }
+
+  const supabase = createSupabaseBrowserClient();
+  const { data: existingMerchant, error: fetchError } = await supabase
+    .from("merchants")
+    .select("id")
+    .eq("wallet_address", session.walletAddress)
+    .single();
+
+  if (!fetchError && existingMerchant?.id) {
+    return existingMerchant.id;
+  }
+
+  const merchantName = typeof window !== "undefined"
+    ? window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant"
+    : "Opayque Merchant";
+
+  const { data: insertedMerchant, error: insertError } = await supabase
+    .from("merchants")
+    .upsert({ wallet_address: session.walletAddress, merchant_name: merchantName }, { onConflict: "wallet_address" })
+    .select()
+    .single();
+
+  if (insertError || !insertedMerchant?.id) {
+    console.error("Failed to resolve or create merchant record", insertError);
+    return null;
+  }
+
+  return insertedMerchant.id;
+}
+
 export default function TerminalManager({ terminals = [], setTerminals }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
-  const merchantId = getActiveMerchantId();
+  const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [authCode, setAuthCode] = useState("");
   const [timeLeft, setTimeLeft] = useState("10M 00S");
@@ -70,10 +113,15 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
     setIsRefreshingCode(true);
 
     try {
+      const currentMerchantId = resolvedMerchantId ?? (await resolveMerchantId());
+      if (!currentMerchantId) {
+        throw new Error("Cannot create pairing code: merchant identity unavailable.");
+      }
+
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", merchant_id: merchantId }),
+        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId }),
       });
 
       let payload: any = null;
@@ -106,12 +154,16 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   };
 
   const loadFromSupabase = async () => {
+    if (!resolvedMerchantId) {
+      return;
+    }
+
     try {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase
         .from("terminals")
         .select("*")
-        .eq("merchant_id", merchantId)
+        .eq("merchant_id", resolvedMerchantId)
         .order("last_active", { ascending: false });
 
       if (error) {
@@ -140,13 +192,18 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const persistTerminals = async (updated: Terminal[]) => {
     setTerminals?.(updated);
 
+    const merchantIdToUse = resolvedMerchantId;
+    if (!merchantIdToUse) {
+      throw new Error("Cannot persist terminals: merchant identity unavailable.");
+    }
+
     try {
       const supabase = createSupabaseBrowserClient();
       await Promise.all(
         updated.map(async (terminal) => {
           const payload = {
             id: terminal.id,
-            merchant_id: merchantId,
+            merchant_id: merchantIdToUse,
             terminal_label: terminal.label,
             device_token: normalizePairingCode(terminal.accessCode ?? "") || createAccessCode(),
             status: terminal.isActive ? "online" : "offline",
@@ -166,8 +223,24 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const initMerchantId = async () => {
+      const id = await resolveMerchantId();
+      if (!cancelled) {
+        setResolvedMerchantId(id);
+      }
+    };
+
+    void initMerchantId();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     void loadFromSupabase();
-  }, [merchantId]);
+  }, [resolvedMerchantId]);
 
   const refreshCodes = async () => {
     const updated = safeTerminals.map((terminal) => ({
