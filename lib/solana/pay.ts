@@ -7,17 +7,34 @@ export interface PaymentUrlOptions {
   message?: string;
 }
 
+function normalizeSplTokenMint(splToken?: string | null): string | null {
+  const normalized = splToken?.trim().toUpperCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  switch (normalized) {
+    case "USDC":
+      return "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    case "USDT":
+      return "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+    default:
+      return normalized;
+  }
+}
+
 export function generatePaymentURL(options: PaymentUrlOptions): string {
   const params = new URLSearchParams();
-
-  params.set("recipient", options.recipient);
+  const recipient = options.recipient.trim();
+  const splTokenMint = normalizeSplTokenMint(options.splToken);
 
   if (options.amount !== undefined && options.amount !== null && options.amount !== "") {
     params.set("amount", String(options.amount));
   }
 
-  if (options.splToken) {
-    params.set("splToken", options.splToken);
+  if (splTokenMint) {
+    params.set("spl-token", splTokenMint);
   }
 
   if (options.reference) {
@@ -33,7 +50,7 @@ export function generatePaymentURL(options: PaymentUrlOptions): string {
   }
 
   const query = params.toString();
-  return `solana:${options.recipient}${query ? `?${query}` : ""}`;
+  return `solana:${recipient}${query ? `?${query}` : ""}`;
 }
 
 export interface TransactionRequestUrlOptions extends PaymentUrlOptions {

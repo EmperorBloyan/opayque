@@ -241,14 +241,24 @@ export default function TerminalPage() {
         {step === "PAYING" && (
           <div className="text-center">
             {!isPaid ? (
-              <div
-                ref={successRef}
-                role="button"
-                tabIndex={0}
-                onClick={triggerSuccess}
-                className="p-10 bg-white rounded-[4rem] inline-block mb-10 border-[16px] border-zinc-900 shadow-2xl cursor-pointer"
-              >
-                <QRCodeSVG value={qrUri} size={220} level="H" />
+              <div className="flex flex-col items-center">
+                <div
+                  ref={successRef}
+                  role="button"
+                  tabIndex={0}
+                  onClick={triggerSuccess}
+                  className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl cursor-pointer"
+                >
+                  <QRCodeSVG value={qrUri} size={220} level="H" />
+                </div>
+                <a
+                  href={qrUri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
+                >
+                  Pay on this Device
+                </a>
               </div>
             ) : (
               <div
