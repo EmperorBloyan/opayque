@@ -1,3 +1,5 @@
+import { createTransfer, encodeURL } from "@solana/pay";
+import { PublicKey } from "@solana/web3.js";
 import { ASSET_MINTS } from "./constants";
 
 export interface PaymentUrlOptions {
@@ -27,32 +29,26 @@ function normalizeSplTokenMint(splToken?: string | null): string | null {
 }
 
 export function generatePaymentURL(options: PaymentUrlOptions): string {
-  const params = new URLSearchParams();
   const recipient = options.recipient.trim();
   const splTokenMint = normalizeSplTokenMint(options.splToken);
+  const amountValue = options.amount !== undefined && options.amount !== null && options.amount !== ""
+    ? String(options.amount)
+    : "0.00";
 
-  if (options.amount !== undefined && options.amount !== null && options.amount !== "") {
-    params.set("amount", String(options.amount));
-  }
+  const amount = Number(amountValue);
+  const recipientPublicKey = new PublicKey(recipient);
 
-  if (splTokenMint) {
-    params.set("spl-token", splTokenMint);
-  }
+  const transfer = createTransfer({
+    recipient: recipientPublicKey,
+    amount,
+    splToken: splTokenMint ? new PublicKey(splTokenMint) : undefined,
+    reference: options.reference ? [new PublicKey(options.reference)] : undefined,
+    label: options.label,
+    message: options.message,
+  });
 
-  if (options.reference) {
-    params.set("reference", options.reference);
-  }
-
-  if (options.label) {
-    params.set("label", options.label);
-  }
-
-  if (options.message) {
-    params.set("message", options.message);
-  }
-
-  const query = params.toString();
-  return `solana:${recipient}${query ? `?${query}` : ""}`;
+  const url = encodeURL(transfer);
+  return url.toString();
 }
 
 export interface TransactionRequestUrlOptions extends PaymentUrlOptions {
