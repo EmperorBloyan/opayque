@@ -1,12 +1,59 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type ChangeEvent, type FormEvent } from "react";
+import { Component, useState, useEffect, useCallback, useRef, type ChangeEvent, type FormEvent, type ErrorInfo, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { LucideEdit3 } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
 import type { TransactionRecord } from "@/types/database";
+
+interface TerminalPaymentErrorBoundaryProps {
+  children: ReactNode;
+  onReset: () => void;
+}
+
+interface TerminalPaymentErrorBoundaryState {
+  hasError: boolean;
+}
+
+class TerminalPaymentErrorBoundary extends Component<TerminalPaymentErrorBoundaryProps, TerminalPaymentErrorBoundaryState> {
+  state: TerminalPaymentErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): TerminalPaymentErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Terminal payment view crashed", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false });
+    this.props.onReset();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-8 text-center text-white shadow-2xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Payment unavailable</p>
+          <h3 className="mt-3 text-2xl font-black">The payment view hit a temporary issue.</h3>
+          <p className="mt-2 text-sm text-zinc-400">You can recover safely and return to the checkout screen.</p>
+          <button
+            type="button"
+            onClick={this.handleReset}
+            className="mt-6 rounded-full bg-white px-5 py-3 text-sm font-black uppercase text-black"
+          >
+            Back to checkout
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
@@ -33,16 +80,21 @@ export default function TerminalPage() {
     numericAmount < 1_000_000;
 
   const buildUri = useCallback(() => {
-    const recipient = activeSession?.walletAddress ?? "";
-    const amountValue = lockedAmount || (isAmountValid ? numericAmount.toFixed(2) : "0.00");
-    return generatePaymentURL({
-      recipient,
-      amount: amountValue,
-      splToken: asset === "SOL" ? null : asset,
-      reference: transactionId ?? undefined,
-      label: `Opayque POS ${asset}`,
-      message: `Secure ${asset} checkout via Opayque`,
-    });
+    try {
+      const recipient = typeof activeSession?.walletAddress === "string" ? activeSession.walletAddress.trim() : "";
+      const amountValue = lockedAmount || (isAmountValid ? numericAmount.toFixed(2) : "0.00");
+      return generatePaymentURL({
+        recipient,
+        amount: amountValue,
+        splToken: asset === "SOL" ? null : asset,
+        reference: transactionId ?? undefined,
+        label: `Opayque POS ${asset}`,
+        message: `Secure ${asset} checkout via Opayque`,
+      });
+    } catch (error) {
+      console.error("Failed to build payment URI", error);
+      return "";
+    }
   }, [activeSession?.walletAddress, asset, isAmountValid, lockedAmount, numericAmount, transactionId]);
 
   const handlePairing = async (e: FormEvent) => {
@@ -128,12 +180,18 @@ export default function TerminalPage() {
     if (isPaid || !isAmountValid) return;
 
     try {
-      const merchantId = activeSession?.merchantId;
+      const merchantId = typeof activeSession?.merchantId === "string" ? activeSession.merchantId.trim() : "";
       if (!merchantId) {
         throw new Error("Active merchant session is required to register a transaction.");
       }
 
-      const supabase = createSupabaseBrowserClient();
+      let supabase;
+      try {
+        supabase = createSupabaseBrowserClient();
+      } catch {
+        throw new Error("Supabase client is unavailable in this browser session.");
+      }
+
       const { data, error } = await supabase
         .from("transactions")
         .insert({
@@ -166,15 +224,19 @@ export default function TerminalPage() {
   useEffect(() => {
     setMounted(true);
 
-    if (typeof window !== "undefined") {
-      const savedName = window.localStorage.getItem("merchant_name")?.trim();
-      const savedAvatar = window.localStorage.getItem("merchant_avatar")?.trim();
-      if (savedName) {
-        setMerchantName(savedName);
+    try {
+      if (typeof window !== "undefined") {
+        const savedName = window.localStorage.getItem("merchant_name")?.trim();
+        const savedAvatar = window.localStorage.getItem("merchant_avatar")?.trim();
+        if (savedName) {
+          setMerchantName(savedName);
+        }
+        if (savedAvatar) {
+          setAvatarPreview(savedAvatar);
+        }
       }
-      if (savedAvatar) {
-        setAvatarPreview(savedAvatar);
-      }
+    } catch (error) {
+      console.warn("Unable to read merchant preferences from storage", error);
     }
 
     if (activeSession) {
@@ -209,9 +271,18 @@ export default function TerminalPage() {
 
   if (!mounted) return null;
 
-  const qrUri = buildUri();
+  const qrUri = (() => {
+    try {
+      return buildUri();
+    } catch (error) {
+      console.error("Unable to render payment URI", error);
+      return "";
+    }
+  })();
 
-  const merchantInitial = merchantName.charAt(0).toUpperCase() || "O";
+  const merchantInitial = typeof merchantName === "string" && merchantName.trim().length > 0
+    ? merchantName.trim().charAt(0).toUpperCase()
+    : "O";
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
@@ -284,39 +355,60 @@ export default function TerminalPage() {
 
         {step === "PAYING" && (
           <div className="text-center">
-            {!isPaid ? (
-              <div className="flex flex-col items-center">
+            <TerminalPaymentErrorBoundary
+              onReset={() => {
+                setStep("POS");
+                setIsPaid(false);
+                setLockedAmount("");
+                setAmount("");
+                setTransactionId(null);
+                setToast("Payment flow reset");
+              }}
+            >
+              {!isPaid ? (
+                <div className="flex flex-col items-center">
+                  {qrUri ? (
+                    <>
+                      <div
+                        ref={successRef}
+                        role="button"
+                        tabIndex={0}
+                        onClick={triggerSuccess}
+                        className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl cursor-pointer"
+                      >
+                        <QRCodeSVG value={qrUri} size={220} level="H" />
+                      </div>
+                      <a
+                        href={qrUri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
+                      >
+                        Pay on this Device
+                      </a>
+                    </>
+                  ) : (
+                    <div className="rounded-[2rem] border border-white/10 bg-zinc-950/80 p-8 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Payment link unavailable</p>
+                      <h3 className="mt-3 text-2xl font-black">We could not build a checkout link yet.</h3>
+                      <p className="mt-2 text-sm text-zinc-400">Confirm the merchant wallet is available, then try again.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <div
                   ref={successRef}
-                  role="button"
-                  tabIndex={0}
-                  onClick={triggerSuccess}
-                  className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl cursor-pointer"
+                  tabIndex={-1}
+                  aria-live="polite"
+                  className="flex flex-col items-center"
                 >
-                  <QRCodeSVG value={qrUri} size={220} level="H" />
+                  <div className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center mb-6">
+                    <span className="text-4xl italic font-black">✓</span>
+                  </div>
+                  <h2 className="text-5xl font-black italic uppercase">Settled</h2>
                 </div>
-                <a
-                  href={qrUri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
-                >
-                  Pay on this Device
-                </a>
-              </div>
-            ) : (
-              <div
-                ref={successRef}
-                tabIndex={-1}
-                aria-live="polite"
-                className="flex flex-col items-center"
-              >
-                <div className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center mb-6">
-                  <span className="text-4xl italic font-black">✓</span>
-                </div>
-                <h2 className="text-5xl font-black italic uppercase">Settled</h2>
-              </div>
-            )}
+              )}
+            </TerminalPaymentErrorBoundary>
           </div>
         )}
 

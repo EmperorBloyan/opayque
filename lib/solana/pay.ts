@@ -1,4 +1,4 @@
-import { createTransfer, encodeURL } from "@solana/pay";
+import { encodeURL } from "@solana/pay";
 import { PublicKey } from "@solana/web3.js";
 import { ASSET_MINTS } from "./constants";
 
@@ -28,27 +28,47 @@ function normalizeSplTokenMint(splToken?: string | null): string | null {
   }
 }
 
+function toSafeAmount(value: number | string | undefined): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed = typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
 export function generatePaymentURL(options: PaymentUrlOptions): string {
-  const recipient = options.recipient.trim();
-  const splTokenMint = normalizeSplTokenMint(options.splToken);
-  const amountValue = options.amount !== undefined && options.amount !== null && options.amount !== ""
-    ? String(options.amount)
-    : "0.00";
+  try {
+    const recipientValue = options.recipient?.trim();
+    if (!recipientValue) {
+      return "";
+    }
 
-  const amount = Number(amountValue);
-  const recipientPublicKey = new PublicKey(recipient);
+    const recipientPublicKey = new PublicKey(recipientValue);
+    const splTokenMint = normalizeSplTokenMint(options.splToken);
+    const amount = toSafeAmount(options.amount);
 
-  const transfer = createTransfer({
-    recipient: recipientPublicKey,
-    amount,
-    splToken: splTokenMint ? new PublicKey(splTokenMint) : undefined,
-    reference: options.reference ? [new PublicKey(options.reference)] : undefined,
-    label: options.label,
-    message: options.message,
-  });
+    const fields = {
+      recipient: recipientPublicKey.toBase58(),
+      amount,
+      splToken: splTokenMint ?? undefined,
+      label: options.label?.trim() || undefined,
+      message: options.message?.trim() || undefined,
+      memo: options.reference?.trim() || undefined,
+    };
 
-  const url = encodeURL(transfer);
-  return url.toString();
+    if (!amount) {
+      return "";
+    }
+
+    return encodeURL(fields).toString();
+  } catch {
+    return "";
+  }
 }
 
 export interface TransactionRequestUrlOptions extends PaymentUrlOptions {
