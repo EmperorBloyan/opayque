@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ChangeEvent, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { LucideEdit3 } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { generatePaymentURL } from "@/lib/solana/pay";
@@ -17,6 +18,10 @@ export default function TerminalPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [isPairing, setIsPairing] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [merchantName, setMerchantName] = useState("Opayque Merchant");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
@@ -40,7 +45,7 @@ export default function TerminalPage() {
     });
   }, [activeSession?.walletAddress, asset, isAmountValid, numericAmount, transactionId]);
 
-  const handlePairing = async (e: React.FormEvent) => {
+  const handlePairing = async (e: FormEvent) => {
     e.preventDefault();
     if (isPairing) return;
 
@@ -113,6 +118,49 @@ export default function TerminalPage() {
     }
   };
 
+  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      setAvatarPreview(null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setAvatarPreview(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    if (isSavingProfile) return;
+
+    setIsSavingProfile(true);
+
+    try {
+      const trimmedName = merchantName.trim() || "Opayque Merchant";
+      setMerchantName(trimmedName);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_name", trimmedName);
+        if (avatarPreview) {
+          window.localStorage.setItem("merchant_avatar", avatarPreview);
+        }
+      }
+
+      setToast("Merchant profile updated");
+      setIsEditingProfile(false);
+    } catch (error) {
+      console.error(error);
+      setToast("Failed to save profile");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const triggerSuccess = useCallback(async () => {
     if (isPaid || !isAmountValid) return;
 
@@ -154,6 +202,18 @@ export default function TerminalPage() {
 
   useEffect(() => {
     setMounted(true);
+
+    if (typeof window !== "undefined") {
+      const savedName = window.localStorage.getItem("merchant_name")?.trim();
+      const savedAvatar = window.localStorage.getItem("merchant_avatar")?.trim();
+      if (savedName) {
+        setMerchantName(savedName);
+      }
+      if (savedAvatar) {
+        setAvatarPreview(savedAvatar);
+      }
+    }
+
     if (activeSession) {
       setStep("POS");
     }
@@ -188,9 +248,97 @@ export default function TerminalPage() {
 
   const qrUri = buildUri();
 
+  const merchantInitial = merchantName.charAt(0).toUpperCase() || "O";
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
       <div className="w-full max-w-md">
+        <div className="mb-8 space-y-4">
+          <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Opayque</p>
+          <div className="flex items-center justify-between gap-4 rounded-[2.2rem] border border-white/10 bg-zinc-900/60 p-4 shadow-[0_0_20px_rgba(168,85,247,0.18)]">
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] overflow-hidden flex items-center justify-center text-2xl font-black text-white">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Merchant Avatar" className="h-full w-full object-cover" />
+                ) : (
+                  <span>{merchantInitial}</span>
+                )}
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] uppercase tracking-[0.4em] text-zinc-500">Merchant Identity</p>
+                <h1 className="text-2xl font-black tracking-tight text-white">{merchantName}</h1>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditingProfile(true)}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-3xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 hover:shadow-[0_0_20px_rgba(168,85,247,0.35)]"
+              aria-label="Edit merchant profile"
+            >
+              <LucideEdit3 size={18} />
+            </button>
+          </div>
+        </div>
+
+        {isEditingProfile && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm px-4 py-8 md:items-center md:py-0">
+            <div className="w-full max-w-xl rounded-[2.5rem] border border-white/10 bg-zinc-950/95 p-8 shadow-[0_0_25px_rgba(168,85,247,0.45)] ring-1 ring-white/10 transition duration-300">
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Edit Merchant Profile</p>
+                  <h2 className="text-3xl font-black tracking-tight text-white">Profile settings</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:bg-white/10"
+                >
+                  Close
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+                  <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">Avatar</label>
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] overflow-hidden flex items-center justify-center text-2xl font-black text-white">
+                      {avatarPreview ? (
+                        <img src={avatarPreview} alt="Avatar preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <span>{merchantInitial}</span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white file:mr-4 file:rounded-full file:border-0 file:bg-violet-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-violet-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+                  <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">Merchant name</label>
+                  <input
+                    type="text"
+                    value={merchantName}
+                    onChange={(e) => setMerchantName(e.target.value)}
+                    className="w-full rounded-[1.8rem] border border-white/10 bg-zinc-900/70 px-5 py-4 text-lg font-bold text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:shadow-[0_0_28px_rgba(168,85,247,0.55)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingProfile ? "Saving..." : "Save Profile"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
         {step === "PAIRING" && (
           <form onSubmit={handlePairing} className="text-center">
             <input
