@@ -15,7 +15,7 @@ export const ASSET_MINTS: Record<string, AssetMintConfig> = {
   USDC: {
     symbol: "USDC",
     mainnet: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    devnet: "4zMMC9srt5Ri5X14GAgXhaul4hFFgA3Fqfe7bP8bMg6m",
+    devnet: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     decimals: 6,
   },
   USDT: {

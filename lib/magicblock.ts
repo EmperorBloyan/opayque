@@ -3,7 +3,9 @@ import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 export const PAYMENTS_API = 'https://payments.magicblock.app';
 export const TEE_RPC = 'https://devnet-tee.magicblock.app';
 
-const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+import { getAssetMintAddress } from "@/lib/solana/constants";
+
+const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const normalizedBase64 = base64.replace(/\s+/g, '');

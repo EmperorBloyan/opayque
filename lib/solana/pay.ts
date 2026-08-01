@@ -1,3 +1,5 @@
+import { ASSET_MINTS } from "./constants";
+
 export interface PaymentUrlOptions {
   recipient: string;
   amount?: number | string;
@@ -16,9 +18,9 @@ function normalizeSplTokenMint(splToken?: string | null): string | null {
 
   switch (normalized) {
     case "USDC":
-      return "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+      return ASSET_MINTS.USDC.devnet;
     case "USDT":
-      return "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+      return ASSET_MINTS.USDT.devnet;
     default:
       return normalized;
   }

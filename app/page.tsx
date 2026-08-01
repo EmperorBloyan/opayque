@@ -8,6 +8,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { LucideShieldCheck, LucideLoader2, LucideLock, LucideMonitorSmartphone } from "lucide-react";
 import { clearActiveSession, createSessionChallenge, createTerminalSession, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
+import { getAssetMintAddress } from "@/lib/solana/constants";
 import { PublicKey } from "@solana/web3.js";
 
 function getSavedMerchantName() {
@@ -144,7 +145,7 @@ export default function UnifiedLanding() {
         walletSignature: signature,
       });
 
-      const mint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+      const mint = new PublicKey(getAssetMintAddress("USDC", true));
       const confidentialSummary = await configureConfidentialAccount(
         new PublicKey("11111111111111111111111111111111") as never,
         {} as never,
