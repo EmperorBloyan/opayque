@@ -151,6 +151,11 @@ export default function TerminalPage() {
       const resolvedMerchantName = typeof payload?.merchantName === "string" && payload.merchantName.trim()
         ? payload.merchantName.trim()
         : null;
+      const resolvedMerchantLogo = typeof payload?.merchantLogo === "string" && payload.merchantLogo.trim()
+        ? payload.merchantLogo.trim()
+        : (typeof payload?.merchant_logo === "string" && payload.merchant_logo.trim()
+          ? payload.merchant_logo.trim()
+          : null);
 
       if (!resolvedMerchantId || resolvedMerchantId === "merchant-vault") {
         throw new Error("Merchant ID unavailable after pairing");
@@ -172,6 +177,13 @@ export default function TerminalPage() {
         setMerchantName(resolvedMerchantName);
         if (typeof window !== "undefined") {
           window.localStorage.setItem("merchant_name", resolvedMerchantName);
+        }
+      }
+
+      if (resolvedMerchantLogo) {
+        setAvatarPreview(resolvedMerchantLogo);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("merchant_logo", resolvedMerchantLogo);
         }
       }
 
@@ -242,7 +254,7 @@ export default function TerminalPage() {
     try {
       if (typeof window !== "undefined") {
         const savedName = window.localStorage.getItem("merchant_name")?.trim();
-        const savedAvatar = window.localStorage.getItem("merchant_avatar")?.trim();
+        const savedAvatar = window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim();
         if (savedName) {
           setMerchantName(savedName);
         }

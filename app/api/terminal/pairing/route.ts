@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
       const { data: merchantData, error: merchantError } = await supabase
         .from("merchants")
-        .select("wallet_address, merchant_name")
+        .select("wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
         .single();
 
@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         merchantId: resolvedMerchantId,
         walletAddress: merchantData.wallet_address,
         merchantName: merchantData.merchant_name ?? null,
+        merchantLogo: merchantData.merchant_logo ?? null,
       });
     }
 

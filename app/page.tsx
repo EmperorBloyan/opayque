@@ -20,6 +20,14 @@ function getSavedMerchantName() {
   return merchantName || "Opayque Merchant";
 }
 
+function getSavedMerchantLogo() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
+}
+
 async function registerMerchant(walletAddress: string): Promise<string> {
   const response = await fetch("/api/merchant/register", {
     method: "POST",
@@ -27,6 +35,7 @@ async function registerMerchant(walletAddress: string): Promise<string> {
     body: JSON.stringify({
       wallet_address: walletAddress,
       merchant_name: getSavedMerchantName(),
+      merchant_logo: getSavedMerchantLogo(),
     }),
   });
 

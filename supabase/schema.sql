@@ -4,6 +4,7 @@ create table if not exists merchants (
   id uuid primary key default gen_random_uuid(),
   wallet_address text not null unique,
   merchant_name text not null,
+  merchant_logo text,
   created_at timestamptz not null default now()
 );
 

@@ -50,7 +50,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     }
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const nextName = draftName.trim() || "Opayque";
     const nextLogo = draftLogo ?? logo;
     setMerchantName(nextName);
@@ -59,6 +59,23 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     if (nextLogo) {
       localStorage.setItem("merchant_logo", nextLogo);
     }
+
+    if (publicKey) {
+      try {
+        await fetch("/api/merchant/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet_address: publicKey.toBase58(),
+            merchant_name: nextName,
+            merchant_logo: nextLogo ?? null,
+          }),
+        });
+      } catch (error) {
+        console.warn("Unable to sync merchant profile to the registry", error);
+      }
+    }
+
     setIsEditingProfile(false);
   };
 
@@ -207,7 +224,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
 
                 <button
                   type="button"
-                  onClick={handleSaveProfile}
+                  onClick={() => void handleSaveProfile()}
                   className="inline-flex w-full justify-center rounded-[1.8rem] bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:shadow-[0_0_28px_rgba(168,85,247,0.55)] hover:brightness-110"
                 >
                   Save Profile
