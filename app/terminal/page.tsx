@@ -394,7 +394,7 @@ export default function TerminalPage() {
                         <QRCodeSVG value={qrUri} size={220} level="H" />
                       </div>
                       <a
-                        href={`https://phantom.app/ul/v1/payment?paymentUrl=${encodeURIComponent(qrUri)}`}
+                        href={`https://phantom.app/ul/v1/browse?url=${encodeURIComponent(qrUri)}`}
                         className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
                       >
                         Pay on this Device
