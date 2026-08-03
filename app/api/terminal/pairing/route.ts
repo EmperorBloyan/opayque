@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
       const { data: merchantData, error: merchantError } = await supabase
         .from("merchants")
-        .select("wallet_address")
+        .select("wallet_address, merchant_name")
         .eq("id", resolvedMerchantId)
         .single();
 
@@ -108,7 +108,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Merchant wallet address not found" }, { status: 404 });
       }
 
-      return NextResponse.json({ success: true, code, merchantId: resolvedMerchantId, walletAddress: merchantData.wallet_address });
+      return NextResponse.json({
+        success: true,
+        code,
+        merchantId: resolvedMerchantId,
+        walletAddress: merchantData.wallet_address,
+        merchantName: merchantData.merchant_name ?? null,
+      });
     }
 
     return NextResponse.json({ success: false, error: "Unsupported action" }, { status: 400 });

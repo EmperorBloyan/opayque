@@ -5,7 +5,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { LucideEdit3 } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { generatePaymentURL } from "@/lib/solana/pay";
 import type { TransactionRecord } from "@/types/database";
 
 interface TerminalPaymentErrorBoundaryProps {
@@ -82,20 +81,26 @@ export default function TerminalPage() {
   const buildUri = useCallback(() => {
     try {
       const recipient = typeof activeSession?.walletAddress === "string" ? activeSession.walletAddress.trim() : "";
-      const amountValue = lockedAmount || (isAmountValid ? numericAmount.toFixed(2) : "0.00");
-      return generatePaymentURL({
-        recipient,
-        amount: amountValue,
-        splToken: asset === "SOL" ? null : asset,
-        reference: transactionId ?? undefined,
-        label: `Opayque POS ${asset}`,
-        message: `Secure ${asset} checkout via Opayque`,
-      });
+      const amountValue = lockedAmount || amount || "";
+      const normalizedAmount = Number.parseFloat(String(amountValue).trim());
+      const resolvedAmount = Number.isFinite(normalizedAmount) && normalizedAmount > 0 ? normalizedAmount.toFixed(2) : undefined;
+
+      if (!recipient || !resolvedAmount) {
+        return "";
+      }
+
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
+      const checkoutUrl = new URL("/checkout", origin);
+      checkoutUrl.searchParams.set("address", recipient);
+      checkoutUrl.searchParams.set("amount", resolvedAmount);
+      checkoutUrl.searchParams.set("name", merchantName || "Opayque Merchant");
+
+      return checkoutUrl.toString();
     } catch (error) {
-      console.error("Failed to build payment URI", error);
+      console.error("Failed to build checkout URL", error);
       return "";
     }
-  }, [activeSession?.walletAddress, asset, isAmountValid, lockedAmount, numericAmount, transactionId]);
+  }, [activeSession?.walletAddress, amount, lockedAmount, merchantName]);
 
   const handlePairing = async (e: FormEvent) => {
     e.preventDefault();
@@ -143,6 +148,9 @@ export default function TerminalPage() {
       const pairedWalletAddress = typeof payload?.walletAddress === "string" && payload.walletAddress.trim()
         ? payload.walletAddress.trim()
         : activeSession?.walletAddress ?? null;
+      const resolvedMerchantName = typeof payload?.merchantName === "string" && payload.merchantName.trim()
+        ? payload.merchantName.trim()
+        : null;
 
       if (!resolvedMerchantId || resolvedMerchantId === "merchant-vault") {
         throw new Error("Merchant ID unavailable after pairing");
@@ -159,6 +167,13 @@ export default function TerminalPage() {
         nonce: challenge.nonce,
         walletSignature: new TextEncoder().encode(`terminal-pair:${resolvedMerchantId}`),
       });
+
+      if (resolvedMerchantName) {
+        setMerchantName(resolvedMerchantName);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("merchant_name", resolvedMerchantName);
+        }
+      }
 
       setActiveSession(session);
       setStep("POS");
@@ -344,7 +359,7 @@ export default function TerminalPage() {
               className="bg-transparent text-7xl font-mono font-bold text-center outline-none w-full"
             />
             <button
-              onClick={() => setStep("PAYING")}
+              onClick={handleGenerateQR}
               disabled={!isAmountValid}
               className="w-full py-8 bg-purple-600 rounded-[2.2rem] font-black text-2xl shadow-2xl disabled:opacity-20 uppercase tracking-tighter"
             >
@@ -379,9 +394,7 @@ export default function TerminalPage() {
                         <QRCodeSVG value={qrUri} size={220} level="H" />
                       </div>
                       <a
-                        href={qrUri}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={`https://phantom.app/ul/v1/payment?paymentUrl=${encodeURIComponent(qrUri)}`}
                         className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
                       >
                         Pay on this Device

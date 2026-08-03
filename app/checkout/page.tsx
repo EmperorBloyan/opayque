@@ -17,6 +17,7 @@ function CheckoutContent() {
   // Support both 'amount' and 'fixed' (price) params from TerminalManager
   const rawAmount = searchParams.get('amount') || searchParams.get('fixed') || '0';
   const amount = parseFloat(rawAmount);
+  const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
 
   if (!address) {
     return (

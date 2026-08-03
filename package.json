@@ -33,6 +33,7 @@
     "@solana/zk-sdk": "^0.4.2",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
+    "bignumber.js": "^11.1.5",
     "bs58": "^5.0.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",

@@ -1,4 +1,5 @@
 import { encodeURL } from "@solana/pay";
+import BigNumber from "bignumber.js";
 import { PublicKey } from "@solana/web3.js";
 import { ASSET_MINTS } from "./constants";
 
@@ -11,11 +12,24 @@ export interface PaymentUrlOptions {
   message?: string;
 }
 
-function normalizeSplTokenMint(splToken?: string | null): string | null {
+function isValidPublicKey(value?: string | null): value is string {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    new PublicKey(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSplTokenMint(splToken?: string | null): string | undefined {
   const normalized = splToken?.trim().toUpperCase();
 
   if (!normalized) {
-    return null;
+    return undefined;
   }
 
   switch (normalized) {
@@ -23,18 +37,25 @@ function normalizeSplTokenMint(splToken?: string | null): string | null {
       return ASSET_MINTS.USDC.devnet;
     case "USDT":
       return ASSET_MINTS.USDT.devnet;
+    case "SOL":
+      return undefined;
     default:
-      return normalized;
+      return isValidPublicKey(normalized) ? normalized : undefined;
   }
 }
 
-function toSafeAmount(value: number | string | undefined): number | undefined {
+function toSafeAmount(value: number | string | undefined): BigNumber | undefined {
   if (value === undefined || value === null || value === "") {
     return undefined;
   }
 
-  const parsed = typeof value === "string" ? Number.parseFloat(value) : Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  const normalized = typeof value === "string" ? value.trim() : String(value).trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const parsed = new BigNumber(normalized);
+  if (!parsed.isFinite() || parsed.isLessThanOrEqualTo(0)) {
     return undefined;
   }
 
@@ -44,28 +65,35 @@ function toSafeAmount(value: number | string | undefined): number | undefined {
 export function generatePaymentURL(options: PaymentUrlOptions): string {
   try {
     const recipientValue = options.recipient?.trim();
-    if (!recipientValue) {
+    if (!recipientValue || !isValidPublicKey(recipientValue)) {
       return "";
     }
 
-    const recipientPublicKey = new PublicKey(recipientValue);
-    const splTokenMint = normalizeSplTokenMint(options.splToken);
+    const splTokenMint = normalizeSplTokenMint(options.splToken)?.trim();
     const amount = toSafeAmount(options.amount);
-
-    const fields = {
-      recipient: recipientPublicKey.toBase58(),
-      amount,
-      splToken: splTokenMint ?? undefined,
-      label: options.label?.trim() || undefined,
-      message: options.message?.trim() || undefined,
-      memo: options.reference?.trim() || undefined,
-    };
 
     if (!amount) {
       return "";
     }
 
-    return encodeURL(fields).toString();
+    const fields = {
+      recipient: recipientValue,
+      amount,
+      label: options.label?.trim() || undefined,
+      message: options.message?.trim() || undefined,
+      memo: options.reference?.trim() || undefined,
+    } as const;
+
+    const encodedUrl = encodeURL(
+      splTokenMint
+        ? {
+            ...fields,
+            splToken: splTokenMint,
+          }
+        : fields
+    ).toString();
+
+    return encodedUrl.replace(/^solana:/i, "solana:");
   } catch {
     return "";
   }
