@@ -62,7 +62,18 @@ export async function buildShieldedTransfer(sender: string, recipient: string, a
 
   if (!response.ok || !data?.transaction || typeof data.transaction !== 'string') {
     console.error('MagicBlock transfer API error:', data);
-    throw new Error(data?.message || data?.error || 'The MagicBlock TEE rejected the transfer request.');
+
+    let errorMessage = 'The MagicBlock TEE rejected the transfer request.';
+
+    if (typeof data?.message === 'string') {
+      errorMessage = data.message;
+    } else if (typeof data?.error === 'string') {
+      errorMessage = data.error;
+    } else if (data?.message || data?.error) {
+      errorMessage = JSON.stringify(data.message || data.error);
+    }
+
+    throw new Error(errorMessage);
   }
 
   return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
@@ -84,7 +95,18 @@ export async function buildWithdraw(merchantPubkey: string, destination: string,
 
   if (!response.ok || !data?.transaction || typeof data.transaction !== 'string') {
     console.error('MagicBlock withdraw API error:', data);
-    throw new Error(data?.message || data?.error || 'The MagicBlock TEE rejected the withdrawal request.');
+
+    let errorMessage = 'The MagicBlock TEE rejected the withdrawal request.';
+
+    if (typeof data?.message === 'string') {
+      errorMessage = data.message;
+    } else if (typeof data?.error === 'string') {
+      errorMessage = data.error;
+    } else if (data?.message || data?.error) {
+      errorMessage = JSON.stringify(data.message || data.error);
+    }
+
+    throw new Error(errorMessage);
   }
 
   return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
