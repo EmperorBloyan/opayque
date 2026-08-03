@@ -8,6 +8,10 @@ import { getAssetMintAddress } from "@/lib/solana/constants";
 const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
 
 function base64ToUint8Array(base64: string): Uint8Array {
+  if (!base64 || typeof base64 !== 'string') {
+    throw new Error('Missing transaction payload from MagicBlock API.');
+  }
+
   const normalizedBase64 = base64.replace(/\s+/g, '');
   const binaryString = typeof window !== 'undefined'
     ? atob(normalizedBase64)
@@ -54,7 +58,13 @@ export async function buildShieldedTransfer(sender: string, recipient: string, a
     }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data?.transaction || typeof data.transaction !== 'string') {
+    console.error('MagicBlock transfer API error:', data);
+    throw new Error(data?.message || data?.error || 'The MagicBlock TEE rejected the transfer request.');
+  }
+
   return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
 }
 
@@ -70,6 +80,12 @@ export async function buildWithdraw(merchantPubkey: string, destination: string,
     }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data?.transaction || typeof data.transaction !== 'string') {
+    console.error('MagicBlock withdraw API error:', data);
+    throw new Error(data?.message || data?.error || 'The MagicBlock TEE rejected the withdrawal request.');
+  }
+
   return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
 }
