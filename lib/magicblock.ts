@@ -46,13 +46,13 @@ export async function getPrivateBalance(address: string): Promise<number> {
 }
 
 export async function buildShieldedTransfer(sender: string, recipient: string, amount: number) {
-  const response = await fetch(`${PAYMENTS_API}/transfer`, {
+  const response = await fetch('/api/transfer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       sender,
       recipient,
-      amount: Math.floor(amount * 1_000_000),
+      amount,
       mint: USDC_MINT.toBase58(),
       private: true,
     }),
