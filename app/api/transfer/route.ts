@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server';
+import {
+  Connection,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
+import { createShieldedPaymentInstruction } from '@/lib/solana/confidential';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const MAGICBLOCK_PAYMENTS_API = process.env.PAYMENTS_API_URL || 'https://payments.magicblock.app';
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://devnet-tee.magicblock.app';
+const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, mint, private: isPrivate, merchant_id } = body as {
+    const { sender, recipient, amount, mint, merchant_id } = body as {
       sender?: string;
       recipient?: string;
       amount?: number;
       mint?: string;
-      private?: boolean;
       merchant_id?: string;
     };
 
@@ -22,33 +29,49 @@ export async function POST(request: Request) {
       );
     }
 
-    const teeResponse = await fetch(`${MAGICBLOCK_PAYMENTS_API}/transfer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sender,
-        recipient,
-        amount,
-        mint,
-        private: isPrivate ?? true,
-      }),
-    });
+    const senderPubkey = new PublicKey(sender);
+    const recipientPubkey = new PublicKey(recipient);
+    const mintPubkey = new PublicKey(mint);
 
-    const teeData = await teeResponse.json().catch(() => ({}));
-
-    if (!teeResponse.ok) {
+    const sourceMint = await connection.getParsedAccountInfo(mintPubkey);
+    if (!sourceMint.value) {
       return NextResponse.json(
-        { error: teeData.message || teeData.error || 'MagicBlock TEE rejected the request' },
-        { status: teeResponse.status }
-      );
-    }
-
-    if (!teeData.transaction || typeof teeData.transaction !== 'string') {
-      return NextResponse.json(
-        { error: 'MagicBlock TEE returned an invalid transaction payload' },
+        { error: 'Unable to fetch mint account for transfer' },
         { status: 502 }
       );
     }
+
+    const mintData: any = sourceMint.value.data;
+    const decimals = Number(
+      mintData?.parsed?.info?.decimals ?? mintData?.parsed?.info?.decimals ?? 6
+    );
+    const uiAmount = amount / Math.pow(10, decimals);
+
+    const bundle = await createShieldedPaymentInstruction(
+      connection,
+      senderPubkey,
+      recipientPubkey,
+      uiAmount,
+      mintPubkey
+    );
+
+    if (bundle.summary.status !== 'ready') {
+      return NextResponse.json(
+        { error: bundle.summary.message || 'Failed to create shielded payment instructions' },
+        { status: 500 }
+      );
+    }
+
+    const instructions = [...bundle.instructions, ...bundle.cleanupInstructions];
+    const { blockhash } = await connection.getLatestBlockhash('finalized');
+    const messageV0 = new TransactionMessage({
+      payerKey: senderPubkey,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    const transaction = new VersionedTransaction(messageV0);
+    const serializedTx = Buffer.from(transaction.serialize()).toString('base64');
 
     if (merchant_id) {
       try {
@@ -56,7 +79,7 @@ export async function POST(request: Request) {
         await supabase.from('transactions').insert({
           merchant_id,
           token_symbol: 'USDC',
-          amount: amount / 1_000_000,
+          amount: amount / Math.pow(10, decimals),
           status: 'pending_signature',
         });
       } catch (supabaseError) {
@@ -66,10 +89,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      transaction: teeData.transaction,
+      transaction: serializedTx,
     });
   } catch (error: unknown) {
-    console.error('Transfer API route error:', error);
+    console.error('Error constructing transaction:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
