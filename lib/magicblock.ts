@@ -1,11 +1,23 @@
-import { PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { createShieldedPaymentInstruction as createShieldedPaymentInstructionImpl } from '@/lib/solana/confidential';
+import { getAssetMintAddress } from "@/lib/solana/constants";
 
 export const PAYMENTS_API = 'https://payments.magicblock.app';
 export const TEE_RPC = 'https://devnet-tee.magicblock.app';
 
-import { getAssetMintAddress } from "@/lib/solana/constants";
-
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://solana-devnet.g.alchemy.com/v2/Alch_HfEuSs7ivOdeish3Ivh0U';
+const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
+
+export async function createShieldedPaymentInstruction(sender: PublicKey, recipient: PublicKey, amount: number) {
+  return createShieldedPaymentInstructionImpl(
+    connection,
+    sender,
+    recipient,
+    amount / 1_000_000,
+    USDC_MINT
+  );
+}
 
 function base64ToUint8Array(base64: string): Uint8Array {
   if (!base64 || typeof base64 !== 'string') {

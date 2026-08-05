@@ -5,55 +5,35 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { createShieldedPaymentInstruction } from '@/lib/solana/confidential';
+import { createShieldedPaymentInstruction } from '@/lib/magicblock';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://devnet-tee.magicblock.app';
+const RPC_ENDPOINT =
+  process.env.NEXT_PUBLIC_RPC_URL ||
+  'https://solana-devnet.g.alchemy.com/v2/Alch_HfEuSs7ivOdeish3Ivh0U';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, mint, merchant_id } = body as {
+    const { sender, recipient, amount, merchant_id } = body as {
       sender?: string;
       recipient?: string;
       amount?: number;
-      mint?: string;
       merchant_id?: string;
     };
 
-    if (!sender || !recipient || typeof amount !== 'number' || !mint) {
+    if (!sender || !recipient || typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
       return NextResponse.json(
-        { error: 'Missing required transfer parameters (sender, recipient, amount, mint)' },
+        { error: 'Missing required transfer parameters (sender, recipient, amount)' },
         { status: 400 }
       );
     }
 
     const senderPubkey = new PublicKey(sender);
     const recipientPubkey = new PublicKey(recipient);
-    const mintPubkey = new PublicKey(mint);
 
-    const sourceMint = await connection.getParsedAccountInfo(mintPubkey);
-    if (!sourceMint.value) {
-      return NextResponse.json(
-        { error: 'Unable to fetch mint account for transfer' },
-        { status: 502 }
-      );
-    }
-
-    const mintData: any = sourceMint.value.data;
-    const decimals = Number(
-      mintData?.parsed?.info?.decimals ?? mintData?.parsed?.info?.decimals ?? 6
-    );
-    const uiAmount = amount / Math.pow(10, decimals);
-
-    const bundle = await createShieldedPaymentInstruction(
-      connection,
-      senderPubkey,
-      recipientPubkey,
-      uiAmount,
-      mintPubkey
-    );
+    const bundle = await createShieldedPaymentInstruction(senderPubkey, recipientPubkey, amount);
 
     if (bundle.summary.status !== 'ready') {
       return NextResponse.json(
@@ -73,13 +53,13 @@ export async function POST(request: Request) {
     const transaction = new VersionedTransaction(messageV0);
     const serializedTx = Buffer.from(transaction.serialize()).toString('base64');
 
-    if (merchant_id) {
+    if (merchant_id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const supabase = createSupabaseServerClient();
         await supabase.from('transactions').insert({
           merchant_id,
           token_symbol: 'USDC',
-          amount: amount / Math.pow(10, decimals),
+          amount: amount / 1_000_000,
           status: 'pending_signature',
         });
       } catch (supabaseError) {
