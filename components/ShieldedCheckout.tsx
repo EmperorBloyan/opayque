@@ -3,6 +3,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { buildShieldedTransfer } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useEffect, useState } from 'react';
 import { Connection } from '@solana/web3.js';
 
@@ -46,6 +47,7 @@ export default function ShieldedCheckout({
   const [draftAmount, setDraftAmount] = useState<string>(() =>
     Number.isFinite(amount) && amount > 0 ? String(amount) : ''
   );
+  const [pendingTxId, setPendingTxId] = useState<string | null>(null);
 
   const parsedDraftAmount = Number.parseFloat(String(draftAmount).trim());
   const displayAmount = allowCustomAmount
@@ -56,6 +58,13 @@ export default function ShieldedCheckout({
     if (!allowCustomAmount) {
       setDraftAmount(Number.isFinite(amount) && amount > 0 ? String(amount) : '');
     }
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const tx = params.get('tx_id');
+        if (tx) setPendingTxId(tx);
+      }
+    } catch {}
   }, [allowCustomAmount, amount]);
 
   const handlePayment = async () => {
@@ -112,6 +121,16 @@ export default function ShieldedCheckout({
 
       setStatus('confirming');
       await waitForSignatureConfirmation(teeConnection, signature);
+
+      // If we have a pending tx id upstream, mark it settled in Supabase
+      try {
+        if (pendingTxId) {
+          const supabase = createSupabaseBrowserClient();
+          await supabase.from('transactions').update({ status: 'settled', tx_hash: signature }).eq('id', pendingTxId);
+        }
+      } catch (err) {
+        console.warn('Failed to update upstream transaction status', err);
+      }
 
       const finalHistory = readStoredHistory();
       const updatedHistory = finalHistory.map((t: any) =>

@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { LucideEdit3 } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
 import type { TransactionRecord } from "@/types/database";
 
 interface TerminalPaymentErrorBoundaryProps {
@@ -57,6 +58,10 @@ class TerminalPaymentErrorBoundary extends Component<TerminalPaymentErrorBoundar
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"PAIRING" | "POS" | "PAYING">("PAIRING");
+  const [terminalId, setTerminalId] = useState<string | null>(null);
+  const [terminalToken, setTerminalToken] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [latestTxHash, setLatestTxHash] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState("");
   const [amount, setAmount] = useState("");
   const [asset, setAsset] = useState<"USDC" | "USDT" | "SOL">("USDC");
@@ -71,6 +76,15 @@ export default function TerminalPage() {
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
+
+  function createDefaultTerminalLabelLocal() {
+    try {
+      const short = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`).replace(/-/g, "").slice(0, 6).toUpperCase();
+      return `Terminal-${short}`;
+    } catch {
+      return `Terminal-${Date.now()}`;
+    }
+  }
 
   const numericAmount = Number(amount);
   const isAmountValid =
@@ -94,6 +108,9 @@ export default function TerminalPage() {
       checkoutUrl.searchParams.set("address", recipient);
       checkoutUrl.searchParams.set("amount", resolvedAmount);
       checkoutUrl.searchParams.set("name", merchantName || "Opayque Merchant");
+      if (transactionId) {
+        checkoutUrl.searchParams.set("tx_id", transactionId);
+      }
 
       return checkoutUrl.toString();
     } catch (error) {
@@ -188,6 +205,33 @@ export default function TerminalPage() {
       }
 
       setActiveSession(session);
+      // Create terminal record and persist pairing locally
+      try {
+        const terminalLabel = createDefaultTerminalLabelLocal();
+        const resp = await fetch(`/api/terminal/pair`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: terminalLabel }),
+        });
+
+        const payload = await resp.json().catch(() => null);
+        if (resp.ok && payload?.success && payload?.data?.terminal) {
+          const t = payload.data.terminal as any;
+          const deviceToken = payload.data.device_token ?? null;
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("opayque_terminal_id", String(t.id));
+            if (deviceToken) window.localStorage.setItem("opayque_terminal_token", String(deviceToken));
+            window.localStorage.setItem("opayque_terminal_label", String(t.terminal_label ?? terminalLabel));
+          }
+          setTerminalId(String(t.id));
+          setTerminalToken(deviceToken ?? null);
+        } else {
+          console.warn("Terminal creation returned no terminal, continuing without local pairing.", payload);
+        }
+      } catch (err) {
+        console.error("Failed to create terminal record", err);
+      }
+
       setStep("POS");
       setToast("Terminal paired successfully");
     } catch (error) {
@@ -197,33 +241,16 @@ export default function TerminalPage() {
     }
   };
 
-  const handleGenerateQR = () => {
+  const generateNewPayment = async () => {
     if (!isAmountValid) return;
-    setLockedAmount(numericAmount.toFixed(2));
-    setStep("PAYING");
-  };
-
-  const triggerSuccess = useCallback(async () => {
-    if (isPaid || !isAmountValid) return;
-
     try {
-      const merchantId = typeof activeSession?.merchantId === "string" ? activeSession.merchantId.trim() : "";
-      if (!merchantId) {
-        throw new Error("Active merchant session is required to register a transaction.");
-      }
-
-      let supabase;
-      try {
-        supabase = createSupabaseBrowserClient();
-      } catch {
-        throw new Error("Supabase client is unavailable in this browser session.");
-      }
-
+      const supabase = createSupabaseClient();
+      const merchantId = activeSession?.merchantId ?? null;
       const { data, error } = await supabase
         .from("transactions")
         .insert({
           merchant_id: merchantId,
-          terminal_id: null,
+          terminal_id: terminalId ?? null,
           signature: null,
           token_symbol: asset,
           amount: numericAmount,
@@ -231,6 +258,25 @@ export default function TerminalPage() {
         })
         .select()
         .single();
+
+      if (error || !data) {
+        throw new Error(error?.message || "Failed to create pending transaction");
+      }
+
+      setTransactionId((data as TransactionRecord).id);
+      setLockedAmount(numericAmount.toFixed(2));
+      setStep("PAYING");
+      setPaymentStatus("PENDING");
+      setToast("Pending transaction created");
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Failed to create transaction");
+    }
+  };
+
+  const triggerSuccess = useCallback(async () => {
+    // Deprecated: mock handler removed. Use real upstream confirmation via customer checkout
+    return;
+  }, [isPaid, isAmountValid]);
 
       if (error || !data) {
         throw new Error(error?.message || "Transaction insertion failed");
@@ -269,6 +315,38 @@ export default function TerminalPage() {
     if (activeSession) {
       setStep("POS");
     }
+
+    // Hydrate terminal pairing from localStorage if present
+    try {
+      if (typeof window !== "undefined") {
+        const storedId = window.localStorage.getItem("opayque_terminal_id")?.trim() || null;
+        const storedToken = window.localStorage.getItem("opayque_terminal_token")?.trim() || null;
+        if (storedId) {
+          // validate terminal via Supabase
+          const supabase = createSupabaseBrowserClient();
+          (async () => {
+            try {
+              const { data, error } = await supabase.from("terminals").select("*").eq("id", storedId).single();
+              if (!error && data) {
+                if (!storedToken || String(data.device_token) === String(storedToken)) {
+                  setTerminalId(storedId);
+                  setTerminalToken(storedToken);
+                  setStep("POS");
+                } else {
+                  // invalid token — clear pairing
+                  window.localStorage.removeItem("opayque_terminal_id");
+                  window.localStorage.removeItem("opayque_terminal_token");
+                }
+              }
+            } catch (err) {
+              console.warn("Failed to validate stored terminal", err);
+            }
+          })();
+        }
+      }
+    } catch (err) {
+      console.warn("Unable to hydrate stored terminal pairing", err);
+    }
   }, [activeSession]);
 
   useEffect(() => {
@@ -296,6 +374,49 @@ export default function TerminalPage() {
     };
   }, [transactionId]);
 
+  // Subscribe to terminal-specific transactions updates
+  useEffect(() => {
+    if (!terminalId) return;
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`terminal-${terminalId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "transactions", filter: `terminal_id=eq.${terminalId}` },
+        (payload) => {
+          const rec = payload.new as TransactionRecord | null;
+          if (!rec) return;
+          if (rec.status === "settled") {
+            setPaymentStatus("SETTLED");
+            setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
+            setIsPaid(true);
+            setToast("Transaction settled on-chain");
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [terminalId]);
+
+  const unpairTerminal = async () => {
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("opayque_terminal_id");
+        window.localStorage.removeItem("opayque_terminal_token");
+        window.localStorage.removeItem("opayque_terminal_label");
+      }
+      setTerminalId(null);
+      setTerminalToken(null);
+      setStep("PAIRING");
+      setToast("Terminal unpaired");
+    } catch (err) {
+      console.error("Failed to unpair terminal", err);
+    }
+  };
+
   if (!mounted) return null;
 
   const qrUri = (() => {
@@ -317,7 +438,7 @@ export default function TerminalPage() {
         <div className="mb-8 space-y-4">
           <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Opayque</p>
           <div className="flex items-center justify-between gap-4 rounded-[2.2rem] border border-white/10 bg-zinc-900/60 p-4 shadow-[0_0_20px_rgba(168,85,247,0.18)]">
-            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4">
               <div className="h-14 w-14 rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] overflow-hidden flex items-center justify-center text-2xl font-black text-white">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Merchant Avatar" className="h-full w-full object-cover" />
@@ -328,6 +449,16 @@ export default function TerminalPage() {
               <div className="text-left">
                 <p className="text-[10px] uppercase tracking-[0.4em] text-zinc-500">Merchant Identity</p>
                 <h1 className="text-2xl font-black tracking-tight text-white">{merchantName}</h1>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                {terminalId ? (
+                  <button
+                    onClick={() => void unpairTerminal()}
+                    className="text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-2 rounded-xl border border-white/10 bg-zinc-900/50 hover:bg-red-600/20"
+                  >
+                    Unpair
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -396,13 +527,7 @@ export default function TerminalPage() {
                 <div className="flex flex-col items-center">
                   {qrUri ? (
                     <>
-                      <div
-                        ref={successRef}
-                        role="button"
-                        tabIndex={0}
-                        onClick={triggerSuccess}
-                        className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl cursor-pointer"
-                      >
+                      <div className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl">
                         <QRCodeSVG value={qrUri} size={220} level="H" />
                       </div>
                       <a
@@ -440,6 +565,16 @@ export default function TerminalPage() {
         {toast && (
           <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
             {toast}
+          </div>
+        )}
+        {step !== 'PAIRING' && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <button
+              onClick={() => void generateNewPayment()}
+              className="rounded-full bg-green-600 px-6 py-3 font-black uppercase tracking-wider shadow-xl text-white"
+            >
+              Generate New Payment
+            </button>
           </div>
         )}
       </div>
