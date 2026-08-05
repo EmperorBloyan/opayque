@@ -4,6 +4,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
+import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection } from '@solana/web3.js';
 
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -43,8 +44,13 @@ export default function MerchantDashboard() {
     try {
       const tx = await buildWithdraw(publicKey.toBase58(), mainWallet, privateBalance);
       const signedTx = await signTransaction!(tx);
-      const connection = new Connection(TEE_RPC);
-      const sig = await connection.sendRawTransaction(signedTx.serialize());
+      const connection = new Connection(TEE_RPC, 'processed');
+      const sig = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: true,
+        maxRetries: 5,
+      });
+
+      await waitForSignatureConfirmation(connection, sig);
 
       alert(`✅ Flush Successful!\nTx: ${sig.slice(0,12)}...`);
       setPrivateBalance(0);

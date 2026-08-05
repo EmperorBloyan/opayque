@@ -83,3 +83,41 @@ export async function getRpcHealth(connection: Connection): Promise<RpcHealthSta
     };
   }
 }
+
+export async function waitForSignatureConfirmation(
+  connection: Connection,
+  signature: string,
+  timeoutMs = 60_000,
+  pollIntervalMs = 1500
+) {
+  const start = Date.now();
+  const latest = await connection.getLatestBlockhash('finalized');
+  const lastValidBlockHeight = latest.lastValidBlockHeight;
+
+  while (Date.now() - start < timeoutMs) {
+    const statuses = await connection.getSignatureStatuses([signature], {
+      searchTransactionHistory: true,
+    });
+    const status = statuses?.value?.[0];
+
+    if (status) {
+      if (status.err) {
+        const errorDetails = typeof status.err === 'object' ? JSON.stringify(status.err) : String(status.err);
+        throw new Error(`Transaction failed: ${errorDetails}`);
+      }
+
+      if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
+        return status;
+      }
+    }
+
+    const currentBlockHeight = await connection.getBlockHeight();
+    if (currentBlockHeight > lastValidBlockHeight) {
+      throw new Error('Transaction expired before confirmation. Please retry.');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new Error('Transaction confirmation timed out after 60 seconds.');
+}

@@ -2,6 +2,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { buildShieldedTransfer } from '@/lib/magicblock';
+import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { useEffect, useState } from 'react';
 import { Connection } from '@solana/web3.js';
 
@@ -87,7 +88,7 @@ export default function ShieldedCheckout({
       setStatus('sending');
       const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
         skipPreflight: true,
-        maxRetries: 3,
+        maxRetries: 5,
       });
 
       const initialTx = {
@@ -102,11 +103,7 @@ export default function ShieldedCheckout({
       writeStoredHistory([initialTx, ...history]);
 
       setStatus('confirming');
-      const latestBlockhash = await teeConnection.getLatestBlockhash();
-      await teeConnection.confirmTransaction({
-        signature,
-        ...latestBlockhash,
-      }, 'confirmed');
+      await waitForSignatureConfirmation(teeConnection, signature);
 
       const finalHistory = readStoredHistory();
       const updatedHistory = finalHistory.map((t: any) =>
