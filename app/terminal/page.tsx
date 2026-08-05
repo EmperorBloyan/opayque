@@ -204,6 +204,10 @@ export default function TerminalPage() {
         }
       }
 
+      const resolvedTerminalLabel = typeof payload?.terminalLabel === "string" && payload.terminalLabel.trim()
+        ? payload.terminalLabel.trim()
+        : createDefaultTerminalLabelLocal();
+
       setActiveSession(session);
       // Create terminal record and persist pairing locally
       try {
@@ -211,7 +215,7 @@ export default function TerminalPage() {
         const resp = await fetch(`/api/terminal/pair`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: terminalLabel }),
+          body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: resolvedTerminalLabel }),
         });
 
         const payload = await resp.json().catch(() => null);

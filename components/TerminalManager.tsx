@@ -90,6 +90,8 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
+  const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
+  const pairingChannelRef = React.useRef<any | null>(null);
 
   useEffect(() => {
     if (!isPairingOpen) return;
@@ -127,7 +129,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId }),
+        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId, terminal_label: newTerminalLabel || null }),
       });
 
       let payload: any = null;
@@ -146,6 +148,41 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
       const expiresAt = typeof payload.expiresAt === "string" ? new Date(payload.expiresAt).getTime() : Date.now() + 10 * 60 * 1000;
       setPairingExpiresAt(expiresAt);
       setTimeLeft("10M 00S");
+      // Mark waiting state and subscribe to pairing-code usage
+      setPairingState("waiting");
+      try {
+        const supabase = createSupabaseBrowserClient();
+        // clean previous channel
+        if (pairingChannelRef.current) {
+          void supabase.removeChannel(pairingChannelRef.current);
+          pairingChannelRef.current = null;
+        }
+
+        const channel = supabase
+          .channel(`pairing-${nextCode}`)
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "terminal_pairing_codes", filter: `code=eq.${nextCode}` },
+            (payload) => {
+              const rec = payload.new as any;
+              if (!rec) return;
+              if (rec.status === "USED") {
+                setPairingState("used");
+                setToast("Terminal logged in — updating fleet list");
+                void loadFromSupabase();
+                setIsPairingOpen(false);
+                // cleanup channel
+                void supabase.removeChannel(channel);
+                pairingChannelRef.current = null;
+              }
+            }
+          )
+          .subscribe();
+
+        pairingChannelRef.current = channel;
+      } catch (err) {
+        console.warn("Failed to subscribe to pairing-code updates", err);
+      }
     } catch (error) {
       console.error("Failed to generate pairing code", error);
       const message = error instanceof Error ? error.message : "Unknown pairing-code generation error";
@@ -376,6 +413,9 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
           void refreshAuthCode();
         }}
         timeLeft={timeLeft}
+        terminalName={newTerminalLabel}
+        onTerminalNameChange={(v) => setNewTerminalLabel(v)}
+        pairingState={pairingState}
       />
     </div>
   );

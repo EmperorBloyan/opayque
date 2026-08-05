@@ -31,18 +31,21 @@ export async function POST(request: Request) {
 
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
+
       const { error } = await supabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
         merchant_id: merchantId,
         status: "PENDING",
         expires_at: expiresAt,
+        terminal_label: terminalLabel,
       });
 
       if (error) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
       }
 
-      return NextResponse.json({ success: true, code: pairingCode, expiresAt });
+      return NextResponse.json({ success: true, code: pairingCode, expiresAt, terminalLabel });
     }
 
     if (action === "verify") {
@@ -52,7 +55,7 @@ export async function POST(request: Request) {
 
       const { data, error } = await supabase
         .from("terminal_pairing_codes")
-        .select("code, status, expires_at, merchant_id")
+        .select("code, status, expires_at, merchant_id, terminal_label")
         .eq("code", code)
         .single();
 
@@ -115,6 +118,7 @@ export async function POST(request: Request) {
         walletAddress: merchantData.wallet_address,
         merchantName: merchantData.merchant_name ?? null,
         merchantLogo: merchantData.merchant_logo ?? null,
+        terminalLabel: data.terminal_label ?? null,
       });
     }
 

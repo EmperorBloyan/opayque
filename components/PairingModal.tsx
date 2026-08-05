@@ -9,9 +9,12 @@ interface PairingModalProps {
   authCode: string;
   onRefresh: () => void;
   timeLeft: string;
+  terminalName?: string;
+  onTerminalNameChange?: (value: string) => void;
+  pairingState?: "idle" | "waiting" | "used";
 }
 
-export default function PairingModal({ isOpen, onClose, authCode, onRefresh, timeLeft }: PairingModalProps) {
+export default function PairingModal({ isOpen, onClose, authCode, onRefresh, timeLeft, terminalName, onTerminalNameChange, pairingState = "idle" }: PairingModalProps) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -57,6 +60,15 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
         </div>
 
         <div className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#050507] p-4">
+          <div className="mb-3">
+            <label className="text-[10px] font-semibold uppercase tracking-[0.35em] text-zinc-600">Terminal Name</label>
+            <input
+              value={terminalName ?? ""}
+              onChange={(e) => onTerminalNameChange?.(e.target.value)}
+              placeholder="Front Desk 1, Bar Tablet"
+              className="mt-2 w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+            />
+          </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 rounded-[1.25rem] border border-white/10 bg-black/50 px-4 py-4">
               <p className="text-[9px] font-semibold uppercase tracking-[0.35em] text-zinc-600">Auth Code</p>
@@ -88,6 +100,11 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
               <LucideClock3 size={14} /> Valid for: {timeLeft}
             </div>
           </div>
+          {pairingState === "waiting" ? (
+            <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">Waiting for staff login...</div>
+          ) : pairingState === "used" ? (
+            <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">Logged In / Active</div>
+          ) : null}
         </div>
 
         <button
