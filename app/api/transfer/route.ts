@@ -5,7 +5,14 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
-import { createShieldedPaymentInstruction } from '@/lib/magicblock';
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
+import {
+  createShieldedPaymentInstruction,
+  USDC_MINT,
+} from '@/lib/magicblock';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -14,10 +21,11 @@ const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, merchant_id } = body as {
+    const { sender, recipient, amount, mint, merchant_id } = body as {
       sender?: string;
       recipient?: string;
       amount?: number;
+      mint?: string;
       merchant_id?: string;
     };
 
@@ -30,8 +38,14 @@ export async function POST(request: Request) {
 
     const senderPubkey = new PublicKey(sender);
     const recipientPubkey = new PublicKey(recipient);
+    const mintPubkey = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint) : USDC_MINT;
 
-    const bundle = await createShieldedPaymentInstruction(senderPubkey, recipientPubkey, amount);
+    const bundle = await createShieldedPaymentInstruction(
+      senderPubkey,
+      recipientPubkey,
+      amount,
+      mintPubkey
+    );
 
     if (bundle.summary.status !== 'ready') {
       return NextResponse.json(
@@ -40,7 +54,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const instructions = [...bundle.instructions, ...bundle.cleanupInstructions];
+    const recipientAta = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
+    const ataInstruction = createAssociatedTokenAccountIdempotentInstruction(
+      senderPubkey,
+      recipientAta,
+      recipientPubkey,
+      mintPubkey
+    );
+
+    const instructions = [ataInstruction, ...bundle.instructions, ...bundle.cleanupInstructions];
     const { blockhash } = await connection.getLatestBlockhash('finalized');
     const messageV0 = new TransactionMessage({
       payerKey: senderPubkey,

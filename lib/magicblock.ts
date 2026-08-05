@@ -7,15 +7,20 @@ export const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.so
 
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
+export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
 
-export async function createShieldedPaymentInstruction(sender: PublicKey, recipient: PublicKey, amount: number) {
+export async function createShieldedPaymentInstruction(
+  sender: PublicKey,
+  recipient: PublicKey,
+  amount: number,
+  mint: PublicKey = USDC_MINT
+) {
   return createShieldedPaymentInstructionImpl(
     connection,
     sender,
     recipient,
     amount / 1_000_000,
-    USDC_MINT
+    mint
   );
 }
 

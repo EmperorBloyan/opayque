@@ -1,5 +1,10 @@
 import { Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress, getMint, TOKEN_2022_PROGRAM_ID, createTransferInstruction } from "@solana/spl-token";
+import {
+  getAssociatedTokenAddressSync,
+  getMint,
+  TOKEN_PROGRAM_ID,
+  createTransferInstruction,
+} from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
 
 type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction" | "signAndSendTransaction">;
@@ -73,20 +78,9 @@ export async function createShieldedPaymentInstruction(
   const cleanupInstructions: TransactionInstruction[] = [];
 
   try {
-    const sourceTokenAccount = await getAssociatedTokenAddress(mint, sender, true, TOKEN_2022_PROGRAM_ID);
-    const destinationTokenAccount = await getAssociatedTokenAddress(mint, recipient, true, TOKEN_2022_PROGRAM_ID);
-    const sourceMint = await getMint(connection, mint, TOKEN_2022_PROGRAM_ID);
-
-    instructions.push(
-      createAssociatedTokenAccountInstruction(
-        sender,
-        destinationTokenAccount,
-        recipient,
-        mint,
-        undefined,
-        TOKEN_2022_PROGRAM_ID
-      )
-    );
+    const sourceTokenAccount = getAssociatedTokenAddressSync(mint, sender);
+    const destinationTokenAccount = getAssociatedTokenAddressSync(mint, recipient);
+    const sourceMint = await getMint(connection, mint);
 
     const transferInstruction = createTransferInstruction(
       sourceTokenAccount,
@@ -94,7 +88,7 @@ export async function createShieldedPaymentInstruction(
       sender,
       Math.floor(amount * 10 ** sourceMint.decimals),
       [],
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
     instructions.push(transferInstruction);
 
