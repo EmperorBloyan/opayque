@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { Connection } from '@solana/web3.js';
 
-const TEE_RPC = 'https://devnet-tee.magicblock.app';
+const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
 export default function MerchantDashboard() {
   const { publicKey, signTransaction, connected } = useWallet();

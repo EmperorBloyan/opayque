@@ -8,9 +8,7 @@ import {
 import { createShieldedPaymentInstruction } from '@/lib/magicblock';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_RPC_URL ||
-  'https://solana-devnet.g.alchemy.com/v2/Alch_HfEuSs7ivOdeish3Ivh0U';
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
 export async function POST(request: Request) {

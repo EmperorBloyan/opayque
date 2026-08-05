@@ -5,7 +5,7 @@ import { buildShieldedTransfer } from '@/lib/magicblock';
 import { useEffect, useState } from 'react';
 import { Connection } from '@solana/web3.js';
 
-const TEE_RPC = 'https://devnet-tee.magicblock.app';
+const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const USDC_DECIMALS = 6;
 
 function readStoredHistory() {

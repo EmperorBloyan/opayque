@@ -3,9 +3,9 @@ import { createShieldedPaymentInstruction as createShieldedPaymentInstructionImp
 import { getAssetMintAddress } from "@/lib/solana/constants";
 
 export const PAYMENTS_API = 'https://payments.magicblock.app';
-export const TEE_RPC = 'https://devnet-tee.magicblock.app';
+export const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://solana-devnet.g.alchemy.com/v2/Alch_HfEuSs7ivOdeish3Ivh0U';
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
 
