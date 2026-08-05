@@ -43,11 +43,18 @@ export default function ShieldedCheckout({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming' | 'success'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draftAmount, setDraftAmount] = useState(() => (Number.isFinite(amount) && amount > 0 ? amount : 10));
+  const [draftAmount, setDraftAmount] = useState<string>(() =>
+    Number.isFinite(amount) && amount > 0 ? String(amount) : ''
+  );
+
+  const parsedDraftAmount = Number.parseFloat(String(draftAmount).trim());
+  const displayAmount = allowCustomAmount
+    ? (Number.isFinite(parsedDraftAmount) && parsedDraftAmount > 0 ? parsedDraftAmount : 0)
+    : amount;
 
   useEffect(() => {
     if (!allowCustomAmount) {
-      setDraftAmount(Number.isFinite(amount) && amount > 0 ? amount : 10);
+      setDraftAmount(Number.isFinite(amount) && amount > 0 ? String(amount) : '');
     }
   }, [allowCustomAmount, amount]);
 
@@ -57,7 +64,8 @@ export default function ShieldedCheckout({
       return;
     }
 
-    const effectiveAmount = allowCustomAmount ? draftAmount : amount;
+    const parsedAmount = Number.parseFloat(String(draftAmount).trim());
+    const effectiveAmount = allowCustomAmount ? parsedAmount : amount;
 
     if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
       setErrorMessage('Invalid payment amount.');
@@ -75,7 +83,7 @@ export default function ShieldedCheckout({
 
     try {
       const teeConnection = new Connection(TEE_RPC, 'processed');
-      const atomicAmount = Math.floor(effectiveAmount * Math.pow(10, USDC_DECIMALS));
+      const atomicAmount = Math.floor(effectiveAmount * 1_000_000);
 
       const tx = await buildShieldedTransfer(
         publicKey.toBase58(),
@@ -136,12 +144,12 @@ export default function ShieldedCheckout({
               <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Amount (USDC)</label>
               <input
                 type="number"
-                min="1"
+                min="0"
                 step="0.01"
                 value={draftAmount}
                 onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  setDraftAmount(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+                  const raw = event.target.value;
+                  setDraftAmount(raw);
                 }}
                 className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-center text-2xl font-black text-zinc-900 outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
                 placeholder="Enter amount"
@@ -171,7 +179,7 @@ export default function ShieldedCheckout({
             ) : status === 'success' ? (
               'Success!'
             ) : (
-              `Pay ${allowCustomAmount ? draftAmount : amount} USDC (Shielded)`
+              `Pay ${allowCustomAmount ? (displayAmount > 0 ? displayAmount : '0.00') : amount} USDC (Shielded)`
             )}
           </button>
 

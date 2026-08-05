@@ -22,6 +22,11 @@ function createAccessCode() {
   return code;
 }
 
+function createDefaultTerminalLabel() {
+  const shortId = crypto.randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase();
+  return `Terminal-${shortId}`;
+}
+
 function isValidUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -84,6 +89,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const [timeLeft, setTimeLeft] = useState("10M 00S");
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
+  const [newTerminalLabel, setNewTerminalLabel] = useState("");
 
   useEffect(() => {
     if (!isPairingOpen) return;
@@ -256,9 +262,12 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   };
 
   const pairNewTerminal = async () => {
+    const defaultLabel = createDefaultTerminalLabel();
+    const terminalLabel = newTerminalLabel.trim() || defaultLabel;
+
     const newTerminal = {
       id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
-      label: `Fleet Terminal ${safeTerminals.length + 1}`,
+      label: terminalLabel,
       status: "offline" as const,
       lastSeen: Date.now(),
       accessCode: createAccessCode(),
@@ -271,6 +280,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
     setAuthCode(newTerminal.accessCode);
     setTimeLeft("09M 57S");
     setIsPairingOpen(true);
+    setNewTerminalLabel("");
   };
 
   const disconnectTerminal = async (id: string) => {
@@ -303,16 +313,23 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setIsPairingOpen(true);
-            void refreshAuthCode();
-          }}
-          disabled={isRefreshingCode}
-          className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200 disabled:opacity-60"
-        >
-          <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
-        </button>
+        <div className="flex flex-col gap-3">
+          <input
+            value={newTerminalLabel}
+            onChange={(e) => setNewTerminalLabel(e.target.value)}
+            placeholder="Optional terminal name"
+            className="w-full rounded-full border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-purple-500/50"
+          />
+          <button
+            onClick={() => {
+              void pairNewTerminal();
+            }}
+            disabled={isRefreshingCode}
+            className="flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200 disabled:opacity-60"
+          >
+            <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
+          </button>
+        </div>
       </div>
 
       <div className="rounded-[2rem] border border-white/10 bg-[#050507] p-6">
