@@ -41,7 +41,7 @@ export default function ShieldedCheckout({
 }) {
   const { publicKey, signTransaction, connected } = useWallet() as { publicKey: { toBase58(): string } | null; signTransaction?: (tx: any) => Promise<any>; connected: boolean; };
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming'>('idle');
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming' | 'success'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [draftAmount, setDraftAmount] = useState(() => (Number.isFinite(amount) && amount > 0 ? amount : 10));
 
@@ -111,13 +111,14 @@ export default function ShieldedCheckout({
       );
       writeStoredHistory(updatedHistory);
 
+      setStatus('success');
       window.alert(`✅ Shielded Payment Sent!\nTx: ${signature.slice(0, 12)}...`);
     } catch (error: unknown) {
       console.error('TEE Payment Error:', error);
       setErrorMessage(error instanceof Error ? error.message : 'The TEE RPC timed out or rejected the transaction.');
+      setStatus('idle');
     } finally {
       setLoading(false);
-      setStatus('idle');
     }
   };
 
@@ -167,6 +168,8 @@ export default function ShieldedCheckout({
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 <span className="capitalize">{status}...</span>
               </div>
+            ) : status === 'success' ? (
+              'Success!'
             ) : (
               `Pay ${allowCustomAmount ? draftAmount : amount} USDC (Shielded)`
             )}
