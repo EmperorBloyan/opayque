@@ -8,6 +8,8 @@ import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { getAssetMintAddress } from '@/lib/solana/constants';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { getActiveMerchantId } from '@/lib/crypto/session';
 
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
@@ -21,6 +23,7 @@ export default function MerchantDashboard() {
   const [totalRevenue, setTotalRevenue] = useState(0);
   const transactionSignatures = useRef<Set<string>>(new Set());
   const connectionRef = useRef<Connection | null>(null);
+  const supabaseChannelRef = useRef<any | null>(null);
 
   const merchantAta = useMemo(() => {
     if (!publicKey) return null;
@@ -124,6 +127,95 @@ export default function MerchantDashboard() {
     const poll = setInterval(fetchRecentTransfers, 3000);
     return () => clearInterval(poll);
   }, [publicKey, showVault, merchantAta]);
+
+  // Supabase realtime subscription for merchant transactions
+  useEffect(() => {
+    if (!showVault) return;
+    const merchantId = getActiveMerchantId();
+    if (!merchantId) return;
+
+    const supabase = createSupabaseBrowserClient();
+
+    // initial load of recent transactions from Supabase to seed UI
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('merchant_id', merchantId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (!error && Array.isArray(data)) {
+          const mapped = data
+            .map((row: any) => ({
+              signature: String(row.signature ?? row.tx_hash ?? row.id ?? ''),
+              amount: Number(row.amount ?? 0),
+              time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+              status: String(row.status ?? 'pending'),
+            }))
+            .filter((r: any) => r.signature && r.amount > 0);
+
+          // dedupe and prepend any unseen
+          setTransactions((current) => {
+            mapped.forEach((tx: any) => transactionSignatures.current.add(tx.signature));
+            const merged = [...mapped, ...current];
+            merged.sort((a, b) => (a.time < b.time ? 1 : -1));
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to seed transactions from Supabase', err);
+      }
+    })();
+
+    const channel = supabase
+      .channel(`merchant-transactions-${merchantId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        (payload) => {
+          const rec = payload.new as any;
+          if (!rec) return;
+          const sig = String(rec.signature ?? rec.tx_hash ?? rec.id ?? '');
+          if (!sig) return;
+          if (transactionSignatures.current.has(sig)) return;
+          const t = { signature: sig, amount: Number(rec.amount ?? 0), time: rec.created_at ? new Date(rec.created_at).toISOString() : new Date().toISOString(), status: String(rec.status ?? 'pending') };
+          transactionSignatures.current.add(sig);
+          setTransactions((current) => [t, ...current]);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        (payload) => {
+          const rec = payload.new as any;
+          if (!rec) return;
+          const sig = String(rec.signature ?? rec.tx_hash ?? rec.id ?? '');
+          if (!sig) return;
+
+          setTransactions((current) => {
+            const found = current.find((c) => c.signature === sig);
+            const updated = { signature: sig, amount: Number(rec.amount ?? 0), time: rec.created_at ? new Date(rec.created_at).toISOString() : new Date().toISOString(), status: String(rec.status ?? 'pending') };
+            if (found) {
+              return current.map((c) => (c.signature === sig ? updated : c));
+            }
+            transactionSignatures.current.add(sig);
+            return [updated, ...current];
+          });
+        }
+      )
+      .subscribe();
+
+    supabaseChannelRef.current = channel;
+
+    return () => {
+      if (supabaseChannelRef.current) {
+        void createSupabaseBrowserClient().removeChannel(supabaseChannelRef.current);
+        supabaseChannelRef.current = null;
+      }
+    };
+  }, [showVault]);
 
   useEffect(() => {
     setTotalRevenue(transactions.reduce((sum, tx) => sum + (tx.status === 'confirmed' ? tx.amount : 0), 0));
