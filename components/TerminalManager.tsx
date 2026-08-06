@@ -82,7 +82,7 @@ async function resolveMerchantId(): Promise<string | null> {
   return insertedMerchant.id;
 }
 
-export default function TerminalManager({ terminals = [], setTerminals }: TerminalManagerProps) {
+export default function TerminalManager({ terminals = [], setTerminals, showHeaderInput = true }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
@@ -92,7 +92,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
-export default function TerminalManager({ terminals = [], setTerminals, showHeaderInput = true }: TerminalManagerProps) {
+
   const pairingChannelRef = React.useRef<any | null>(null);
 
   useEffect(() => {
