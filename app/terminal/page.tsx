@@ -282,22 +282,6 @@ export default function TerminalPage() {
     return;
   }, [isPaid, isAmountValid]);
 
-      if (error || !data) {
-        throw new Error(error?.message || "Transaction insertion failed");
-      }
-
-      setTransactionId((data as TransactionRecord).id);
-      setToast("Pending transaction registered in Supabase");
-      setIsPaid(true);
-      requestAnimationFrame(() => {
-        successRef.current?.focus();
-      });
-      return;
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "Transaction registration failed.");
-    }
-  }, [activeSession?.merchantId, asset, isAmountValid, isPaid, numericAmount]);
-
   useEffect(() => {
     setMounted(true);
 
