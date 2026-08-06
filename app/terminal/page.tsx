@@ -277,6 +277,10 @@ export default function TerminalPage() {
     }
   };
 
+  const handleGenerateQR = async () => {
+    await generateNewPayment();
+  };
+
   const triggerSuccess = useCallback(async () => {
     // Deprecated: mock handler removed. Use real upstream confirmation via customer checkout
     return;
