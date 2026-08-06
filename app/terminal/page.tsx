@@ -182,6 +182,42 @@ export default function TerminalPage() {
         throw new Error("Merchant wallet address unavailable");
       }
 
+
+  // On terminal mount, fetch the latest transaction for this terminal
+  useEffect(() => {
+    if (!terminalId) return;
+    const supabase = createSupabaseBrowserClient();
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('terminal_id', terminalId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data) {
+          const rec = data as TransactionRecord;
+          if (rec.status === 'settled') {
+            setPaymentStatus('SETTLED');
+            setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
+            setIsPaid(true);
+            setToast('Transaction settled (synced)');
+            // clear any persisted pending tx id since it's settled
+            try {
+              if (typeof window !== 'undefined') {
+                window.localStorage.removeItem('opayque_pending_tx_id');
+              }
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to sync initial terminal transaction state', err);
+      }
+    })();
+  }, [terminalId]);
       const challenge = createSessionChallenge();
       const session = await createTerminalSession({
         merchantId: resolvedMerchantId,
@@ -268,6 +304,14 @@ export default function TerminalPage() {
       }
 
       setTransactionId((data as TransactionRecord).id);
+      setLatestTxHash(null);
+      setIsPaid(false);
+      // Persist pending transaction so terminal survives refresh
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("opayque_pending_tx_id", String((data as TransactionRecord).id));
+        }
+      } catch {}
       setLockedAmount(numericAmount.toFixed(2));
       setStep("PAYING");
       setPaymentStatus("PENDING");
@@ -304,8 +348,11 @@ export default function TerminalPage() {
       console.warn("Unable to read merchant preferences from storage", error);
     }
 
-    if (activeSession) {
-      setStep("POS");
+    const persistedPendingTxId = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id")?.trim() : null;
+    if (persistedPendingTxId) {
+      setTransactionId(persistedPendingTxId);
+      setStep("PAYING");
+      setPaymentStatus("PENDING");
     }
 
     // Hydrate terminal pairing from localStorage if present
@@ -366,9 +413,108 @@ export default function TerminalPage() {
     };
   }, [transactionId]);
 
-  // Subscribe to terminal-specific transactions updates
+  // Restore pending transaction or latest settled status for this terminal on load
   useEffect(() => {
     if (!terminalId) return;
+
+    const supabase = createSupabaseBrowserClient();
+
+    (async () => {
+      try {
+        // If there's a locally persisted pending tx id, prefer restoring it
+        const stored = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id") : null;
+        if (stored) {
+          const { data: storedRow, error: err } = await supabase.from("transactions").select("*").eq("id", stored).single();
+          if (!err && storedRow) {
+            // If already settled, show settled state; otherwise restore PAYING with QR
+            if (String(storedRow.status) === "settled") {
+              setPaymentStatus("SETTLED");
+              setLatestTxHash(storedRow.tx_hash ?? storedRow.signature ?? null);
+              setIsPaid(true);
+              setStep("PAYING");
+            } else {
+              setTransactionId(String(storedRow.id));
+              setLatestTxHash(null);
+              setIsPaid(false);
+              setLockedAmount(String(Number(storedRow.amount ?? 0).toFixed(2)));
+              setStep("PAYING");
+              setPaymentStatus(String(storedRow.status ?? "pending"));
+            }
+            return;
+          }
+        }
+
+        // Fallback: fetch the latest transaction for this terminal
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("terminal_id", terminalId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const row = data[0] as any;
+          if (String(row.status) === "settled") {
+            setPaymentStatus("SETTLED");
+            setLatestTxHash(row.tx_hash ?? row.signature ?? null);
+            setIsPaid(true);
+            setStep("PAYING");
+          } else {
+            setTransactionId(String(row.id));
+            setLatestTxHash(null);
+            setIsPaid(false);
+            setLockedAmount(String(Number(row.amount ?? 0).toFixed(2)));
+            setStep("PAYING");
+            setPaymentStatus(String(row.status ?? "pending"));
+            try {
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("opayque_pending_tx_id", String(row.id));
+              }
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to restore terminal transaction state", err);
+      }
+    })();
+
+  }, [terminalId]);
+
+  useEffect(() => {
+    if (!terminalId) return;
+
+    const restoreLatestTransaction = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("terminal_id", terminalId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (error || !data) {
+          return;
+        }
+
+        const status = String(data.status ?? "pending").toLowerCase();
+        const restoredId = String(data.id);
+        const resolvedAmount = Number(data.amount ?? 0);
+
+        setTransactionId(restoredId);
+        setLockedAmount(Number.isFinite(resolvedAmount) ? resolvedAmount.toFixed(2) : "");
+        setStep("PAYING");
+        setPaymentStatus(status.toUpperCase());
+        setLatestTxHash((data as any).tx_hash ?? (data as any).signature ?? null);
+        setIsPaid(status === "settled");
+      } catch (error) {
+        console.warn("Failed to restore terminal transaction state", error);
+      }
+    };
+
+    void restoreLatestTransaction();
+
     const supabase = createSupabaseBrowserClient();
     const channel = supabase
       .channel(`terminal-${terminalId}`)
@@ -382,7 +528,11 @@ export default function TerminalPage() {
             setPaymentStatus("SETTLED");
             setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
             setIsPaid(true);
+            setStep("PAYING");
             setToast("Transaction settled on-chain");
+          } else {
+            setPaymentStatus(String(rec.status ?? "PENDING").toUpperCase());
+            setIsPaid(false);
           }
         }
       )
@@ -456,7 +606,7 @@ export default function TerminalPage() {
           </div>
         </div>
 
-        {step === "PAIRING" && (
+        {step === 'PAIRING' && (
           <form onSubmit={handlePairing} className="text-center">
             <input
               ref={pairingRef}
@@ -512,6 +662,13 @@ export default function TerminalPage() {
                 setLockedAmount("");
                 setAmount("");
                 setTransactionId(null);
+                setPaymentStatus(null);
+                setLatestTxHash(null);
+                try {
+                  if (typeof window !== "undefined") {
+                    window.localStorage.removeItem("opayque_pending_tx_id");
+                  }
+                } catch {}
                 setToast("Payment flow reset");
               }}
             >
@@ -559,7 +716,7 @@ export default function TerminalPage() {
             {toast}
           </div>
         )}
-        {step !== 'PAIRING' && (
+        {step === 'PAYING' && isPaid && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
             <button
               onClick={() => void generateNewPayment()}
