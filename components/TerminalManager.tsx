@@ -92,6 +92,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
+  const [toast, setToast] = useState<string | null>(null);
 
   const pairingChannelRef = React.useRef<any | null>(null);
 
@@ -413,6 +414,11 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
         onTerminalNameChange={(v) => setNewTerminalLabel(v)}
         pairingState={pairingState}
       />
+      {toast && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
