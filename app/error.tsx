@@ -1,6 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function ErrorBoundary({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    // Attempt an automatic retry after a short delay to recover transient runtime issues
+    const t = setTimeout(() => {
+      try {
+        reset();
+      } catch (err) {
+        // ignore
+      }
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [reset]);
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
       <div className="max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-8 text-center">

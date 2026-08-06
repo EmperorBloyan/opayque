@@ -11,6 +11,7 @@ import PairingModal from "./PairingModal";
 interface TerminalManagerProps {
   terminals?: Terminal[];
   setTerminals?: React.Dispatch<React.SetStateAction<Terminal[]>>;
+  showHeaderInput?: boolean;
 }
 
 function createAccessCode() {
@@ -91,6 +92,7 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
+export default function TerminalManager({ terminals = [], setTerminals, showHeaderInput = true }: TerminalManagerProps) {
   const pairingChannelRef = React.useRef<any | null>(null);
 
   useEffect(() => {
@@ -351,12 +353,6 @@ export default function TerminalManager({ terminals = [], setTerminals }: Termin
         </div>
 
         <div className="flex flex-col gap-3">
-          <input
-            value={newTerminalLabel}
-            onChange={(e) => setNewTerminalLabel(e.target.value)}
-            placeholder="Optional terminal name"
-            className="w-full rounded-full border border-white/10 bg-black/50 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-purple-500/50"
-          />
           <button
             onClick={() => {
               void pairNewTerminal();

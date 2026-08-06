@@ -113,7 +113,7 @@ export default function RegistryPage() {
 
           <section>
             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">Hardware Fleet</h2>
-            <TerminalManager terminals={terminals} setTerminals={setTerminals} />
+            <TerminalManager terminals={terminals} setTerminals={setTerminals} showHeaderInput={false} />
           </section>
         </div>
 
