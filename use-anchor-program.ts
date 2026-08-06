@@ -1,3 +1,5 @@
+'use client';
+
 import { useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { AnchorProvider, Program, type Idl } from '@coral-xyz/anchor';

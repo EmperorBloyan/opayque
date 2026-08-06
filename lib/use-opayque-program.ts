@@ -1,3 +1,5 @@
+'use client';
+
 import { Program, AnchorProvider, type Idl } from '@coral-xyz/anchor';
 import { PublicKey } from '@solana/web3.js';
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
