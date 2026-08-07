@@ -25,9 +25,6 @@ export default function RegistryPage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [selectedEndpoint, setSelectedEndpoint] = useState<Endpoint | null>(null);
-  const [selectedAmount, setSelectedAmount] = useState<string>("");
-  const selectedNumericAmount = Number.parseFloat(String(selectedAmount).trim());
-  const selectedAmountParam = Number.isFinite(selectedNumericAmount) && selectedNumericAmount > 0 ? selectedNumericAmount.toFixed(2) : undefined;
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -194,7 +191,7 @@ export default function RegistryPage() {
               {isMounted && typeof window !== "undefined" ? (
                 <>
                   <QRCodeSVG 
-                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}${selectedAmountParam ? `&amount=${encodeURIComponent(selectedAmountParam)}` : ''}`} 
+                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}`} 
                     size={200}
                     level="H"
                   />
@@ -210,20 +207,6 @@ export default function RegistryPage() {
             </div>
 
             <div className="space-y-4">
-            <div className="relative group">
-              <LucideDollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-purple-400 transition-colors" size={16} />
-              <input
-                aria-label="Custom payment amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={selectedAmount}
-                onChange={(e) => setSelectedAmount(e.target.value)}
-                placeholder="Enter custom amount"
-                className="w-full bg-black/40 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-sm focus:border-purple-500/50 transition-all outline-none"
-              />
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Amount entered here will be encoded into the checkout link for the customer.</div>
           </div>
           <button 
               onClick={() => window.print()}

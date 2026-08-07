@@ -2,6 +2,7 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState, useMemo } from 'react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const formatUSDC = (val: number) => 
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -17,6 +18,87 @@ export default function VaultDashboard() {
     const savedBalance = localStorage.getItem('opayque_balance');
     if (savedTx) setTransactions(JSON.parse(savedTx));
     if (savedBalance) setPrivateBalance(Number(savedBalance));
+  }, []);
+
+  useEffect(() => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+
+      const seedTransactions = async () => {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!error && Array.isArray(data)) {
+          const mapped = data.map((row: any) => ({
+            id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
+            staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+            amount: Number(row.amount ?? 0),
+            status: String(row.status ?? 'Pending'),
+            time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+          }));
+
+          setTransactions((current) => {
+            const merged = [...mapped, ...current.filter((tx) => !mapped.some((next) => next.id === tx.id))];
+            return merged.slice(0, 20);
+          });
+        }
+      };
+
+      void seedTransactions();
+
+      const channel = supabase
+        .channel('vault-dashboard-transactions')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'transactions' },
+          (payload) => {
+            const row = payload.new as any;
+            if (!row) return;
+            const nextRow = {
+              id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
+              staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+              amount: Number(row.amount ?? 0),
+              status: String(row.status ?? 'Pending'),
+              time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+            };
+            setTransactions((current) => [nextRow, ...current].slice(0, 20));
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'transactions' },
+          (payload) => {
+            const row = payload.new as any;
+            if (!row) return;
+            const nextRow = {
+              id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
+              staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+              amount: Number(row.amount ?? 0),
+              status: String(row.status ?? 'Pending'),
+              time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+            };
+            setTransactions((current) => {
+              const existingIndex = current.findIndex((tx) => tx.id === nextRow.id);
+              if (existingIndex >= 0) {
+                const updated = [...current];
+                updated[existingIndex] = nextRow;
+                return updated.slice(0, 20);
+              }
+              return [nextRow, ...current].slice(0, 20);
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        void supabase.removeChannel(channel);
+      };
+    } catch (error) {
+      console.warn('Vault dashboard Supabase sync failed', error);
+    }
   }, []);
 
   const handleSettlement = () => {

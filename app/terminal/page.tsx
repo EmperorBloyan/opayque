@@ -401,7 +401,16 @@ export default function TerminalPage() {
         { event: "UPDATE", schema: "public", table: "transactions", filter: `id=eq.${transactionId}` },
         (payload) => {
           const record = payload.new as TransactionRecord | null;
-          if (record?.status) {
+          if (!record) return;
+          if (record.status === "settled") {
+            setPaymentStatus("SETTLED");
+            setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
+            setIsPaid(true);
+            setToast("Transaction settled on-chain");
+            requestAnimationFrame(() => {
+              successRef.current?.focus();
+            });
+          } else if (record.status) {
             setToast(`Transaction status: ${record.status}`);
           }
         }
@@ -530,6 +539,9 @@ export default function TerminalPage() {
             setIsPaid(true);
             setStep("PAYING");
             setToast("Transaction settled on-chain");
+            requestAnimationFrame(() => {
+              successRef.current?.focus();
+            });
           } else {
             setPaymentStatus(String(rec.status ?? "PENDING").toUpperCase());
             setIsPaid(false);
