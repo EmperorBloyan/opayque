@@ -285,9 +285,55 @@ export default function TerminalPage() {
     }
   };
 
+  const resetPaymentFlow = useCallback(() => {
+    setStep("POS");
+    setIsPaid(false);
+    setLockedAmount("");
+    setAmount("");
+    setTransactionId(null);
+    setPaymentStatus(null);
+    setLatestTxHash(null);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("opayque_pending_tx_id");
+      }
+    } catch {}
+  }, []);
+
   const handleGenerateQR = async () => {
     await generateNewPayment();
   };
+
+  const playPaymentConfirmationTone = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.value = 440;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.35);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+        void ctx.close();
+      };
+    } catch (error) {
+      console.warn("Unable to play payment sound", error);
+    }
+  }, []);
 
   const triggerSuccess = useCallback(async () => {
     // Deprecated: mock handler removed. Use real upstream confirmation via customer checkout
@@ -371,6 +417,7 @@ export default function TerminalPage() {
             setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
             setIsPaid(true);
             setToast("Transaction settled on-chain");
+            playPaymentConfirmationTone();
             requestAnimationFrame(() => {
               successRef.current?.focus();
             });
@@ -503,6 +550,7 @@ export default function TerminalPage() {
             setIsPaid(true);
             setStep("PAYING");
             setToast("Transaction settled on-chain");
+            playPaymentConfirmationTone();
             requestAnimationFrame(() => {
               successRef.current?.focus();
             });
@@ -692,13 +740,13 @@ export default function TerminalPage() {
             {toast}
           </div>
         )}
-        {step === 'PAYING' && isPaid && (
+        {step === 'PAYING' && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
             <button
-              onClick={() => void generateNewPayment()}
+              onClick={() => void resetPaymentFlow()}
               className="rounded-full bg-green-600 px-6 py-3 font-black uppercase tracking-wider shadow-xl text-white"
             >
-              Generate New Payment
+              {isPaid ? "Generate New Payment" : "Create New Payment"}
             </button>
           </div>
         )}
