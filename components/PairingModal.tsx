@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { LucideCopy, LucideRefreshCw, LucideShieldCheck, LucideClock3, LucideX, LucideSmartphone } from "lucide-react";
+import { LucideCheck, LucideCopy, LucideRefreshCw, LucideShieldCheck, LucideClock3, LucideX, LucideSmartphone } from "lucide-react";
 
 interface PairingModalProps {
   isOpen: boolean;
@@ -25,12 +25,19 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
 
   const copyCode = async () => {
     try {
+      if (!authCode) return;
       await navigator.clipboard.writeText(authCode);
       setCopied(true);
     } catch {
       setCopied(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCopied(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -77,10 +84,11 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
             <div className="flex flex-col gap-2">
               <button
                 onClick={copyCode}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-zinc-800 text-zinc-300 transition-all hover:bg-zinc-700"
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all ${copied ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
                 aria-label="Copy auth code"
+                title={copied ? "Copied" : "Copy auth code"}
               >
-                <LucideCopy size={16} />
+                {copied ? <LucideCheck size={16} /> : <LucideCopy size={16} />}
               </button>
               <button
                 onClick={onRefresh}
@@ -101,9 +109,9 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
             </div>
           </div>
           {pairingState === "waiting" ? (
-            <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">Waiting for staff login...</div>
+            <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">Awaiting log in...</div>
           ) : pairingState === "used" ? (
-            <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">Logged In / Active</div>
+            <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">Login successful — terminal connected</div>
           ) : null}
         </div>
 

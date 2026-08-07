@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
-import { normalizePairingCode } from "@/lib/terminal/pairing";
+import { formatPairingCountdown, normalizePairingCode } from "@/lib/terminal/pairing";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
 
@@ -95,6 +95,14 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   const [toast, setToast] = useState<string | null>(null);
 
   const pairingChannelRef = React.useRef<any | null>(null);
+  const fleetChannelRef = React.useRef<any | null>(null);
+
+  const closePairingModal = React.useCallback(() => {
+    setIsPairingOpen(false);
+    setPairingState("idle");
+    setPairingExpiresAt(null);
+    setTimeLeft("10M 00S");
+  }, []);
 
   useEffect(() => {
     if (!isPairingOpen) return;
@@ -104,12 +112,11 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     }
 
     const tick = () => {
-      const remaining = Math.max(0, pairingExpiresAt - Date.now());
-      const mins = Math.floor(remaining / 60000);
-      const secs = Math.floor((remaining % 60000) / 1000);
-      setTimeLeft(`${String(mins).padStart(2, "0")}M ${String(secs).padStart(2, "0")}S`);
-      if (remaining === 0) {
+      const nextTime = formatPairingCountdown(pairingExpiresAt, "10M 00S");
+      setTimeLeft(nextTime);
+      if (nextTime === "00M 00S") {
         setAuthCode("");
+        setPairingState("idle");
         setPairingExpiresAt(null);
       }
     };
@@ -150,8 +157,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       setAuthCode(nextCode);
       const expiresAt = typeof payload.expiresAt === "string" ? new Date(payload.expiresAt).getTime() : Date.now() + 10 * 60 * 1000;
       setPairingExpiresAt(expiresAt);
-      setTimeLeft("10M 00S");
-      // Mark waiting state and subscribe to pairing-code usage
+      setTimeLeft(formatPairingCountdown(expiresAt, "10M 00S"));
       setPairingState("waiting");
       try {
         const supabase = createSupabaseBrowserClient();
@@ -169,12 +175,13 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
             (payload) => {
               const rec = payload.new as any;
               if (!rec) return;
-              if (rec.status === "USED") {
+              if (String(rec.status).toUpperCase() === "USED") {
                 setPairingState("used");
                 setToast("Terminal logged in — updating fleet list");
                 void loadFromSupabase();
-                setIsPairingOpen(false);
-                // cleanup channel
+                window.setTimeout(() => {
+                  closePairingModal();
+                }, 900);
                 void supabase.removeChannel(channel);
                 pairingChannelRef.current = null;
               }
@@ -192,8 +199,10 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       window.alert(message);
       const fallback = createAccessCode();
       setAuthCode(fallback);
-      setPairingExpiresAt(Date.now() + 10 * 60 * 1000);
-      setTimeLeft("10M 00S");
+      const fallbackExpiresAt = Date.now() + 10 * 60 * 1000;
+      setPairingExpiresAt(fallbackExpiresAt);
+      setTimeLeft(formatPairingCountdown(fallbackExpiresAt, "10M 00S"));
+      setPairingState("waiting");
     } finally {
       setIsRefreshingCode(false);
     }
@@ -288,6 +297,43 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     void loadFromSupabase();
   }, [resolvedMerchantId]);
 
+  useEffect(() => {
+    if (!resolvedMerchantId) {
+      return;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    if (fleetChannelRef.current) {
+      void supabase.removeChannel(fleetChannelRef.current);
+      fleetChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`fleet:${resolvedMerchantId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "terminals", filter: `merchant_id=eq.${resolvedMerchantId}` },
+        () => {
+          void loadFromSupabase();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "terminals", filter: `merchant_id=eq.${resolvedMerchantId}` },
+        () => {
+          void loadFromSupabase();
+        }
+      )
+      .subscribe();
+
+    fleetChannelRef.current = channel;
+
+    return () => {
+      void supabase.removeChannel(channel);
+      fleetChannelRef.current = null;
+    };
+  }, [resolvedMerchantId]);
+
   const refreshCodes = async () => {
     const updated = safeTerminals.map((terminal) => ({
       ...terminal,
@@ -302,25 +348,10 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   };
 
   const pairNewTerminal = async () => {
-    const defaultLabel = createDefaultTerminalLabel();
-    const terminalLabel = newTerminalLabel.trim() || defaultLabel;
-
-    const newTerminal = {
-      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
-      label: terminalLabel,
-      status: "offline" as const,
-      lastSeen: Date.now(),
-      accessCode: createAccessCode(),
-      isActive: false,
-      lastLoginAt: null,
-    };
-
-    const updated = [...safeTerminals, newTerminal];
-    await persistTerminals(updated);
-    setAuthCode(newTerminal.accessCode);
-    setTimeLeft("09M 57S");
-    setIsPairingOpen(true);
     setNewTerminalLabel("");
+    setIsPairingOpen(true);
+    setPairingState("waiting");
+    await refreshAuthCode();
   };
 
   const disconnectTerminal = async (id: string) => {
@@ -404,7 +435,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
 
       <PairingModal
         isOpen={isPairingOpen}
-        onClose={() => setIsPairingOpen(false)}
+        onClose={closePairingModal}
         authCode={authCode}
         onRefresh={() => {
           void refreshAuthCode();
