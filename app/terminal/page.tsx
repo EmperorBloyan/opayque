@@ -182,42 +182,6 @@ export default function TerminalPage() {
         throw new Error("Merchant wallet address unavailable");
       }
 
-
-  // On terminal mount, fetch the latest transaction for this terminal
-  useEffect(() => {
-    if (!terminalId) return;
-    const supabase = createSupabaseBrowserClient();
-
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('terminal_id', terminalId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data) {
-          const rec = data as TransactionRecord;
-          if (rec.status === 'settled') {
-            setPaymentStatus('SETTLED');
-            setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
-            setIsPaid(true);
-            setToast('Transaction settled (synced)');
-            // clear any persisted pending tx id since it's settled
-            try {
-              if (typeof window !== 'undefined') {
-                window.localStorage.removeItem('opayque_pending_tx_id');
-              }
-            } catch {}
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to sync initial terminal transaction state', err);
-      }
-    })();
-  }, [terminalId]);
       const challenge = createSessionChallenge();
       const session = await createTerminalSession({
         merchantId: resolvedMerchantId,
