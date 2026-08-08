@@ -1,7 +1,17 @@
 "use client";
 
+<<<<<<< HEAD
 import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
+=======
+import React, { useCallback, useEffect, useState } from "react";
+import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
+>>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
+"use client";
+
+import React, { useCallback, useEffect, useState } from "react";
+import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
+
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveMerchantId, getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
 import { formatPairingCountdown, normalizePairingCode } from "@/lib/terminal/pairing";
@@ -227,12 +237,16 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     }
   };
 
+<<<<<<< HEAD
   const loadFromSupabase = async () => {
     if (!resolvedMerchantId) {
       return;
     }
 
     setIsLoadingTerminals(true);
+=======
+  const loadFromSupabase = useCallback(async () => {
+>>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
     try {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase
@@ -264,7 +278,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     } finally {
       setIsLoadingTerminals(false);
     }
-  };
+  }, [merchantId, authCode, setTerminals]);
 
   const persistTerminals = async (updated: Terminal[]) => {
     setTerminals?.(updated);
@@ -322,6 +336,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
 
   useEffect(() => {
     void loadFromSupabase();
+<<<<<<< HEAD
   }, [resolvedMerchantId]);
 
   useEffect(() => {
@@ -347,12 +362,26 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "terminals", filter: `merchant_id=eq.${resolvedMerchantId}` },
+=======
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`terminals:${merchantId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "terminals",
+          filter: `merchant_id=eq.${merchantId}`,
+        },
+>>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
         () => {
           void loadFromSupabase();
         }
       )
       .subscribe();
 
+<<<<<<< HEAD
     fleetChannelRef.current = channel;
 
     return () => {
@@ -360,6 +389,12 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       fleetChannelRef.current = null;
     };
   }, [resolvedMerchantId]);
+=======
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [merchantId, loadFromSupabase]);
+>>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
 
   const refreshCodes = async () => {
     const updated = safeTerminals.map((terminal) => ({
@@ -415,6 +450,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
           </p>
         </div>
 
+<<<<<<< HEAD
         <div className="flex flex-col gap-3">
           <button
             onClick={() => {
@@ -424,6 +460,24 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
             className="flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200 disabled:opacity-60"
           >
             <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
+=======
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setAuthCode(createAccessCode());
+              setTimeLeft("09M 57S");
+              setIsPairingOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200"
+          >
+            <LucidePlus size={14} /> Pair New
+          </button>
+          <button
+            onClick={() => void loadFromSupabase()}
+            className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-300 transition-all hover:bg-zinc-800"
+          >
+            <LucideRefreshCw size={14} /> Refresh
+>>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
           </button>
         </div>
       </div>
