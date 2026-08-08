@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
+import { getActiveMerchantId, getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
 import { formatPairingCountdown, normalizePairingCode } from "@/lib/terminal/pairing";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
@@ -44,6 +44,11 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
 }
 
 async function resolveMerchantId(): Promise<string | null> {
+  const storedMerchantId = getStoredMerchantId();
+  if (storedMerchantId && isValidUuid(storedMerchantId)) {
+    return storedMerchantId;
+  }
+
   const session = getActiveSession();
   if (session?.merchantId && isValidUuid(session.merchantId)) {
     return session.merchantId;
@@ -85,6 +90,7 @@ async function resolveMerchantId(): Promise<string | null> {
 export default function TerminalManager({ terminals = [], setTerminals, showHeaderInput = true }: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
+  const [isLoadingTerminals, setIsLoadingTerminals] = useState(false);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [authCode, setAuthCode] = useState("");
   const [timeLeft, setTimeLeft] = useState("10M 00S");
@@ -213,6 +219,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       return;
     }
 
+    setIsLoadingTerminals(true);
     try {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase
@@ -241,6 +248,8 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       }
     } catch (error) {
       console.error("Failed to load terminals from Supabase", error);
+    } finally {
+      setIsLoadingTerminals(false);
     }
   };
 
@@ -281,6 +290,11 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     let cancelled = false;
 
     const initMerchantId = async () => {
+      const storedMerchantId = getStoredMerchantId();
+      if (storedMerchantId) {
+        if (!cancelled) setResolvedMerchantId(storedMerchantId);
+      }
+
       const id = await resolveMerchantId();
       if (!cancelled) {
         setResolvedMerchantId(id);

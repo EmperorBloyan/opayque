@@ -177,16 +177,27 @@ export function clearActiveSession(): void {
   }
 }
 
+export function getStoredMerchantId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const storedMerchantId = window.localStorage.getItem(ACTIVE_MERCHANT_ID_KEY)?.trim();
+  if (!storedMerchantId || storedMerchantId === "merchant-vault") {
+    return null;
+  }
+
+  return storedMerchantId;
+}
+
 export function getActiveMerchantId(): string {
   if (activeSession?.merchantId) {
     return activeSession.merchantId;
   }
 
-  if (typeof window !== "undefined") {
-    const storedMerchantId = window.localStorage.getItem(ACTIVE_MERCHANT_ID_KEY)?.trim();
-    if (storedMerchantId) {
-      return storedMerchantId;
-    }
+  const storedMerchantId = getStoredMerchantId();
+  if (storedMerchantId) {
+    return storedMerchantId;
   }
 
   return "merchant-vault";

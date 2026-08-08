@@ -412,7 +412,8 @@ export default function TerminalPage() {
         (payload) => {
           const record = payload.new as TransactionRecord | null;
           if (!record) return;
-          if (record.status === "settled") {
+          const normalizedStatus = String(record.status ?? "").toLowerCase();
+          if (normalizedStatus === "settled") {
             setPaymentStatus("SETTLED");
             setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
             setIsPaid(true);

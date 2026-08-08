@@ -48,6 +48,7 @@ export default function ShieldedCheckout({
     Number.isFinite(amount) && amount > 0 ? String(amount) : ''
   );
   const [pendingTxId, setPendingTxId] = useState<string | null>(null);
+  const [closeCountdown, setCloseCountdown] = useState<number>(5);
 
   const parsedDraftAmount = Number.parseFloat(String(draftAmount).trim());
   const displayAmount = allowCustomAmount
@@ -139,7 +140,7 @@ export default function ShieldedCheckout({
       writeStoredHistory(updatedHistory);
 
       setStatus('success');
-      window.alert(`✅ Shielded Payment Sent!\nTx: ${signature.slice(0, 12)}...`);
+      setCloseCountdown(5);
     } catch (error: unknown) {
       console.error('TEE Payment Error:', error);
       setErrorMessage(error instanceof Error ? error.message : 'The TEE RPC timed out or rejected the transaction.');
@@ -148,6 +149,31 @@ export default function ShieldedCheckout({
       setLoading(false);
     }
   };
+
+  const handleClose = () => {
+    if (typeof window !== 'undefined') {
+      window.close();
+      window.location.href = '/';
+    }
+  };
+
+  useEffect(() => {
+    if (status !== 'success') {
+      return undefined;
+    }
+
+    const countdownInterval = window.setInterval(() => {
+      setCloseCountdown((current) => {
+        if (current <= 1) {
+          handleClose();
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(countdownInterval);
+  }, [status]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-50/95 dark:bg-black/95 backdrop-blur-sm p-4">
@@ -172,6 +198,7 @@ export default function ShieldedCheckout({
                 }}
                 className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-center text-2xl font-black text-zinc-900 outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
                 placeholder="Enter amount"
+                disabled={status === 'success'}
               />
             </div>
           ) : null}
@@ -187,7 +214,7 @@ export default function ShieldedCheckout({
 
           <button
             onClick={handlePayment}
-            disabled={!connected || loading}
+            disabled={!connected || loading || status === 'success'}
             className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold py-4 rounded-2xl text-lg transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-green-500/20"
           >
             {loading ? (
@@ -196,11 +223,24 @@ export default function ShieldedCheckout({
                 <span className="capitalize">{status}...</span>
               </div>
             ) : status === 'success' ? (
-              'Success!'
+              'Payment Completed'
             ) : (
               `Pay ${allowCustomAmount ? (displayAmount > 0 ? displayAmount : '0.00') : amount} USDC (Shielded)`
             )}
           </button>
+
+          {status === 'success' ? (
+            <div className="space-y-3">
+              <p className="text-sm text-green-600">Payment successful. This page will close in {closeCountdown} second{closeCountdown === 1 ? '' : 's'}.</p>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="w-full rounded-2xl border border-zinc-300 bg-zinc-100 px-5 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              >
+                Return Home
+              </button>
+            </div>
+          ) : null}
 
           {errorMessage ? (
             <p className="text-sm text-red-500">{errorMessage}</p>

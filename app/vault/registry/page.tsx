@@ -31,6 +31,22 @@ export default function RegistryPage() {
   useEffect(() => {
     setIsMounted(true);
 
+    const loadEndpointData = () => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      const storedEndpoints = window.localStorage.getItem("opayque_endpoints");
+      if (storedEndpoints) {
+        try {
+          const parsed = JSON.parse(storedEndpoints) as Endpoint[];
+          setEndpoints(parsed);
+        } catch (error) {
+          console.warn("Failed to parse stored endpoints", error);
+        }
+      }
+    };
+
     const loadTerminalData = async () => {
       try {
         const merchantId = getActiveMerchantId();
@@ -63,17 +79,25 @@ export default function RegistryPage() {
       }
     };
 
+    loadEndpointData();
     void loadTerminalData();
   }, []);
 
+  const persistEndpoints = (updated: Endpoint[]) => {
+    setEndpoints(updated);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("opayque_endpoints", JSON.stringify(updated));
+    }
+  };
+
   const handleSaveEndpoint = (newEndpoint: Endpoint) => {
     const updated = [newEndpoint, ...endpoints];
-    setEndpoints(updated);
+    persistEndpoints(updated);
   };
 
   const handleDeleteEndpoint = (id: string) => {
     const updated = endpoints.filter((e) => e.id !== id);
-    setEndpoints(updated);
+    persistEndpoints(updated);
     if (selectedEndpoint?.id === id) setSelectedEndpoint(null);
   };
 

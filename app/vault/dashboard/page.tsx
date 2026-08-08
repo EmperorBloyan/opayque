@@ -13,12 +13,53 @@ export default function VaultDashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [flushLoading, setFlushLoading] = useState(false);
 
+  const persistTransactions = (nextTransactions: any[] | ((current: any[]) => any[])) => {
+    setTransactions((current) => {
+      const resolved = typeof nextTransactions === 'function' ? nextTransactions(current) : nextTransactions;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('opayque_tx', JSON.stringify(resolved));
+        }
+      } catch {
+        // ignore storage errors
+      }
+      return resolved;
+    });
+  };
+
   useEffect(() => {
     const savedTx = localStorage.getItem('opayque_tx');
-    const savedBalance = localStorage.getItem('opayque_balance');
-    if (savedTx) setTransactions(JSON.parse(savedTx));
-    if (savedBalance) setPrivateBalance(Number(savedBalance));
+    if (savedTx) {
+      try {
+        const parsed = JSON.parse(savedTx);
+        setTransactions(parsed);
+      } catch {
+        // ignore invalid storage data
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    const resolvedBalance = transactions.reduce((sum, tx) => {
+      const amount = Number(tx.amount ?? 0);
+      const status = String(tx.status ?? '').toUpperCase();
+      if (!Number.isFinite(amount)) {
+        return sum;
+      }
+      if (['SETTLED', 'SHIELDED_CONFIRMED', 'CONFIRMED'].includes(status)) {
+        return sum + amount;
+      }
+      return sum;
+    }, 0);
+    setPrivateBalance(resolvedBalance);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('opayque_balance', String(resolvedBalance));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [transactions]);
 
   useEffect(() => {
     try {
@@ -40,7 +81,7 @@ export default function VaultDashboard() {
             time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
           }));
 
-          setTransactions((current) => {
+          persistTransactions((current) => {
             const merged = [...mapped, ...current.filter((tx) => !mapped.some((next) => next.id === tx.id))];
             return merged.slice(0, 20);
           });
@@ -64,7 +105,7 @@ export default function VaultDashboard() {
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
             };
-            setTransactions((current) => [nextRow, ...current].slice(0, 20));
+            persistTransactions((current) => [nextRow, ...current].slice(0, 20));
           }
         )
         .on(
@@ -80,8 +121,8 @@ export default function VaultDashboard() {
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
             };
-            setTransactions((current) => {
-              const existingIndex = current.findIndex((tx) => tx.id === nextRow.id);
+            persistTransactions((current) => {
+              const existingIndex = current.findIndex((tx: any) => tx.id === nextRow.id);
               if (existingIndex >= 0) {
                 const updated = [...current];
                 updated[existingIndex] = nextRow;
@@ -115,25 +156,35 @@ export default function VaultDashboard() {
         time: new Date().toISOString()
       };
 
-      // 2. Update Local State
-      const updatedTx = [settleTx, ...transactions];
-      setTransactions(updatedTx);
+      // 2. Update Local State and persist
+      persistTransactions((current) => [settleTx, ...current].slice(0, 20));
       setPrivateBalance(0);
 
-      // 3. Persist
-      localStorage.setItem('opayque_tx', JSON.stringify(updatedTx));
-      localStorage.setItem('opayque_balance', '0');
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('opayque_balance', '0');
+        }
+      } catch {
+        // ignore storage errors
+      }
       
       setFlushLoading(false);
     }, 2000);
   };
 
   const statusColor = (status: string) => {
-    switch(status) {
-      case 'Settled': return 'bg-green-500/10 text-green-500';
-      case 'Pending': return 'bg-yellow-500/10 text-yellow-500';
-      case 'Failed': return 'bg-red-500/10 text-red-500';
-      default: return 'bg-zinc-500/10 text-zinc-500';
+    const normalized = String(status ?? '').toUpperCase();
+    switch(normalized) {
+      case 'SETTLED':
+      case 'SHIELDED_CONFIRMED':
+      case 'CONFIRMED':
+        return 'bg-green-500/10 text-green-500';
+      case 'PENDING':
+        return 'bg-yellow-500/10 text-yellow-500';
+      case 'FAILED':
+        return 'bg-red-500/10 text-red-500';
+      default:
+        return 'bg-zinc-500/10 text-zinc-500';
     }
   };
 
@@ -148,7 +199,7 @@ export default function VaultDashboard() {
          )}
 
         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Private Shielded Volume</p>
-        <h2 className="text-7xl font-mono font-bold tracking-tighter">{formatUSDC(privateBalance)}</h2>
+        <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{formatUSDC(privateBalance)}</h2>
         
         <button 
           onClick={handleSettlement}
