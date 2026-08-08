@@ -94,7 +94,8 @@ export default function TerminalPage() {
 
   const buildUri = useCallback(() => {
     try {
-      const recipient = typeof activeSession?.walletAddress === "string" ? activeSession.walletAddress.trim() : "";
+      const session = getActiveSession();
+      const recipient = typeof session?.walletAddress === "string" ? session.walletAddress.trim() : "";
       const amountValue = lockedAmount || amount || "";
       const normalizedAmount = Number.parseFloat(String(amountValue).trim());
       const resolvedAmount = Number.isFinite(normalizedAmount) && normalizedAmount > 0 ? normalizedAmount.toFixed(2) : undefined;
@@ -117,7 +118,7 @@ export default function TerminalPage() {
       console.error("Failed to build checkout URL", error);
       return "";
     }
-  }, [activeSession?.walletAddress, amount, lockedAmount, merchantName]);
+  }, [amount, lockedAmount, merchantName, transactionId]);
 
   const handlePairing = async (e: FormEvent) => {
     e.preventDefault();
@@ -358,45 +359,154 @@ export default function TerminalPage() {
       console.warn("Unable to read merchant preferences from storage", error);
     }
 
-    const persistedPendingTxId = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id")?.trim() : null;
-    if (persistedPendingTxId) {
-      setTransactionId(persistedPendingTxId);
-      setStep("PAYING");
-      setPaymentStatus("PENDING");
-    }
+    const hydrateTerminal = async () => {
+      if (typeof window === "undefined") {
+        return;
+      }
 
-    // Hydrate terminal pairing from localStorage if present
-    try {
-      if (typeof window !== "undefined") {
-        const storedId = window.localStorage.getItem("opayque_terminal_id")?.trim() || null;
-        const storedToken = window.localStorage.getItem("opayque_terminal_token")?.trim() || null;
-        if (storedId) {
-          // validate terminal via Supabase
+      const persistedPendingTxId = window.localStorage.getItem("opayque_pending_tx_id")?.trim() || null;
+      if (persistedPendingTxId) {
+        try {
           const supabase = createSupabaseBrowserClient();
+          const { data: storedRow, error: err } = await supabase.from("transactions").select("*").eq("id", persistedPendingTxId).single();
+
+          if (!err && storedRow) {
+            if (storedRow.terminal_id) {
+              setTerminalId(String(storedRow.terminal_id));
+            }
+            setTransactionId(String(storedRow.id));
+            setLockedAmount(String(Number(storedRow.amount ?? 0).toFixed(2)));
+            setPaymentStatus(String(storedRow.status ?? "PENDING").toUpperCase());
+            setIsPaid(String(storedRow.status ?? "").toLowerCase() === "settled");
+            setAmount("");
+            setStep("PAYING");
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to restore pending transaction", err);
+        }
+
+        try {
+          window.localStorage.removeItem("opayque_pending_tx_id");
+        } catch {}
+      }
+
+      const storedId = window.localStorage.getItem("opayque_terminal_id")?.trim() || null;
+      const storedToken = window.localStorage.getItem("opayque_terminal_token")?.trim() || null;
+      const session = getActiveSession();
+      const supabase = createSupabaseBrowserClient();
+
+      const validateStoredTerminal = async () => {
+        if (!storedId) {
+          return false;
+        }
+
+        try {
+
+        // If there's an active merchant session, default to POS so merchant sees the checkout page after login
+        try {
+          if (activeSession?.merchantId) {
+            setStep("POS");
+          }
+        } catch {}
+
+        // Restore a persisted pending transaction only after verifying it exists in Supabase.
+        const persistedPendingTxId = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id")?.trim() : null;
+        if (persistedPendingTxId) {
           (async () => {
             try {
-              const { data, error } = await supabase.from("terminals").select("*").eq("id", storedId).single();
+              const supabase = createSupabaseBrowserClient();
+              const { data, error } = await supabase.from('transactions').select('*').eq('id', persistedPendingTxId).single();
               if (!error && data) {
-                if (!storedToken || String(data.device_token) === String(storedToken)) {
-                  setTerminalId(storedId);
-                  setTerminalToken(storedToken);
-                  setStep("POS");
-                } else {
-                  // invalid token — clear pairing
-                  window.localStorage.removeItem("opayque_terminal_id");
-                  window.localStorage.removeItem("opayque_terminal_token");
-                }
+                setTransactionId(String(data.id));
+                const resolvedAmount = Number(data.amount ?? 0);
+                setLockedAmount(Number.isFinite(resolvedAmount) ? resolvedAmount.toFixed(2) : "");
+                setPaymentStatus(String(data.status ?? 'PENDING').toUpperCase());
+                setLatestTxHash((data as any).tx_hash ?? (data as any).signature ?? null);
+                setIsPaid(String(data.status ?? '').toLowerCase() === 'settled');
+                setStep('PAYING');
+              } else {
+                try { if (typeof window !== 'undefined') window.localStorage.removeItem('opayque_pending_tx_id'); } catch {}
+                setTransactionId(null);
+                setStep('POS');
               }
             } catch (err) {
-              console.warn("Failed to validate stored terminal", err);
+              console.warn('Failed to restore pending transaction', err);
+              setStep('POS');
             }
           })();
         }
+
+            window.localStorage.removeItem("opayque_terminal_id");
+            window.localStorage.removeItem("opayque_terminal_token");
+          }
+        } catch (err) {
+          console.warn("Failed to validate stored terminal", err);
+        }
+
+        return false;
+      };
+
+      if (storedId) {
+        const validStoredTerminal = await validateStoredTerminal();
+        if (!validStoredTerminal) {
+          try {
+            window.localStorage.removeItem("opayque_terminal_id");
+            window.localStorage.removeItem("opayque_terminal_token");
+            window.localStorage.removeItem("opayque_terminal_label");
+          } catch {}
+        }
+
+        if (validStoredTerminal) {
+          setStep("POS");
+          return;
+        }
+
+        if (session && session.merchantId) {
+          try {
+            const { data, error } = await supabase.from("terminals").select("*").eq("merchant_id", session.merchantId).order("last_active", { ascending: false }).limit(1);
+            if (!error && Array.isArray(data) && data.length > 0) {
+              const row = data[0] as any;
+              setTerminalId(String(row.id));
+              try {
+                window.localStorage.setItem("opayque_terminal_id", String(row.id));
+                if (row.device_token) window.localStorage.setItem("opayque_terminal_token", String(row.device_token));
+              } catch {}
+              setStep("POS");
+              return;
+            }
+          } catch (err) {
+            console.warn("Failed to load merchant terminals", err);
+          }
+        }
+
+        setStep("PAIRING");
+        return;
       }
-    } catch (err) {
-      console.warn("Unable to hydrate stored terminal pairing", err);
-    }
-  }, [activeSession]);
+
+      if (session && session.merchantId) {
+        try {
+          const { data, error } = await supabase.from("terminals").select("*").eq("merchant_id", session.merchantId).order("last_active", { ascending: false }).limit(1);
+          if (!error && Array.isArray(data) && data.length > 0) {
+            const row = data[0] as any;
+            setTerminalId(String(row.id));
+            try {
+              window.localStorage.setItem("opayque_terminal_id", String(row.id));
+              if (row.device_token) window.localStorage.setItem("opayque_terminal_token", String(row.device_token));
+            } catch {}
+            setStep("POS");
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to load merchant terminals", err);
+        }
+      }
+
+      setStep("PAIRING");
+    };
+
+    void hydrateTerminal();
+  }, []);
 
   useEffect(() => {
     if (!transactionId) {
@@ -463,6 +573,15 @@ export default function TerminalPage() {
             }
             return;
           }
+
+          try {
+            window.localStorage.removeItem("opayque_pending_tx_id");
+          } catch {}
+          setStep("POS");
+          setTransactionId(null);
+          setLockedAmount("");
+          setPaymentStatus(null);
+          setIsPaid(false);
         }
 
         // Fallback: fetch the latest transaction for this terminal
