@@ -673,7 +673,7 @@ export default function TerminalPage() {
               disabled={!isAmountValid}
               className="w-full py-8 bg-purple-600 rounded-[2.2rem] font-black text-2xl shadow-2xl disabled:opacity-20 uppercase tracking-tighter"
             >
-              Generate QR
+              Generate New Payment
             </button>
           </div>
         )}
@@ -700,25 +700,16 @@ export default function TerminalPage() {
               {!isPaid ? (
                 <div className="flex flex-col items-center">
                   {qrUri ? (
-                    <>
-                      <div className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl">
-                        <QRCodeSVG value={qrUri} size={220} level="H" />
-                      </div>
-                      <a
-                        href={`https://phantom.app/ul/v1/browse?url=${encodeURIComponent(qrUri)}`}
-                        className="inline-flex w-full items-center justify-center rounded-2xl bg-purple-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-purple-500"
-                      >
-                        Generate New Payment
-                      </a>
-                    </>
+                    <div className="p-10 bg-white rounded-[4rem] inline-block mb-4 border-[16px] border-zinc-900 shadow-2xl">
+                      <QRCodeSVG value={qrUri} size={220} level="H" />
+                    </div>
                   ) : (
                     <div className="rounded-[2rem] border border-white/10 bg-zinc-950/80 p-8 text-center">
                       <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Payment link unavailable</p>
                       <h3 className="mt-3 text-2xl font-black">We could not build a checkout link yet.</h3>
                       <p className="mt-2 text-sm text-zinc-400">Confirm the merchant wallet is available, then try again.</p>
                     </div>
-                  )}
-                </div>
+                  )}                </div>
               ) : (
                 <div
                   ref={successRef}

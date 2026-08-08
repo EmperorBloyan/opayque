@@ -158,10 +158,19 @@ export default function ShieldedCheckout({
   };
 
   const handleClose = () => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return;
+
+    try {
       window.close();
-      window.location.replace('https://phantom.app/');
+    } catch {
+      // ignore any close failure
     }
+
+    setTimeout(() => {
+      if (!window.closed) {
+        window.location.replace('https://phantom.app/');
+      }
+    }, 120);
   };
 
   useEffect(() => {
@@ -242,9 +251,9 @@ export default function ShieldedCheckout({
               <button
                 type="button"
                 onClick={handleClose}
-                className="w-full rounded-2xl border border-zinc-300 bg-zinc-100 px-5 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="w-full rounded-2xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white hover:bg-purple-500 transition-colors shadow-lg shadow-purple-500/10"
               >
-                Return to Phantom
+                Return to Phantom Home
               </button>
             </div>
           ) : null}
