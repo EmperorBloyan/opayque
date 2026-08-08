@@ -11,6 +11,7 @@ export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
   const [privateBalance, setPrivateBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [terminalLabels, setTerminalLabels] = useState<Record<string, string>>({});
   const [flushLoading, setFlushLoading] = useState(false);
 
   const persistTransactions = (nextTransactions: any[] | ((current: any[]) => any[])) => {
@@ -75,10 +76,12 @@ export default function VaultDashboard() {
         if (!error && Array.isArray(data)) {
           const mapped = data.map((row: any) => ({
             id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
-            staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+            staff: row.source_name ?? (row.terminal_id ? 'Merchant Terminal' : 'System'),
+            category: row.source_category ?? (row.terminal_id ? 'Terminal' : 'Registry'),
             amount: Number(row.amount ?? 0),
             status: String(row.status ?? 'Pending'),
             time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+            terminalId: row.terminal_id ?? null,
           }));
 
           persistTransactions((current) => {
@@ -100,10 +103,12 @@ export default function VaultDashboard() {
             if (!row) return;
             const nextRow = {
               id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
-              staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+              staff: row.source_name ?? (row.terminal_id ? 'Merchant Terminal' : 'System'),
+              category: row.source_category ?? (row.terminal_id ? 'Terminal' : 'Registry'),
               amount: Number(row.amount ?? 0),
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+              terminalId: row.terminal_id ?? null,
             };
             persistTransactions((current) => [nextRow, ...current].slice(0, 20));
           }
@@ -116,10 +121,12 @@ export default function VaultDashboard() {
             if (!row) return;
             const nextRow = {
               id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
-              staff: row.merchant_id ? 'Merchant Terminal' : 'System',
+              staff: row.source_name ?? (row.terminal_id ? 'Merchant Terminal' : 'System'),
+              category: row.source_category ?? (row.terminal_id ? 'Terminal' : 'Registry'),
               amount: Number(row.amount ?? 0),
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+              terminalId: row.terminal_id ?? null,
             };
             persistTransactions((current) => {
               const existingIndex = current.findIndex((tx: any) => tx.id === nextRow.id);
@@ -140,6 +147,28 @@ export default function VaultDashboard() {
     } catch (error) {
       console.warn('Vault dashboard Supabase sync failed', error);
     }
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== 'opayque_tx' || !event.newValue) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(event.newValue);
+        if (Array.isArray(parsed)) {
+          persistTransactions((current) => {
+            const merged = [...parsed, ...current.filter((tx) => !parsed.some((next) => next.id === tx.id))];
+            return merged.slice(0, 20);
+          });
+        }
+      } catch {
+        // ignore invalid storage event payload
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const handleSettlement = () => {

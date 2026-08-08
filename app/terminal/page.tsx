@@ -706,9 +706,9 @@ export default function TerminalPage() {
                       </div>
                       <a
                         href={`https://phantom.app/ul/v1/browse?url=${encodeURIComponent(qrUri)}`}
-                        className="inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-blue-500"
+                        className="inline-flex w-full items-center justify-center rounded-2xl bg-purple-600 px-6 py-4 font-black uppercase tracking-[0.25em] text-sm text-white shadow-lg transition hover:bg-purple-500"
                       >
-                        Pay on this Device
+                        Generate New Payment
                       </a>
                     </>
                   ) : (
@@ -739,16 +739,6 @@ export default function TerminalPage() {
         {toast && (
           <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
             {toast}
-          </div>
-        )}
-        {step === 'PAYING' && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-            <button
-              onClick={() => void resetPaymentFlow()}
-              className="rounded-full bg-green-600 px-6 py-3 font-black uppercase tracking-wider shadow-xl text-white"
-            >
-              {isPaid ? "Generate New Payment" : "Create New Payment"}
-            </button>
           </div>
         )}
       </div>

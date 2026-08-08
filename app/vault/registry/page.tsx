@@ -215,7 +215,7 @@ export default function RegistryPage() {
               {isMounted && typeof window !== "undefined" ? (
                 <>
                   <QRCodeSVG 
-                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}`} 
+                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}&category=${encodeURIComponent(selectedEndpoint.category)}`} 
                     size={200}
                     level="H"
                   />

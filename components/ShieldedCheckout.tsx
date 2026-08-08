@@ -34,10 +34,14 @@ function writeStoredHistory(items: Array<Record<string, unknown>>) {
 export default function ShieldedCheckout({
   amount,
   merchantPubkey,
+  endpointName,
+  endpointCategory,
   allowCustomAmount = false,
 }: {
   amount: number;
   merchantPubkey: string;
+  endpointName?: string;
+  endpointCategory?: string;
   allowCustomAmount?: boolean;
 }) {
   const { publicKey, signTransaction, connected } = useWallet() as { publicKey: { toBase58(): string } | null; signTransaction?: (tx: any) => Promise<any>; connected: boolean; };
@@ -111,7 +115,10 @@ export default function ShieldedCheckout({
 
       const initialTx = {
         id: signature,
-        staff: merchantPubkey,
+        staff: endpointName || merchantPubkey,
+        category: endpointCategory || 'Registry',
+        source_name: endpointName || merchantPubkey,
+        source_category: endpointCategory || 'Registry',
         amount: effectiveAmount,
         time: new Date().toISOString(),
         status: 'SHIELDED_PENDING',
@@ -135,7 +142,7 @@ export default function ShieldedCheckout({
 
       const finalHistory = readStoredHistory();
       const updatedHistory = finalHistory.map((t: any) =>
-        t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED' } : t
+        t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED', source_name: endpointName || merchantPubkey, source_category: endpointCategory || 'Registry' } : t
       );
       writeStoredHistory(updatedHistory);
 
@@ -153,7 +160,7 @@ export default function ShieldedCheckout({
   const handleClose = () => {
     if (typeof window !== 'undefined') {
       window.close();
-      window.location.href = '/';
+      window.location.replace('https://phantom.app/');
     }
   };
 
@@ -237,7 +244,7 @@ export default function ShieldedCheckout({
                 onClick={handleClose}
                 className="w-full rounded-2xl border border-zinc-300 bg-zinc-100 px-5 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               >
-                Return Home
+                Return to Phantom
               </button>
             </div>
           ) : null}

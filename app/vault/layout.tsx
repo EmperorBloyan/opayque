@@ -225,7 +225,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                 <button
                   type="button"
                   onClick={() => void handleSaveProfile()}
-                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:shadow-[0_0_28px_rgba(168,85,247,0.55)] hover:brightness-110"
+                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:bg-purple-500 hover:brightness-110"
                 >
                   Save Profile
                 </button>
