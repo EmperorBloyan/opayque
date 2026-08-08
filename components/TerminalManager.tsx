@@ -102,6 +102,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
 
   const pairingChannelRef = React.useRef<any | null>(null);
   const fleetChannelRef = React.useRef<any | null>(null);
+  const labelRefreshTimer = React.useRef<number | null>(null);
 
   const closePairingModal = React.useCallback(() => {
     setIsPairingOpen(false);
@@ -132,7 +133,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     return () => window.clearInterval(interval);
   }, [isPairingOpen, pairingExpiresAt]);
 
-  const refreshAuthCode = async () => {
+  const refreshAuthCode = async (terminalLabelOverride?: string) => {
     if (isRefreshingCode) return;
     setIsRefreshingCode(true);
 
@@ -142,10 +143,22 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
         throw new Error("Cannot create pairing code: merchant identity unavailable.");
       }
 
+      const terminalLabelToUse = typeof terminalLabelOverride === "string"
+        ? terminalLabelOverride.trim() || null
+        : newTerminalLabel.trim() || null;
+
+      if (typeof terminalLabelOverride === "string") {
+        setNewTerminalLabel(terminalLabelToUse ?? "");
+      }
+
+      if (!terminalLabelToUse) {
+        throw new Error("Please enter a terminal name before generating an auth code.");
+      }
+
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId, terminal_label: newTerminalLabel || null }),
+        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId, terminal_label: terminalLabelToUse }),
       });
 
       let payload: any = null;
@@ -362,10 +375,14 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   };
 
   const pairNewTerminal = async () => {
-    setNewTerminalLabel("");
-    setIsPairingOpen(true);
+    const defaultLabel = createDefaultTerminalLabel();
+    setNewTerminalLabel(defaultLabel);
+    setAuthCode("");
     setPairingState("waiting");
-    await refreshAuthCode();
+    setPairingExpiresAt(null);
+    setTimeLeft("10M 00S");
+    setIsPairingOpen(true);
+    await refreshAuthCode(defaultLabel);
   };
 
   const disconnectTerminal = async (id: string) => {
