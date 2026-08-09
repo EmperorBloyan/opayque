@@ -30,6 +30,13 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
   }, []);
 
   useEffect(() => {
+    const envNetwork = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
+    if (envNetwork && envNetwork !== "mainnet-beta" && envNetwork !== "testnet" && envNetwork !== "devnet") {
+      setToast('Unsupported Solana network configured. Defaulting to devnet.');
+    }
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -54,7 +61,10 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
   }, [network]);
 
   const endpoint = useMemo(
-    () => process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl(network),
+    () => {
+      const customRpc = process.env.NEXT_PUBLIC_RPC_URL?.trim();
+      return customRpc && customRpc.length > 0 ? customRpc : clusterApiUrl(network);
+    },
     [network]
   );
 

@@ -1,10 +1,11 @@
-'use client';
+"use client";
+
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { buildShieldedTransfer } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Connection } from '@solana/web3.js';
 
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -27,7 +28,7 @@ function writeStoredHistory(items: Array<Record<string, unknown>>) {
     window.localStorage.setItem('opayque_tx', JSON.stringify(items));
     window.dispatchEvent(new Event('storage'));
   } catch {
-    // Ignore storage failures and keep the payment flow moving.
+    // ignore
   }
 }
 
@@ -37,40 +38,57 @@ export default function ShieldedCheckout({
   endpointName,
   endpointCategory,
   allowCustomAmount = false,
+  recipientName,
 }: {
   amount: number;
   merchantPubkey: string;
   endpointName?: string;
   endpointCategory?: string;
   allowCustomAmount?: boolean;
+  recipientName?: string;
 }) {
-  const { publicKey, signTransaction, connected } = useWallet() as { publicKey: { toBase58(): string } | null; signTransaction?: (tx: any) => Promise<any>; connected: boolean; };
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming' | 'success'>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draftAmount, setDraftAmount] = useState<string>(() =>
-    Number.isFinite(amount) && amount > 0 ? String(amount) : ''
-  );
-  const [pendingTxId, setPendingTxId] = useState<string | null>(null);
-  const [closeCountdown, setCloseCountdown] = useState<number>(5);
+  const { publicKey, signTransaction, connected } = useWallet() as {
+    publicKey: { toBase58(): string } | null;
+    signTransaction?: (tx: any) => Promise<any>;
+    connected: boolean;
+  };
 
-  const parsedDraftAmount = Number.parseFloat(String(draftAmount).trim());
-  const displayAmount = allowCustomAmount
-    ? (Number.isFinite(parsedDraftAmount) && parsedDraftAmount > 0 ? parsedDraftAmount : 0)
-    : amount;
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'signing' | 'sending' | 'confirming' | 'complete'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successSignature, setSuccessSignature] = useState<string | null>(null);
+  const [draftAmount, setDraftAmount] = useState(() => (Number.isFinite(amount) && amount > 0 ? amount : 10));
 
   useEffect(() => {
     if (!allowCustomAmount) {
-      setDraftAmount(Number.isFinite(amount) && amount > 0 ? String(amount) : '');
+      setDraftAmount(Number.isFinite(amount) && amount > 0 ? amount : 10);
     }
-    try {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const tx = params.get('tx_id');
-        if (tx) setPendingTxId(tx);
-      }
-    } catch {}
   }, [allowCustomAmount, amount]);
+
+  const safeMerchantPubkey = useMemo(() => merchantPubkey?.trim() || '', [merchantPubkey]);
+  const effectiveAmount = allowCustomAmount ? draftAmount : amount;
+  const isAmountValid = Number.isFinite(effectiveAmount) && effectiveAmount > 0;
+  const isReadyToPay = connected && !!safeMerchantPubkey && !!signTransaction && isAmountValid && !loading;
+
+  const statusLabel = useMemo(() => {
+    switch (status) {
+      case 'verifying':
+        return 'Validating payment details...';
+      case 'signing':
+        return 'Waiting for wallet signature...';
+      case 'sending':
+        return 'Submitting shielded transaction...';
+      case 'confirming':
+        return 'Confirming transaction on-chain...';
+      case 'complete':
+        return 'Payment confirmed!';
+      default:
+        return 'Ready to pay';
+    }
+  }, [status]);
+
+  const explorerUrl = successSignature ? `https://explorer.solana.com/tx/${successSignature}?cluster=devnet` : undefined;
 
   const handlePayment = async () => {
     if (!publicKey) {
@@ -78,60 +96,60 @@ export default function ShieldedCheckout({
       return;
     }
 
-    const parsedAmount = Number.parseFloat(String(draftAmount).trim());
-    const effectiveAmount = allowCustomAmount ? parsedAmount : amount;
-
-    if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
-      setErrorMessage('Invalid payment amount.');
+    if (!safeMerchantPubkey) {
+      setErrorMessage('Recipient address is missing.');
       return;
     }
 
     if (!signTransaction) {
-      setErrorMessage('Connected wallet cannot sign transactions.');
+      setErrorMessage('Your connected wallet cannot sign transactions.');
+      return;
+    }
+
+    if (!isAmountValid) {
+      setErrorMessage('Please provide a valid payment amount.');
       return;
     }
 
     setLoading(true);
     setStatus('verifying');
     setErrorMessage(null);
+    setSuccessMessage(null);
+    setSuccessSignature(null);
 
     try {
       const teeConnection = new Connection(TEE_RPC, 'processed');
-      const atomicAmount = Math.floor(effectiveAmount * 1_000_000);
+      const atomicAmount = Math.floor(effectiveAmount * Math.pow(10, USDC_DECIMALS));
 
-      const tx = await buildShieldedTransfer(
-        publicKey.toBase58(),
-        merchantPubkey,
-        atomicAmount
-      );
+      const tx = await buildShieldedTransfer(publicKey.toBase58(), safeMerchantPubkey, atomicAmount);
 
       setStatus('signing');
       const signedTx = await signTransaction(tx);
+      if (!signedTx) throw new Error('Transaction signing failed.');
+
       setStatus('sending');
-      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: true,
-        maxRetries: 5,
-      });
+      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
+      if (!signature) throw new Error('Transaction submission failed.');
 
       const initialTx = {
         id: signature,
-        staff: endpointName || merchantPubkey,
+        staff: endpointName || safeMerchantPubkey,
         category: endpointCategory || 'Registry',
-        source_name: endpointName || merchantPubkey,
+        source_name: endpointName || safeMerchantPubkey,
         source_category: endpointCategory || 'Registry',
         amount: effectiveAmount,
         time: new Date().toISOString(),
         status: 'SHIELDED_PENDING',
-      };
+      } as any;
 
-      const history = readStoredHistory();
-      writeStoredHistory([initialTx, ...history]);
+      writeStoredHistory([initialTx, ...readStoredHistory()]);
 
       setStatus('confirming');
       await waitForSignatureConfirmation(teeConnection, signature);
 
-      // If we have a pending tx id upstream, mark it settled in Supabase
       try {
+        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const pendingTxId = params?.get('tx_id') || null;
         if (pendingTxId) {
           const supabase = createSupabaseBrowserClient();
           await supabase.from('transactions').update({ status: 'settled', tx_hash: signature }).eq('id', pendingTxId);
@@ -141,55 +159,31 @@ export default function ShieldedCheckout({
       }
 
       const finalHistory = readStoredHistory();
-      const updatedHistory = finalHistory.map((t: any) =>
-        t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED', source_name: endpointName || merchantPubkey, source_category: endpointCategory || 'Registry' } : t
-      );
+      const updatedHistory = finalHistory.map((t: any) => (t.id === signature ? { ...t, status: 'SHIELDED_CONFIRMED', source_name: endpointName || safeMerchantPubkey, source_category: endpointCategory || 'Registry' } : t));
       writeStoredHistory(updatedHistory);
 
-      setStatus('success');
-      setCloseCountdown(5);
-    } catch (error: unknown) {
-      console.error('TEE Payment Error:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'The TEE RPC timed out or rejected the transaction.');
+      setStatus('complete');
+      setSuccessSignature(signature);
+      setSuccessMessage('Shielded payment confirmed and stored locally.');
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'The TEE RPC timed out or rejected the transaction.');
       setStatus('idle');
     } finally {
       setLoading(false);
+      setStatus((current) => (current === 'complete' ? current : 'idle'));
     }
   };
 
   const handleClose = () => {
     if (typeof window === 'undefined') return;
-
     try {
       window.close();
-    } catch {
-      // ignore any close failure
-    }
+    } catch {}
 
     setTimeout(() => {
-      if (!window.closed) {
-        window.location.replace('https://phantom.app/');
-      }
+      if (!window.closed) window.location.replace('https://phantom.app/');
     }, 120);
   };
-
-  useEffect(() => {
-    if (status !== 'success') {
-      return undefined;
-    }
-
-    const countdownInterval = window.setInterval(() => {
-      setCloseCountdown((current) => {
-        if (current <= 1) {
-          handleClose();
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(countdownInterval);
-  }, [status]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-50/95 dark:bg-black/95 backdrop-blur-sm p-4">
@@ -197,69 +191,32 @@ export default function ShieldedCheckout({
         <div className="flex flex-col gap-6 text-center">
           <div>
             <h3 className="text-2xl font-bold text-zinc-900 dark:text-white">Shielded Checkout</h3>
-            <p className="text-zinc-500 text-sm mt-1">Secured via MagicBlock TEE</p>
+            {recipientName ? <p className="text-zinc-500 text-sm mt-1">Paying {recipientName}</p> : <p className="text-zinc-500 text-sm mt-1">Protected via MagicBlock TEE</p>}
           </div>
 
           {allowCustomAmount ? (
             <div className="rounded-2xl border border-zinc-200 bg-zinc-100 p-4 text-left dark:border-zinc-800 dark:bg-zinc-900/70">
               <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Amount (USDC)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={draftAmount}
-                onChange={(event) => {
-                  const raw = event.target.value;
-                  setDraftAmount(raw);
-                }}
-                className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-center text-2xl font-black text-zinc-900 outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
-                placeholder="Enter amount"
-                disabled={status === 'success'}
-              />
+              <input type="number" min="0.01" step="0.01" value={String(draftAmount)} onChange={(e) => setDraftAmount(Number(e.target.value))} className="mt-2 w-full rounded-md border px-3 py-2" />
             </div>
           ) : null}
 
-          {!connected ? (
-            <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
-              <p className="text-sm text-amber-600 dark:text-amber-400">Connect your Solana wallet to continue.</p>
-              <div className="mt-4 flex justify-center">
-                <WalletMultiButton className="!bg-zinc-900 !text-white !rounded-xl !font-semibold !text-sm !px-4 !py-3" />
-              </div>
+          <div>
+            <button disabled={!isReadyToPay} onClick={handlePayment} className="w-full rounded-2xl bg-purple-600 py-3 font-black text-white disabled:opacity-40">
+              {statusLabel}
+            </button>
+          </div>
+
+          {errorMessage ? <p className="text-sm text-red-500">{errorMessage}</p> : null}
+          {successMessage ? (
+            <div>
+              <p className="text-sm text-emerald-500">{successMessage}</p>
+              {explorerUrl ? (
+                <a href={explorerUrl} target="_blank" rel="noreferrer" className="text-sm text-zinc-500 underline">
+                  View on explorer
+                </a>
+              ) : null}
             </div>
-          ) : null}
-
-          <button
-            onClick={handlePayment}
-            disabled={!connected || loading || status === 'success'}
-            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold py-4 rounded-2xl text-lg transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-green-500/20"
-          >
-            {loading ? (
-              <div className="flex items-center justify-center gap-3">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="capitalize">{status}...</span>
-              </div>
-            ) : status === 'success' ? (
-              'Payment Completed'
-            ) : (
-              `Pay ${allowCustomAmount ? (displayAmount > 0 ? displayAmount : '0.00') : amount} USDC (Shielded)`
-            )}
-          </button>
-
-          {status === 'success' ? (
-            <div className="space-y-3">
-              <p className="text-sm text-green-600">Payment successful. This page will close in {closeCountdown} second{closeCountdown === 1 ? '' : 's'}.</p>
-              <button
-                type="button"
-                onClick={handleClose}
-                className="w-full rounded-2xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white hover:bg-purple-500 transition-colors shadow-lg shadow-purple-500/10"
-              >
-                Return to Phantom Home
-              </button>
-            </div>
-          ) : null}
-
-          {errorMessage ? (
-            <p className="text-sm text-red-500">{errorMessage}</p>
           ) : null}
         </div>
       </div>

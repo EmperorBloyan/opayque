@@ -21,13 +21,14 @@ function CheckoutContent() {
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-600">Secure Checkout</p>
         <h1 className="mt-2 text-3xl font-black italic uppercase tracking-tighter">{recipientName}</h1>
       </div>
-      <ShieldedCheckout
-        amount={safeAmount}
-        merchantPubkey={recipientAddress}
-        endpointName={recipientName}
-        endpointCategory={recipientCategory}
-        allowCustomAmount={safeAmount <= 0}
-      />
+  <ShieldedCheckout
+    amount={safeAmount}
+    merchantPubkey={recipientAddress}
+    endpointName={recipientName}
+    endpointCategory={recipientCategory}
+    allowCustomAmount={safeAmount <= 0}
+    recipientName={recipientName}
+  />
     </div>
   );
 }

@@ -21,6 +21,7 @@ export default function MerchantDashboard() {
   const [showVault, setShowVault] = useState(false);
   const [transactions, setTransactions] = useState<Array<{ signature: string; amount: number; time: string; status: string }>>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
   const transactionSignatures = useRef<Set<string>>(new Set());
   const connectionRef = useRef<Connection | null>(null);
   const supabaseChannelRef = useRef<any | null>(null);
@@ -52,6 +53,7 @@ export default function MerchantDashboard() {
     return () => clearInterval(interval);
   }, [publicKey, showVault]);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (!publicKey || !showVault || !merchantAta) return;
 
@@ -225,6 +227,8 @@ export default function MerchantDashboard() {
     if (!publicKey || !mainWallet || privateBalance <= 0) return;
 
     setFlushLoading(true);
+    setFlushMessage(null);
+
     try {
       const tx = await buildWithdraw(publicKey.toBase58(), mainWallet, privateBalance);
       const signedTx = await signTransaction!(tx);
@@ -236,12 +240,13 @@ export default function MerchantDashboard() {
 
       await waitForSignatureConfirmation(connection, sig);
 
-      alert(`✅ Flush Successful!\nTx: ${sig.slice(0,12)}...`);
+      setFlushMessage(`Flush successful — transaction ${sig.slice(0, 12)}...`);
       setPrivateBalance(0);
     } catch (e: any) {
-      alert("Flush failed: " + e.message);
+      setFlushMessage(`Flush failed: ${e?.message || 'unexpected error'}`);
+    } finally {
+      setFlushLoading(false);
     }
-    setFlushLoading(false);
   };
 
   if (!connected || !publicKey) {
@@ -300,6 +305,11 @@ export default function MerchantDashboard() {
             >
               {flushLoading ? "Flushing..." : "Execute Flush"}
             </button>
+            {flushMessage ? (
+              <div className="mt-4 rounded-2xl border border-zinc-700 bg-black/50 px-5 py-4 text-sm text-zinc-200">
+                {flushMessage}
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -46,7 +46,7 @@ function CheckoutContent() {
         </div>
       </div>
 
-      <ShieldedCheckout amount={safeAmount} merchantPubkey={address ?? ""} allowCustomAmount={safeAmount <= 0} />
+      <ShieldedCheckout amount={safeAmount} merchantPubkey={address ?? ""} recipientName={name} allowCustomAmount={safeAmount <= 0} />
     </main>
   );
 }
