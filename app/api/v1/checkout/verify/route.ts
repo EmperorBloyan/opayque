@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Connection } from '@solana/web3.js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-
-// Assuming you have a utility function for dispatching
-import { dispatchWebhook } from '@/lib/webhooks'; 
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { dispatchWebhook } from '@/lib/webhooks';
 
 const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com', 'finalized');
 
@@ -29,7 +26,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Fetch the merchant's configured webhook URL from Supabase
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createSupabaseServerClient(request);
     const { data: developerData, error } = await supabase
       .from('developer_projects')
       .select('webhook_url, secret_api_key_hash')
