@@ -1,19 +1,10 @@
 "use client";
 
-<<<<<<< HEAD
-import React, { useEffect, useState } from "react";
-import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2 } from "lucide-react";
-=======
-import React, { useCallback, useEffect, useState } from "react";
-import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
->>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
-"use client";
-
 import React, { useCallback, useEffect, useState } from "react";
 import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveMerchantId, getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
+import { getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
 import { formatPairingCountdown, normalizePairingCode } from "@/lib/terminal/pairing";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
@@ -112,7 +103,6 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
 
   const pairingChannelRef = React.useRef<any | null>(null);
   const fleetChannelRef = React.useRef<any | null>(null);
-  const labelRefreshTimer = React.useRef<number | null>(null);
 
   const closePairingModal = React.useCallback(() => {
     setIsPairingOpen(false);
@@ -142,6 +132,45 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
     const interval = window.setInterval(tick, 1000);
     return () => window.clearInterval(interval);
   }, [isPairingOpen, pairingExpiresAt]);
+
+  const loadFromSupabase = useCallback(async () => {
+    if (!resolvedMerchantId) {
+      return;
+    }
+
+    setIsLoadingTerminals(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("terminals")
+        .select("*")
+        .eq("merchant_id", resolvedMerchantId)
+        .order("last_active", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      const mapped = (data ?? []).map((row: any) => ({
+        id: row.id,
+        label: row.terminal_label ?? "Fleet Terminal",
+        status: row.status === "online" ? "online" : "offline",
+        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+        accessCode: normalizePairingCode(row.device_token ?? "") || createAccessCode(),
+        isActive: row.status === "online",
+        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+      }));
+
+      setTerminals?.(mapped);
+      if (mapped.length > 0 && !authCode) {
+        setAuthCode(mapped[0].accessCode ?? createAccessCode());
+      }
+    } catch (error) {
+      console.error("Failed to load terminals from Supabase", error);
+    } finally {
+      setIsLoadingTerminals(false);
+    }
+  }, [resolvedMerchantId, authCode, setTerminals]);
 
   const refreshAuthCode = async (terminalLabelOverride?: string) => {
     if (isRefreshingCode) return;
@@ -190,7 +219,6 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       setPairingState("waiting");
       try {
         const supabase = createSupabaseBrowserClient();
-        // clean previous channel
         if (pairingChannelRef.current) {
           void supabase.removeChannel(pairingChannelRef.current);
           pairingChannelRef.current = null;
@@ -236,49 +264,6 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       setIsRefreshingCode(false);
     }
   };
-
-<<<<<<< HEAD
-  const loadFromSupabase = async () => {
-    if (!resolvedMerchantId) {
-      return;
-    }
-
-    setIsLoadingTerminals(true);
-=======
-  const loadFromSupabase = useCallback(async () => {
->>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("terminals")
-        .select("*")
-        .eq("merchant_id", resolvedMerchantId)
-        .order("last_active", { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      const mapped = (data ?? []).map((row: any) => ({
-        id: row.id,
-        label: row.terminal_label ?? "Fleet Terminal",
-        status: row.status === "online" ? "online" : "offline",
-        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
-        accessCode: normalizePairingCode(row.device_token ?? "") || createAccessCode(),
-        isActive: row.status === "online",
-        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-      }));
-
-      setTerminals?.(mapped);
-      if (mapped.length > 0 && !authCode) {
-        setAuthCode(mapped[0].accessCode ?? createAccessCode());
-      }
-    } catch (error) {
-      console.error("Failed to load terminals from Supabase", error);
-    } finally {
-      setIsLoadingTerminals(false);
-    }
-  }, [merchantId, authCode, setTerminals]);
 
   const persistTerminals = async (updated: Terminal[]) => {
     setTerminals?.(updated);
@@ -335,14 +320,11 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   }, []);
 
   useEffect(() => {
-    void loadFromSupabase();
-<<<<<<< HEAD
-  }, [resolvedMerchantId]);
-
-  useEffect(() => {
     if (!resolvedMerchantId) {
       return;
     }
+
+    void loadFromSupabase();
 
     const supabase = createSupabaseBrowserClient();
     if (fleetChannelRef.current) {
@@ -354,60 +336,25 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       .channel(`fleet:${resolvedMerchantId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "terminals", filter: `merchant_id=eq.${resolvedMerchantId}` },
-        () => {
-          void loadFromSupabase();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "terminals", filter: `merchant_id=eq.${resolvedMerchantId}` },
-=======
-    const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`terminals:${merchantId}`)
-      .on(
-        "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "terminals",
-          filter: `merchant_id=eq.${merchantId}`,
+          filter: `merchant_id=eq.${resolvedMerchantId}`,
         },
->>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
         () => {
           void loadFromSupabase();
         }
       )
       .subscribe();
 
-<<<<<<< HEAD
     fleetChannelRef.current = channel;
 
     return () => {
       void supabase.removeChannel(channel);
       fleetChannelRef.current = null;
     };
-  }, [resolvedMerchantId]);
-=======
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [merchantId, loadFromSupabase]);
->>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
-
-  const refreshCodes = async () => {
-    const updated = safeTerminals.map((terminal) => ({
-      ...terminal,
-      accessCode: createAccessCode(),
-      isActive: false,
-      lastLoginAt: null,
-      status: "offline" as const,
-    }));
-    await persistTerminals(updated);
-    setAuthCode(updated[0]?.accessCode ?? createAccessCode());
-    setTimeLeft("10M 00S");
-  };
+  }, [resolvedMerchantId, loadFromSupabase]);
 
   const pairNewTerminal = async () => {
     const defaultLabel = createDefaultTerminalLabel();
@@ -450,8 +397,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
           </p>
         </div>
 
-<<<<<<< HEAD
-        <div className="flex flex-col gap-3">
+        <div className="flex gap-3">
           <button
             onClick={() => {
               void pairNewTerminal();
@@ -460,24 +406,13 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
             className="flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200 disabled:opacity-60"
           >
             <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
-=======
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              setAuthCode(createAccessCode());
-              setTimeLeft("09M 57S");
-              setIsPairingOpen(true);
-            }}
-            className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-black transition-all hover:bg-zinc-200"
-          >
-            <LucidePlus size={14} /> Pair New
           </button>
           <button
             onClick={() => void loadFromSupabase()}
-            className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-300 transition-all hover:bg-zinc-800"
+            disabled={isLoadingTerminals}
+            className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-300 transition-all hover:bg-zinc-800 disabled:opacity-60"
           >
-            <LucideRefreshCw size={14} /> Refresh
->>>>>>> 395848a (feat: complete developer hub, sandbox environment, and webhook api integrations)
+            <LucideRefreshCw size={14} className={isLoadingTerminals ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
       </div>
