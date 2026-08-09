@@ -1,68 +1,12 @@
 "use client";
 
-<<<<<<< HEAD
-import { Component, useState, useEffect, useCallback, useRef, type ChangeEvent, type FormEvent, type ErrorInfo, type ReactNode } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { LucideEdit3 } from "lucide-react";
-import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
-=======
 import { FormEvent, useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Connection } from "@solana/web3.js";
 import { LucideBell, LucideX } from "lucide-react";
-import { getActiveMerchantId, getActiveSession } from "@/lib/crypto/session";
->>>>>>> 5142c43 (feat: complete developer hub, sandbox environment, and webhook api integrations)
+import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
 import type { TransactionRecord } from "@/types/database";
 
-<<<<<<< HEAD
-interface TerminalPaymentErrorBoundaryProps {
-  children: ReactNode;
-  onReset: () => void;
-}
-
-interface TerminalPaymentErrorBoundaryState {
-  hasError: boolean;
-}
-
-class TerminalPaymentErrorBoundary extends Component<TerminalPaymentErrorBoundaryProps, TerminalPaymentErrorBoundaryState> {
-  state: TerminalPaymentErrorBoundaryState = { hasError: false };
-
-  static getDerivedStateFromError(): TerminalPaymentErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Terminal payment view crashed", error, errorInfo);
-  }
-
-  handleReset = () => {
-    this.setState({ hasError: false });
-    this.props.onReset();
-  };
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-8 text-center text-white shadow-2xl">
-          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Payment unavailable</p>
-          <h3 className="mt-3 text-2xl font-black">The payment view hit a temporary issue.</h3>
-          <p className="mt-2 text-sm text-zinc-400">You can recover safely and return to the checkout screen.</p>
-          <button
-            type="button"
-            onClick={this.handleReset}
-            className="mt-6 rounded-full bg-white px-5 py-3 text-sm font-black uppercase text-black"
-          >
-            Back to checkout
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-=======
 interface TerminalNotification {
   id: string;
   amount: number;
@@ -77,7 +21,6 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizePairingCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
->>>>>>> 5142c43 (feat: complete developer hub, sandbox environment, and webhook api integrations)
 }
 
 function loadStoredNotifications() {
@@ -103,6 +46,7 @@ function saveStoredNotifications(items: TerminalNotification[]) {
   }
 }
 
+/*
 export default function TerminalPage() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"PAIRING" | "POS" | "PAYING">("PAIRING");
@@ -116,17 +60,14 @@ export default function TerminalPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
-<<<<<<< HEAD
   const [isPairing, setIsPairing] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState<string>("");
-=======
   const [merchantName, setMerchantName] = useState<string>("Opayque");
   const [notifications, setNotifications] = useState<TerminalNotification[]>([]);
   const [isBellOpen, setIsBellOpen] = useState(false);
   const [settledDetails, setSettledDetails] = useState<{ amount: number; walletSnippet: string; asset: string } | null>(null);
->>>>>>> 5142c43 (feat: complete developer hub, sandbox environment, and webhook api integrations)
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +128,8 @@ export default function TerminalPage() {
       }
     }
 
-    export default function TerminalPage() {
+  */
+  export default function TerminalPage() {
       const [mounted, setMounted] = useState(false);
       const [step, setStep] = useState<"PAIRING" | "POS" | "PAYING">("PAIRING");
       const [terminalId, setTerminalId] = useState<string | null>(null);

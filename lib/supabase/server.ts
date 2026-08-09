@@ -33,28 +33,12 @@ function getAuthToken(request?: Request | null) {
 }
 
 export function createSupabaseServerClient(request?: Request | null) {
-function getAuthToken(request?: Request | null) {
-  if (!request) return null;
-
-  const authHeader = request.headers.get('authorization') || '';
-  if (authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.slice(7).trim();
-  }
-
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-export function createSupabaseServerClient(request?: Request | null) {
->>>>>>> 5142c43 (feat: complete developer hub, sandbox environment, and webhook api integrations)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
     const err = new Error('Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     return createChainableFallbackClient(err);
-  }
   }
   const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 

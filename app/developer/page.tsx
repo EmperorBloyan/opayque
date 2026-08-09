@@ -319,17 +319,17 @@ export default function DeveloperHub() {
                   <span>POST /api/v1/sessions</span>
                 </div>
                 <div className="p-4 overflow-x-auto text-xs font-mono">
-<pre className="text-[#00ffcc]"><span className="text-pink-500">const</span> response = <span className="text-blue-400">await</span> <span className="text-yellow-200">fetch</span>(<span className="text-green-400">'https://opayque.com/api/v1/sessions'</span>, {
+<pre className="text-[#00ffcc]"><span className="text-pink-500">const</span> response = <span className="text-blue-400">await</span> <span className="text-yellow-200">fetch</span>(<span className="text-green-400">'https://opayque.com/api/v1/sessions'</span>, {'{'}
   method: <span className="text-green-400">'POST'</span>,
-  headers: {
+  headers: {'{'}
     <span className="text-green-400">'Authorization'</span>: <span className="text-green-400">'Bearer osk_live_...'</span>,
     <span className="text-green-400">'Content-Type'</span>: <span className="text-green-400">'application/json'</span>
-  },
-  body: <span className="text-yellow-200">JSON</span>.<span className="text-blue-200">stringify</span>({
+  {'}'},
+  body: <span className="text-yellow-200">JSON</span>.<span className="text-blue-200">stringify</span>({'{'}
     order_id: <span className="text-green-400">"ORD-8821"</span>,
     amount_fiat: <span className="text-orange-400">15.00</span>
-  })
-});</pre>
+  {'}'})
+{'}'});</pre>
                 </div>
               </div>
             </div>

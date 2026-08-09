@@ -53,7 +53,6 @@ export default function MerchantDashboard() {
     return () => clearInterval(interval);
   }, [publicKey, showVault]);
 
-<<<<<<< HEAD
   useEffect(() => {
     if (!publicKey || !showVault || !merchantAta) return;
 
