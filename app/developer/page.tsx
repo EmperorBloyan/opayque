@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PublicKey } from '@solana/web3.js';
 import {
   Terminal,
   Key,
-  ShieldCheck,
   BookOpen,
   Zap,
   Copy,
   Check,
-  Lock,
   Code2,
   ArrowRight,
   X,
@@ -26,7 +25,11 @@ export default function DeveloperPage() {
 
   // Form inputs & feedback state
   const [terminalInput, setTerminalInput] = useState<string>('');
-  const [passkeyInput, setPasskeyInput] = useState<string>('');
+  const [projectName, setProjectName] = useState<string>('');
+  const [destinationWallet, setDestinationWallet] = useState<string>('');
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const [emailOrGithub, setEmailOrGithub] = useState<string>('');
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
 
   const mockApiKey = 'opq_live_9x8f7d6e5c4b3a210';
@@ -39,13 +42,52 @@ export default function DeveloperPage() {
 
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('security'); // Step 1 -> Step 2
+    setStep('security');
   };
 
   const handleSecuritySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('dashboard'); // Step 2 -> Active Dashboard
+    setOnboardingError(null);
+
+    if (!projectName.trim() || !destinationWallet.trim() || !webhookUrl.trim() || !emailOrGithub.trim()) {
+      setOnboardingError('Please complete all onboarding fields');
+      return;
+    }
+
+    try {
+      new PublicKey(destinationWallet.trim());
+    } catch {
+      setOnboardingError('Enter a valid Solana destination wallet address');
+      return;
+    }
+
+    try {
+      const parsedWebhookUrl = new URL(webhookUrl.trim());
+      if (!['http:', 'https:'].includes(parsedWebhookUrl.protocol)) {
+        throw new Error('Invalid webhook URL');
+      }
+    } catch {
+      setOnboardingError('Enter a valid HTTP or HTTPS webhook URL');
+      return;
+    }
+
+    const contact = emailOrGithub.trim();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+    const isGithub = /^(https?:\/\/github\.com\/|@)[\w-]+\/?$/i.test(contact);
+    if (!isEmail && !isGithub) {
+      setOnboardingError('Enter a valid email address or GitHub profile');
+      return;
+    }
+
+    window.localStorage.setItem('opayque_developer_onboarded', 'true');
+    setStep('dashboard');
   };
+
+  useEffect(() => {
+    if (window.localStorage.getItem('opayque_developer_onboarded') === 'true') {
+      setStep('dashboard');
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#050508] text-white flex flex-col font-mono selection:bg-[#00ffcc]/30 selection:text-[#00ffcc]">
@@ -223,47 +265,63 @@ export default function DeveloperPage() {
         </div>
       )}
 
-      {/* STEP 2 POP-UP MODAL: MASTER PASSKEY SECURITY GATE */}
+      {/* STEP 2 POP-UP MODAL: WEBSITE ONBOARDING */}
       {step === 'security' && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0b0c10] border border-[#ffb86c]/40 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl shadow-[#ffb86c]/10 relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center space-x-3 text-[#ffb86c]">
-              <ShieldCheck className="w-7 h-7" />
-              <span className="text-xs font-bold uppercase tracking-widest text-[#ffb86c]">
-                Step 02 // Security Gate
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white uppercase tracking-tight">
-                Master Passkey Auth
-              </h2>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Authenticate with your master passkey or developer passphrase to grant endpoint access to this environment.
-              </p>
-            </div>
-
-            <form onSubmit={handleSecuritySubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wider">
-                  Security Passkey / Authorization Token
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={passkeyInput}
-                  onChange={(e) => setPasskeyInput(e.target.value)}
-                  placeholder="••••••••••••••••"
-                  className="w-full px-4 py-3 rounded-xl bg-[#050508] border border-[#1f293d] text-white focus:outline-none focus:border-[#ffb86c] transition-colors text-sm font-mono placeholder:text-gray-600"
-                />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md space-y-6 overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-900/50 p-8 shadow-2xl backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200">
+            <div className="pointer-events-none absolute inset-0 bg-purple-600/5" />
+            <div className="relative flex flex-col items-center text-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-purple-500/30 bg-purple-600/20 text-purple-400 shadow-[0_0_35px_rgba(168,85,247,0.2)]">
+                <Code2 className="h-9 w-9" />
               </div>
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Establish Website Identity</p>
+              <h2 className="mt-3 text-3xl font-black italic uppercase tracking-tighter text-white">Onboard your website</h2>
+            </div>
+
+            <form onSubmit={handleSecuritySubmit} className="relative space-y-4">
+              <input
+                type="text"
+                required
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Project Name"
+                className="w-full rounded-2xl border border-white/5 bg-black/40 px-4 py-4 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-purple-500/50"
+              />
+              <input
+                type="text"
+                required
+                value={destinationWallet}
+                onChange={(e) => setDestinationWallet(e.target.value.trim())}
+                placeholder="Destination Wallet Address"
+                className={`w-full rounded-2xl border ${onboardingError?.toLowerCase().includes('wallet') ? 'border-red-500/50' : 'border-white/5'} bg-black/40 px-4 py-4 font-mono text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-purple-500/50`}
+              />
+              <input
+                type="url"
+                required
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="Webhook URL"
+                className="w-full rounded-2xl border border-white/5 bg-black/40 px-4 py-4 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-purple-500/50"
+              />
+              <input
+                type="text"
+                required
+                value={emailOrGithub}
+                onChange={(e) => setEmailOrGithub(e.target.value)}
+                placeholder="Email / GitHub"
+                className="w-full rounded-2xl border border-white/5 bg-black/40 px-4 py-4 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-purple-500/50"
+              />
+
+              {onboardingError && (
+                <p className="px-2 text-[10px] font-bold uppercase tracking-tight text-red-400">{onboardingError}</p>
+              )}
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-xl bg-[#ffb86c] text-black font-extrabold uppercase tracking-wider text-xs hover:bg-[#ffb86c]/90 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-[#ffb86c]/20"
+                className="group relative w-full overflow-hidden rounded-2xl bg-purple-600 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
               >
-                <span>Authorize Access</span>
-                <Lock className="w-4 h-4" />
+                <span className="relative z-10 flex items-center justify-center gap-2">Onboard <ArrowRight className="h-4 w-4" /></span>
+                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
               </button>
             </form>
           </div>
