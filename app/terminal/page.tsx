@@ -3,7 +3,7 @@
 import { FormEvent, useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { LucideBell, LucideX } from "lucide-react";
-import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
+import { createSessionChallenge, createTerminalSession, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { TransactionRecord } from "@/types/database";
 
@@ -234,51 +234,32 @@ export default function TerminalPage() {
         setToast("Pairing terminal...");
 
         try {
-          const supabase = createSupabaseBrowserClient();
-          const merchantId = getActiveMerchantId();
-          let terminalRows: Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null; terminal_label?: string | null }> = [];
+          const response = await fetch("/api/terminal/pairing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "verify", code: normalizedCode }),
+          });
+          const payload = await response.json().catch(() => null);
 
-          const merchantCandidates = [merchantId, "merchant-vault"].filter(Boolean);
-
-          for (const candidateMerchantId of merchantCandidates) {
-            const { data, error: listError } = await supabase
-              .from("terminals")
-              .select("id, device_token, status, merchant_id, terminal_label")
-              .eq("merchant_id", candidateMerchantId);
-
-            if (listError) {
-              throw listError;
-            }
-
-            if (data && data.length > 0) {
-              terminalRows = data as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null; terminal_label?: string | null }>;
-              break;
-            }
+          if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error || "Pairing code rejected");
           }
 
-          if (!terminalRows || terminalRows.length === 0) {
-            const { data: fallbackRows, error: fallbackError } = await supabase.from("terminals").select("id, device_token, status, merchant_id, terminal_label");
-            if (fallbackError) throw fallbackError;
-            terminalRows = (fallbackRows ?? []) as Array<{ id: string; device_token?: string | null; status?: string | null; merchant_id?: string | null; terminal_label?: string | null }>;
+          const merchantId = String(payload.merchantId ?? "");
+          const walletAddress = String(payload.walletAddress ?? "");
+          if (!merchantId || !walletAddress) {
+            throw new Error("Pairing response is missing merchant details");
           }
 
-          const matchedTerminal = terminalRows.find((terminal) => normalizePairingCode(String(terminal.device_token ?? "")) === normalizedCode);
-          if (!matchedTerminal) {
-            throw new Error("Pairing code rejected");
-          }
-
-          const resultingMerchantName = matchedTerminal.terminal_label || matchedTerminal.merchant_id || "Opayque";
-          setMerchantName(resultingMerchantName);
-
-          await supabase.from("terminals").update({ status: "online", last_active: new Date().toISOString() }).eq("id", matchedTerminal.id);
+          setMerchantName(payload.merchantName || "Opayque Merchant");
 
           // Create a terminal session for local pairing
           const challenge = createSessionChallenge();
           const session = await createTerminalSession({
-            merchantId: matchedTerminal.merchant_id ?? getActiveMerchantId(),
-            walletAddress: matchedTerminal.merchant_id ?? "",
+            merchantId,
+            walletAddress,
             nonce: challenge.nonce,
-            walletSignature: new TextEncoder().encode(`terminal-pair:${matchedTerminal.merchant_id ?? ''}`),
+            walletSignature: new TextEncoder().encode(`terminal-pair:${merchantId}`),
           });
 
           setActiveSession(session);
@@ -288,7 +269,7 @@ export default function TerminalPage() {
             const resp = await fetch(`/api/terminal/pair`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: matchedTerminal.terminal_label ?? createDefaultTerminalLabelLocal() }),
+              body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: payload.terminalLabel ?? createDefaultTerminalLabelLocal() }),
             });
             const body = await resp.json().catch(() => null);
             if (resp.ok && body?.success && body?.data?.terminal) {
@@ -298,7 +279,7 @@ export default function TerminalPage() {
                 if (typeof window !== "undefined") {
                   window.localStorage.setItem("opayque_terminal_id", String(t.id));
                   if (deviceToken) window.localStorage.setItem("opayque_terminal_token", String(deviceToken));
-                  window.localStorage.setItem("opayque_terminal_label", String(t.terminal_label ?? matchedTerminal.terminal_label ?? createDefaultTerminalLabelLocal()));
+                  window.localStorage.setItem("opayque_terminal_label", String(t.terminal_label ?? payload.terminalLabel ?? createDefaultTerminalLabelLocal()));
                 }
               } catch {}
               setTerminalId(String(t.id));
@@ -561,18 +542,25 @@ export default function TerminalPage() {
 
       const qrUri = buildUri();
       const openCount = notifications.filter((item) => Date.now() - item.createdAt < ONE_DAY_MS).length;
+      const isAuthenticated = Boolean(activeSession?.merchantId && activeSession.walletAddress);
 
       return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
           <div className="w-full max-w-md relative">
-            <div className="absolute right-0 top-0 flex items-center gap-3">
-              <button type="button" onClick={() => setIsBellOpen((prev) => !prev)} className="relative inline-flex items-center justify-center h-11 w-11 rounded-3xl border border-white/10 bg-zinc-950/80 text-white transition hover:border-white/20" aria-label="Transaction notifications">
-                <LucideBell size={20} />
-                {openCount > 0 ? <span className="absolute -top-1 -right-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-emerald-500 text-[10px] font-black text-black">{openCount}</span> : null}
-              </button>
-            </div>
+            <header className="mb-10 flex items-start justify-between border-b border-white/10 pb-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-zinc-500">Opayque Terminal</p>
+                <h1 className="mt-2 text-2xl font-black tracking-tight text-white">{merchantName}</h1>
+              </div>
+              {isAuthenticated ? (
+                <button type="button" onClick={() => setIsBellOpen((prev) => !prev)} className="relative inline-flex h-11 w-11 items-center justify-center rounded-3xl border border-white/10 bg-zinc-950/80 text-white transition hover:border-white/20" aria-label="Transaction notifications">
+                  <LucideBell size={20} />
+                  {openCount > 0 ? <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-emerald-500 text-[10px] font-black text-black">{openCount}</span> : null}
+                </button>
+              ) : null}
+            </header>
 
-            {isBellOpen && (
+            {isAuthenticated && isBellOpen && (
               <div className="absolute right-0 top-14 z-20 w-[320px] rounded-3xl border border-white/10 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-xl">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
