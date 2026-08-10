@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PublicKey } from '@solana/web3.js';
 import {
   Terminal,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function DeveloperPage() {
+  const router = useRouter();
   // Onboarding sequence state: 'terminal' -> 'security' -> 'dashboard'
   const [step, setStep] = useState<'terminal' | 'security' | 'dashboard'>('terminal');
 
@@ -82,6 +84,10 @@ export default function DeveloperPage() {
     window.localStorage.setItem('opayque_developer_onboarded', 'true');
     setStep('dashboard');
   };
+
+  useEffect(() => {
+    router.replace('/developer/overview');
+  }, [router]);
 
   useEffect(() => {
     if (window.localStorage.getItem('opayque_developer_onboarded') === 'true') {
