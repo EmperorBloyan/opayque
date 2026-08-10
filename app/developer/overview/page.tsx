@@ -103,111 +103,66 @@ export default function DeveloperOverviewPage() {
 
       {/* CORE DEVELOPER WORKSPACE CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Production API Key Card */}
-        <div className="p-6 rounded-3xl bg-[#0b0c10] border border-[#1f293d] space-y-6 flex flex-col justify-between hover:border-purple-500/40 transition-all">
-          <div className="flex items-start space-x-4">
-            <div className="p-3 rounded-2xl bg-purple-950/40 border border-purple-800/40 text-purple-400">
-              <Key className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-lg font-extrabold uppercase tracking-wide text-white">
-                Production API Key
-              </h3>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">
-                Bearer Token Authentication
-              </p>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-[#050508] border border-[#1f293d] flex items-center justify-between font-mono text-xs sm:text-sm text-purple-300">
-            <span className="truncate mr-2">
-              {showKey ? mockApiKey : '••••••••••••••••••••••••••••••••'}
-            </span>
-            <div className="flex items-center space-x-1 flex-shrink-0">
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="p-2 rounded-lg hover:bg-purple-900/30 text-gray-400 hover:text-white transition-colors"
-                title={showKey ? 'Hide Key' : 'Reveal Key'}
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={handleCopyKey}
-                className="p-2 rounded-lg hover:bg-purple-900/30 text-purple-400 transition-colors"
-                title="Copy API Key"
-              >
-                {copiedKey ? <Check className="w-4 h-4 text-[#00ffcc]" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Solana RPC Config Card */}
-        <div className="p-6 rounded-3xl bg-[#0b0c10] border border-purple-900/40 space-y-4 hover:border-purple-500/60 transition-all flex flex-col justify-between">
-          <div className="space-y-3">
+        <div className="p-8 rounded-[3rem] bg-zinc-900 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.3)] hover:border-purple-500/40 transition-all flex flex-col justify-between">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="p-3 rounded-2xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
+              <div className="p-4 rounded-3xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
                 <BookOpen className="w-6 h-6" />
               </div>
-              <span className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-bold uppercase">
+              <span className="text-[10px] px-3 py-1 rounded-full bg-[#111118] text-emerald-400 border border-emerald-800/50 font-black uppercase tracking-[0.3em]">
                 Active Relay
               </span>
             </div>
-            <h3 className="text-lg font-extrabold uppercase tracking-wide text-white">
+            <h3 className="text-2xl font-black uppercase tracking-tight text-white">
               Solana RPC Config
             </h3>
-            <p className="text-xs text-gray-400 tracking-wide leading-relaxed">
+            <p className="text-sm text-zinc-400 tracking-wide leading-relaxed">
               Setup multi-provider RPC layer abstractions for resilient network settlement and instant state syncing.
             </p>
           </div>
 
-          <div className="pt-2 text-xs text-purple-300 flex items-center justify-between border-t border-[#1f293d]/60">
-            <span>Primary Node: rpc.opayque.sol</span>
-            <span className="text-[#00ffcc]">24ms</span>
+          <div className="mt-6 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-purple-200">
+            <div className="flex items-center justify-between gap-4">
+              <span className="uppercase tracking-[0.35em] text-zinc-500">Primary Node</span>
+              <span className="font-black text-white">rpc.opayque.sol</span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
+              <span>Latency</span>
+              <span>24ms</span>
+            </div>
           </div>
         </div>
 
         {/* Mobile Wallet Adapter Card */}
-        <div className="p-6 rounded-3xl bg-[#0b0c10] border border-[#1f293d] space-y-4 hover:border-purple-500/40 transition-all flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="p-3 w-fit rounded-2xl bg-gray-900 text-gray-300 border border-gray-800">
-              <Terminal className="w-6 h-6" />
+        <div className="p-8 rounded-[3rem] bg-zinc-900 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.3)] hover:border-purple-500/40 transition-all flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="p-4 rounded-3xl bg-zinc-800 text-zinc-200 border border-white/10">
+                <Terminal className="w-6 h-6" />
+              </div>
+              <span className="text-[10px] px-3 py-1 rounded-full bg-[#111118] text-[#a3a3ff] border border-[#5b4dff]/20 font-black uppercase tracking-[0.3em]">
+                Hardware Ready
+              </span>
             </div>
-            <h3 className="text-lg font-extrabold uppercase tracking-wide text-white">
+            <h3 className="text-2xl font-black uppercase tracking-tight text-white">
               Mobile Wallet Adapter
             </h3>
-            <p className="text-xs text-gray-400 tracking-wide leading-relaxed">
-              Deep-linking configurations and hardware terminal pairing payloads for POS integrations.
+            <p className="text-sm text-zinc-400 tracking-wide leading-relaxed">
+              Deep-linking configurations and secure pairing payloads for POS and remote checkout integrations.
             </p>
           </div>
 
-          <div className="pt-2 text-xs text-gray-400 flex items-center justify-between border-t border-[#1f293d]/60">
-            <span>Protocol: WebSocket Secure (WSS)</span>
-            <span className="text-emerald-400">Connected</span>
-          </div>
-        </div>
-
-        {/* Sandbox Environment Card */}
-        <div className="p-6 rounded-3xl bg-[#0b0c10] border border-purple-600/50 space-y-6 flex flex-col justify-between relative overflow-hidden">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-extrabold uppercase tracking-wide text-purple-300">
-                Sandbox Environment
-              </h3>
-              <ShieldCheck className="w-5 h-5 text-purple-400" />
+          <div className="mt-6 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-zinc-300">
+            <div className="flex items-center justify-between gap-4">
+              <span className="uppercase tracking-[0.35em] text-zinc-500">Protocol</span>
+              <span className="font-black text-white">WSS</span>
             </div>
-            <p className="text-xs text-gray-400 tracking-wide leading-relaxed">
-              Simulate the shielded checkout flow before pushing to mainnet. Test transaction settlements with simulated payloads.
-            </p>
+            <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-emerald-400">
+              <span>Status</span>
+              <span>Connected</span>
+            </div>
           </div>
-
-          <Link
-            href="/developer/sandbox"
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold uppercase text-xs tracking-wider flex items-center justify-center space-x-2 shadow-lg shadow-purple-600/30 hover:opacity-95 transition-all text-center"
-          >
-            <span>Launch Checkout Simulation</span>
-            <ArrowUpRight className="w-4 h-4" />
-          </Link>
         </div>
       </div>
     </div>

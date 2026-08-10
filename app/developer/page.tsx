@@ -14,6 +14,7 @@ import {
   Code2,
   ArrowRight,
   X,
+  Camera,
 } from 'lucide-react';
 
 export default function DeveloperPage() {
@@ -31,6 +32,7 @@ export default function DeveloperPage() {
   const [destinationWallet, setDestinationWallet] = useState<string>('');
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [emailOrGithub, setEmailOrGithub] = useState<string>('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
 
@@ -45,6 +47,18 @@ export default function DeveloperPage() {
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setStep('security');
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setImagePreview(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSecuritySubmit = (e: React.FormEvent) => {
@@ -227,21 +241,44 @@ export default function DeveloperPage() {
       {/* STEP 1 POP-UP MODAL: TERMINAL SETUP */}
       {step === 'terminal' && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0b0c10] border border-[#00ffcc]/40 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl shadow-[#00ffcc]/10 relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center space-x-3 text-[#00ffcc]">
-              <Terminal className="w-7 h-7" />
-              <span className="text-xs font-bold uppercase tracking-widest text-[#00ffcc]">
-                Step 01 // Terminal Initialization
-              </span>
+          <div className="w-full max-w-md bg-[#0b0c10] border border-[#00ffcc]/20 rounded-[2.5rem] p-6 sm:p-8 space-y-6 shadow-2xl shadow-[#00ffcc]/15 relative animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between gap-4 rounded-[2rem] border border-white/10 bg-zinc-900/90 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-[#111118] border border-white/10 text-[#00ffcc] shadow-inner">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-purple-400">Website Identity</p>
+                  <h2 className="text-xl font-black uppercase tracking-tight text-white">Upload a screenshot</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStep('security')}
+                className="rounded-2xl border border-white/10 bg-zinc-900/80 px-3 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300 hover:border-purple-500/40 hover:text-white transition"
+              >
+                Skip
+              </button>
             </div>
 
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white uppercase tracking-tight">
-                Terminal Wallet Setup
-              </h2>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Pair your local hardware or CLI terminal node to establish an encrypted socket session with Opayque RPC relays.
-              </p>
+            <div className="rounded-[2rem] border border-white/10 bg-black/40 p-4 text-center">
+              <div className="relative mx-auto mb-4 h-40 w-full max-w-sm overflow-hidden rounded-[1.75rem] border border-dashed border-white/10 bg-[#050508]">
+                {imagePreview ? (
+                  <img src={imagePreview} alt="Uploaded preview" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-500">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-zinc-900/70 text-purple-400 border border-white/10">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.35em]">Drop an image or choose a file</p>
+                  </div>
+                )}
+              </div>
+
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-zinc-900 px-5 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white hover:border-purple-500/40 hover:bg-white/5 transition">
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                Upload Screenshot
+              </label>
             </div>
 
             <form onSubmit={handleTerminalSubmit} className="space-y-4">
@@ -255,16 +292,16 @@ export default function DeveloperPage() {
                   value={terminalInput}
                   onChange={(e) => setTerminalInput(e.target.value)}
                   placeholder="opq_term_8f72a..."
-                  className="w-full px-4 py-3 rounded-xl bg-[#050508] border border-[#1f293d] text-white focus:outline-none focus:border-[#00ffcc] transition-colors text-sm font-mono placeholder:text-gray-600"
+                  className="w-full px-4 py-3 rounded-2xl bg-[#050508] border border-[#1f293d] text-white focus:outline-none focus:border-[#00ffcc] transition-colors text-sm font-mono placeholder:text-gray-600"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-xl bg-[#00ffcc] text-black font-extrabold uppercase tracking-wider text-xs hover:bg-[#00ffcc]/90 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-[#00ffcc]/20"
+                className="group relative w-full overflow-hidden rounded-2xl bg-purple-600 py-4 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
               >
-                <span>Initialize Terminal</span>
-                <ArrowRight className="w-4 h-4" />
+                <span className="relative z-10 flex items-center justify-center gap-2">Initialize Terminal <ArrowRight className="h-4 w-4" /></span>
+                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
               </button>
             </form>
           </div>
