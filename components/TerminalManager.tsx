@@ -1,18 +1,42 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { LucideHardDrive, LucideBell, LucidePlus, LucideTrash2, LucideRefreshCw } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { LucideBell, LucideHardDrive, LucidePlus, LucideRefreshCw, LucideTrash2 } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
-import { formatPairingCountdown, normalizePairingCode } from "@/lib/terminal/pairing";
+import { formatPairingCountdown } from "@/lib/terminal/pairing";
+import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
+import { sendJitoBundle } from "@/lib/solana/jito";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
+import "@solana/wallet-adapter-react-ui/styles.css";
+
+const JITO_TIP_ACCOUNT = new PublicKey("96gYZGLnJYVFmbjzopA9f848uwF32vRkeXaE4W36fT23");
+const JUPITER_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
+const JUPITER_SWAP_INSTRUCTIONS_URL = "https://quote-api.jup.ag/v6/swap-instructions";
 
 interface TerminalManagerProps {
   terminals?: Terminal[];
   setTerminals?: React.Dispatch<React.SetStateAction<Terminal[]>>;
   showHeaderInput?: boolean;
+  amount?: number;
+  merchantWallet?: string;
+  sessionId?: string;
+  currency?: string;
+  onSuccess?: () => void;
+}
+
+interface TokenBalance {
+  mint: string;
+  symbol: string;
+  decimals: number;
+  uiAmount: number;
+  baseUnits: bigint;
 }
 
 function createAccessCode() {
@@ -33,15 +57,73 @@ function isValidUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function normalizeTerminals(items: Terminal[] = []): Terminal[] {
-  return items.map((terminal) => ({
-    ...terminal,
-    status: terminal.status ?? "online",
-    lastSeen: terminal.lastSeen ?? Date.now(),
-    accessCode: terminal.accessCode ?? createAccessCode(),
-    isActive: Boolean(terminal.isActive),
-    lastLoginAt: terminal.lastLoginAt ?? null,
-  }));
+function parseHumanAmountToBaseUnits(amount: number, decimals: number): bigint {
+  const amountString = amount.toString();
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(amountString)) {
+    throw new Error("Invalid amount");
+  }
+
+  const [whole, fraction = ""] = amountString.split('.');
+  if (fraction.length > decimals) {
+    throw new Error(`Amount has more than ${decimals} decimal places`);
+  }
+
+  const normalizedFraction = fraction.padEnd(decimals, '0');
+  return BigInt(whole + normalizedFraction);
+}
+
+function formatBaseUnits(amount: bigint, decimals: number): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = amount / base;
+  const fraction = amount % base;
+  const fractionString = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
+  return fractionString.length > 0 ? `${whole.toString()}.${fractionString}` : whole.toString();
+}
+
+function toBase64(bytes: Uint8Array): string {
+  if (typeof window !== "undefined" && window.btoa) {
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return window.btoa(binary);
+  }
+
+  return Buffer.from(bytes).toString("base64");
+}
+
+function fromBase64(base64: string): Uint8Array {
+  if (typeof window !== "undefined" && window.atob) {
+    const binary = window.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  return Uint8Array.from(Buffer.from(base64, "base64"));
+}
+
+function getTokenSymbol(mint: string, networkIsDevnet: boolean) {
+  if (mint === getAssetMintAddress("SOL" as any, networkIsDevnet)) return "SOL";
+  if (mint === getAssetMintAddress("USDC" as any, networkIsDevnet)) return "USDC";
+  if (mint.toString() === "DezXAZ8z7PnrnRJjzJgV16bYXu5G6oZ6Kk4pHZh4AtM") return "BONK";
+  return mint.slice(0, 4).toUpperCase();
+}
+
+function resolveUsdcDestinationAccount(connection: any, merchantWallet: string, mint: PublicKey) {
+  const candidate = new PublicKey(merchantWallet);
+  return connection.getAccountInfo(candidate)
+    .then((accountInfo: any) => {
+      if (accountInfo?.owner?.equals?.(TOKEN_PROGRAM_ID)) {
+        return candidate;
+      }
+      return getAssociatedTokenAddress(mint, candidate, false);
+    })
+    .catch(() => getAssociatedTokenAddress(mint, candidate, false));
 }
 
 async function resolveMerchantId(): Promise<string | null> {
@@ -88,7 +170,27 @@ async function resolveMerchantId(): Promise<string | null> {
   return insertedMerchant.id;
 }
 
-export default function TerminalManager({ terminals = [], setTerminals, showHeaderInput = true }: TerminalManagerProps) {
+function normalizeTerminals(items: Terminal[] = []): Terminal[] {
+  return items.map((terminal) => ({
+    ...terminal,
+    status: terminal.status ?? "online",
+    lastSeen: terminal.lastSeen ?? Date.now(),
+    accessCode: terminal.accessCode ?? createAccessCode(),
+    isActive: Boolean(terminal.isActive),
+    lastLoginAt: terminal.lastLoginAt ?? null,
+  }));
+}
+
+export default function TerminalManager({
+  terminals = [],
+  setTerminals,
+  showHeaderInput = true,
+  amount,
+  merchantWallet,
+  sessionId,
+  currency = "USDC",
+  onSuccess,
+}: TerminalManagerProps) {
   const safeTerminals = normalizeTerminals(terminals);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
   const [isLoadingTerminals, setIsLoadingTerminals] = useState(false);
@@ -100,202 +202,380 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
   const [toast, setToast] = useState<string | null>(null);
+  const [solBalance, setSolBalance] = useState<bigint>(0n);
+  const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
+  const [selectedTokenMint, setSelectedTokenMint] = useState<string | null>(null);
+  const [quoteInputAmount, setQuoteInputAmount] = useState<bigint | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
   const pairingChannelRef = React.useRef<any | null>(null);
   const fleetChannelRef = React.useRef<any | null>(null);
 
-  const closePairingModal = React.useCallback(() => {
-    setIsPairingOpen(false);
-    setPairingState("idle");
-    setPairingExpiresAt(null);
-    setTimeLeft("10M 00S");
-  }, []);
+  const { publicKey, signTransaction, connected } = useWallet();
+  const { connection } = useConnection();
+
+  const networkIsDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+  const usdcMintAddress = getAssetMintAddress("USDC" as any, networkIsDevnet);
+  const solMintAddress = getAssetMintAddress("SOL" as any, networkIsDevnet);
+  const isCheckoutMode = typeof amount === "number" && amount > 0 && Boolean(merchantWallet) && Boolean(sessionId);
+
+  const expectedUsdcBaseUnits = useMemo(() => {
+    if (!amount || Number.isNaN(amount)) return 0n;
+    try {
+      return parseHumanAmountToBaseUnits(amount, ASSET_MINTS.USDC.decimals);
+    } catch {
+      return 0n;
+    }
+  }, [amount]);
+
+  const usdcBalance = useMemo(() => {
+    return tokenBalances.find((token) => token.mint === usdcMintAddress) ?? null;
+  }, [tokenBalances, usdcMintAddress]);
+
+  const usdcBalanceSufficient = usdcBalance?.baseUnits !== undefined && usdcBalance.baseUnits >= expectedUsdcBaseUnits;
+
+  const availableSwapTokens = useMemo(() => {
+    return tokenBalances.filter((token) => token.mint !== usdcMintAddress && token.baseUnits > 0n);
+  }, [tokenBalances, usdcMintAddress]);
+
+  const selectedBalance = useMemo(() => {
+    if (!selectedTokenMint) return null;
+    return tokenBalances.find((token) => token.mint === selectedTokenMint) ?? null;
+  }, [selectedTokenMint, tokenBalances]);
+
+  const parsedUsdcBalance = useMemo(() => {
+    if (!usdcBalance) return "0";
+    return formatBaseUnits(usdcBalance.baseUnits, usdcBalance.decimals);
+  }, [usdcBalance]);
+
+  const loadWalletBalances = useCallback(async () => {
+    if (!publicKey || !connection) return;
+
+    try {
+      const nativeLamports = await connection.getBalance(publicKey, "confirmed");
+      setSolBalance(BigInt(nativeLamports));
+
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
+      const balances = tokenAccounts.value.map((account) => {
+        const info = account.account.data.parsed?.info;
+        const mint = info?.mint;
+        const decimals = Number(info?.tokenAmount?.decimals ?? 0);
+        const amountString = String(info?.tokenAmount?.amount ?? "0");
+        const uiAmount = Number(info?.tokenAmount?.uiAmount ?? 0);
+        return {
+          mint,
+          symbol: getTokenSymbol(mint, networkIsDevnet),
+          decimals,
+          uiAmount,
+          baseUnits: BigInt(amountString),
+        };
+      }).filter((token) => token.mint && token.baseUnits > 0n) as TokenBalance[];
+
+      const aggregated = balances.reduce<Record<string, TokenBalance>>((acc, token) => {
+        const existing = acc[token.mint];
+        if (!existing) return { ...acc, [token.mint]: token };
+        return {
+          ...acc,
+          [token.mint]: {
+            ...existing,
+            baseUnits: existing.baseUnits + token.baseUnits,
+            uiAmount: existing.uiAmount + token.uiAmount,
+          },
+        };
+      }, {});
+
+      const tokenList = Object.values(aggregated);
+      if (nativeLamports > 0) {
+        tokenList.unshift({
+          mint: solMintAddress,
+          symbol: "SOL",
+          decimals: ASSET_MINTS.SOL.decimals,
+          uiAmount: Number(nativeLamports) / 1_000_000_000,
+          baseUnits: BigInt(nativeLamports),
+        });
+      }
+
+      setTokenBalances(tokenList);
+    } catch (error) {
+      console.error("Failed to load wallet balances", error);
+    }
+  }, [connection, networkIsDevnet, publicKey, solMintAddress]);
+
+  const fetchJupiterQuote = useCallback(async (inputMint: string) => {
+    if (!inputMint || expectedUsdcBaseUnits <= 0n) return;
+    setQuoteLoading(true);
+    setQuoteError(null);
+
+    try {
+      const params = new URLSearchParams({
+        inputMint,
+        outputMint: usdcMintAddress,
+        amount: expectedUsdcBaseUnits.toString(),
+        swapMode: "ExactOut",
+        slippageBps: "50",
+      });
+      const response = await fetch(`${JUPITER_QUOTE_URL}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Jupiter quote failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const route = Array.isArray(data?.data) ? data.data[0] : null;
+      if (!route?.inputAmount) {
+        throw new Error("No quote available for selected token");
+      }
+
+      setQuoteInputAmount(BigInt(route.inputAmount));
+    } catch (error: any) {
+      console.error("Jupiter quote error", error);
+      setQuoteError(error?.message ?? "Unable to quote swap");
+      setQuoteInputAmount(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  }, [expectedUsdcBaseUnits, usdcMintAddress]);
 
   useEffect(() => {
-    if (!isPairingOpen) return;
-    if (!pairingExpiresAt) {
-      setTimeLeft("10M 00S");
+    if (!connected) return;
+    void loadWalletBalances();
+  }, [connected, loadWalletBalances]);
+
+  useEffect(() => {
+    if (!selectedTokenMint || selectedTokenMint === usdcMintAddress) {
+      setQuoteInputAmount(null);
+      setQuoteError(null);
       return;
     }
+    void fetchJupiterQuote(selectedTokenMint);
+  }, [fetchJupiterQuote, selectedTokenMint, usdcMintAddress]);
 
-    const tick = () => {
-      const nextTime = formatPairingCountdown(pairingExpiresAt, "10M 00S");
-      setTimeLeft(nextTime);
-      if (nextTime === "00M 00S") {
-        setAuthCode("");
-        setPairingState("idle");
-        setPairingExpiresAt(null);
-      }
+  const buildSwapTransaction = useCallback(async () => {
+    if (!connection || !publicKey || !selectedTokenMint || !quoteInputAmount || !merchantWallet) {
+      throw new Error("Missing swap checkout parameters");
+    }
+
+    const destinationTokenAccount = await resolveUsdcDestinationAccount(connection, merchantWallet, new PublicKey(usdcMintAddress));
+    const payload = {
+      inputMint: selectedTokenMint,
+      outputMint: usdcMintAddress,
+      amount: expectedUsdcBaseUnits.toString(),
+      swapMode: "ExactOut",
+      slippageBps: 50,
+      userPublicKey: publicKey.toBase58(),
+      destinationTokenAccount: destinationTokenAccount.toBase58(),
     };
 
-    tick();
-    const interval = window.setInterval(tick, 1000);
-    return () => window.clearInterval(interval);
-  }, [isPairingOpen, pairingExpiresAt]);
+    const response = await fetch(JUPITER_SWAP_INSTRUCTIONS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  const loadFromSupabase = useCallback(async () => {
-    if (!resolvedMerchantId) {
-      return;
+    if (!response.ok) {
+      throw new Error(`Jupiter swap instructions failed: ${response.status}`);
     }
 
-    setIsLoadingTerminals(true);
+    const data = await response.json();
+    const swapTransactionBase64 = typeof data?.swapTransaction === "string"
+      ? data.swapTransaction
+      : typeof data?.swapTransaction?.transaction === "string"
+        ? data.swapTransaction.transaction
+        : null;
+
+    if (!swapTransactionBase64) {
+      throw new Error("Jupiter swap response missing transaction payload");
+    }
+
+    const swapTx = VersionedTransaction.deserialize(fromBase64(swapTransactionBase64));
+    const tipInstruction = SystemProgram.transfer({
+      fromPubkey: publicKey,
+      toPubkey: JITO_TIP_ACCOUNT,
+      lamports: 100_000,
+    });
+
+    const blockhashInfo = await connection.getLatestBlockhash("finalized");
+    const messageV0 = new TransactionMessage({
+      payerKey: publicKey,
+      recentBlockhash: blockhashInfo.blockhash,
+      instructions: [...swapTx.message.instructions, tipInstruction],
+      addressLookupTableAccounts: swapTx.message.addressLookupTableAccounts ?? [],
+    }).compileToV0Message();
+
+    return new VersionedTransaction(messageV0);
+  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, quoteInputAmount, selectedTokenMint, usdcMintAddress]);
+
+  const submitSwapPayment = useCallback(async () => {
+    if (!signTransaction || !connection) {
+      throw new Error("Wallet must support transaction signing");
+    }
+
+    const transaction = await buildSwapTransaction();
+    const signed = await signTransaction(transaction as any);
+    const serialized = signed.serialize();
+    const encoded = toBase64(serialized);
+
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("terminals")
-        .select("*")
-        .eq("merchant_id", resolvedMerchantId)
-        .order("last_active", { ascending: false });
-
-      if (error) {
-        throw error;
+      const jitoResult = await sendJitoBundle([encoded]);
+      if (jitoResult.success) {
+        return jitoResult.bundleId;
       }
-
-      const mapped = (data ?? []).map((row: any) => ({
-        id: row.id,
-        label: row.terminal_label ?? "Fleet Terminal",
-        status: row.status === "online" ? "online" : "offline",
-        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
-        accessCode: normalizePairingCode(row.device_token ?? "") || createAccessCode(),
-        isActive: row.status === "online",
-        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-      }));
-
-      setTerminals?.(mapped);
-      if (mapped.length > 0 && !authCode) {
-        setAuthCode(mapped[0].accessCode ?? createAccessCode());
-      }
+      console.warn("Jito bundle failed, falling back to raw send", jitoResult.error);
     } catch (error) {
-      console.error("Failed to load terminals from Supabase", error);
-    } finally {
-      setIsLoadingTerminals(false);
+      console.warn("Jito bundle submission error", error);
     }
-  }, [resolvedMerchantId, authCode, setTerminals]);
 
-  const refreshAuthCode = async (terminalLabelOverride?: string) => {
-    if (isRefreshingCode) return;
-    setIsRefreshingCode(true);
+    const signature = await connection.sendRawTransaction(serialized, { skipPreflight: true, maxRetries: 5 });
+    await connection.confirmTransaction(signature, "confirmed");
+    return signature;
+  }, [buildSwapTransaction, connection, signTransaction]);
+
+  const handleDirectUsdcPay = useCallback(async () => {
+    if (!publicKey || !connection || !signTransaction || !merchantWallet) {
+      throw new Error("Wallet connection is required");
+    }
+
+    const usdcMint = new PublicKey(usdcMintAddress);
+    const payerTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKey, false);
+    const destinationTokenAccount = await resolveUsdcDestinationAccount(connection, merchantWallet, usdcMint);
+    const transferIx = createTransferInstruction(payerTokenAccount, destinationTokenAccount, publicKey, expectedUsdcBaseUnits);
+
+    const tx = new Transaction().add(transferIx);
+    const signedTx = await signTransaction(tx as any);
+    const signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
+    await connection.confirmTransaction(signature, "confirmed");
+    return signature;
+  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);
+
+  const handleCheckout = useCallback(async () => {
+    if (!isCheckoutMode) return;
+
+    setCheckoutLoading(true);
+    setToast(null);
 
     try {
-      const currentMerchantId = resolvedMerchantId ?? (await resolveMerchantId());
-      if (!currentMerchantId) {
-        throw new Error("Cannot create pairing code: merchant identity unavailable.");
-      }
-
-      const terminalLabelToUse = typeof terminalLabelOverride === "string"
-        ? terminalLabelOverride.trim() || null
-        : newTerminalLabel.trim() || null;
-
-      if (typeof terminalLabelOverride === "string") {
-        setNewTerminalLabel(terminalLabelToUse ?? "");
-      }
-
-      if (!terminalLabelToUse) {
-        throw new Error("Please enter a terminal name before generating an auth code.");
-      }
-
-      const response = await fetch("/api/terminal/pairing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", merchant_id: currentMerchantId, terminal_label: terminalLabelToUse }),
-      });
-
-      let payload: any = null;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = null;
-      }
-
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Unable to create pairing code (status ${response.status})`);
-      }
-
-      const nextCode = String(payload.code ?? createAccessCode());
-      setAuthCode(nextCode);
-      const expiresAt = typeof payload.expiresAt === "string" ? new Date(payload.expiresAt).getTime() : Date.now() + 10 * 60 * 1000;
-      setPairingExpiresAt(expiresAt);
-      setTimeLeft(formatPairingCountdown(expiresAt, "10M 00S"));
-      setPairingState("waiting");
-      try {
-        const supabase = createSupabaseBrowserClient();
-        if (pairingChannelRef.current) {
-          void supabase.removeChannel(pairingChannelRef.current);
-          pairingChannelRef.current = null;
+      if (usdcBalanceSufficient) {
+        await handleDirectUsdcPay();
+      } else {
+        if (!selectedBalance || !quoteInputAmount) {
+          throw new Error("Select an alternate token for swap");
         }
-
-        const channel = supabase
-          .channel(`pairing-${nextCode}`)
-          .on(
-            "postgres_changes",
-            { event: "UPDATE", schema: "public", table: "terminal_pairing_codes", filter: `code=eq.${nextCode}` },
-            (payload) => {
-              const rec = payload.new as any;
-              if (!rec) return;
-              if (String(rec.status).toUpperCase() === "USED") {
-                setPairingState("used");
-                setToast("Terminal logged in — updating fleet list");
-                void loadFromSupabase();
-                window.setTimeout(() => {
-                  closePairingModal();
-                }, 900);
-                void supabase.removeChannel(channel);
-                pairingChannelRef.current = null;
-              }
-            }
-          )
-          .subscribe();
-
-        pairingChannelRef.current = channel;
-      } catch (err) {
-        console.warn("Failed to subscribe to pairing-code updates", err);
+        await submitSwapPayment();
       }
-    } catch (error) {
-      console.error("Failed to generate pairing code", error);
-      const message = error instanceof Error ? error.message : "Unknown pairing-code generation error";
-      window.alert(message);
-      const fallback = createAccessCode();
-      setAuthCode(fallback);
-      const fallbackExpiresAt = Date.now() + 10 * 60 * 1000;
-      setPairingExpiresAt(fallbackExpiresAt);
-      setTimeLeft(formatPairingCountdown(fallbackExpiresAt, "10M 00S"));
-      setPairingState("waiting");
+
+      setToast("Payment completed successfully");
+      onSuccess?.();
+    } catch (error: any) {
+      console.error("Checkout payment failed", error);
+      setToast(error?.message ?? "Payment failed");
+      throw error;
     } finally {
-      setIsRefreshingCode(false);
+      setCheckoutLoading(false);
     }
-  };
+  }, [handleDirectUsdcPay, isCheckoutMode, onSuccess, quoteInputAmount, selectedBalance, submitSwapPayment, usdcBalanceSufficient]);
 
-  const persistTerminals = async (updated: Terminal[]) => {
-    setTerminals?.(updated);
+  const renderCheckoutContent = () => {
+    const connectedLabel = connected ? "Wallet connected" : "Connect wallet to pay";
+    const selectedSymbol = selectedBalance?.symbol ?? "token";
+    const requiredInput = selectedBalance && quoteInputAmount
+      ? formatBaseUnits(quoteInputAmount, selectedBalance.decimals)
+      : null;
 
-    const merchantIdToUse = resolvedMerchantId;
-    if (!merchantIdToUse) {
-      throw new Error("Cannot persist terminals: merchant identity unavailable.");
-    }
+    return (
+      <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-[#0c0d11] p-6 shadow-2xl shadow-black/40">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Checkout Session</p>
+            <h2 className="mt-2 text-3xl font-black text-white">Pay {currency} {amount?.toFixed(2)}</h2>
+            <p className="text-sm text-zinc-400">Target merchant settlement wallet</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.3em] text-emerald-300">
+            <span>⚡ MEV Protected via Jito Bundle</span>
+          </div>
+        </div>
 
-    try {
-      const supabase = createSupabaseBrowserClient();
-      await Promise.all(
-        updated.map(async (terminal) => {
-          const payload = {
-            id: terminal.id,
-            merchant_id: merchantIdToUse,
-            terminal_label: terminal.label,
-            device_token: normalizePairingCode(terminal.accessCode ?? "") || createAccessCode(),
-            status: terminal.isActive ? "online" : "offline",
-            last_active: terminal.lastLoginAt ? new Date(terminal.lastLoginAt).toISOString() : new Date().toISOString(),
-          };
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-3xl border border-white/10 bg-[#050507] p-4">
+            <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">USDC Balance</p>
+            <p className="mt-3 text-2xl font-black text-white">{parsedUsdcBalance}</p>
+            <p className="mt-2 text-xs text-zinc-400">Target: {amount?.toFixed(2)} USDC</p>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-[#050507] p-4">
+            <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">SOL Balance</p>
+            <p className="mt-3 text-2xl font-black text-white">{formatBaseUnits(solBalance, ASSET_MINTS.SOL.decimals)}</p>
+            <p className="mt-2 text-xs text-zinc-400">Network: {networkIsDevnet ? "Devnet" : "Mainnet"}</p>
+          </div>
+        </div>
 
-          const { error } = await supabase.from("terminals").upsert(payload, { onConflict: "id" });
-          if (error) {
-            throw error;
-          }
-        })
-      );
-      await loadFromSupabase();
-    } catch (error) {
-      console.error("Failed to sync terminals to Supabase", error);
-    }
+        <div className="rounded-3xl border border-white/10 bg-[#050507] p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Wallet</p>
+              <p className="mt-3 text-base font-black text-white">{connectedLabel}</p>
+            </div>
+            <WalletMultiButton className="rounded-3xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3 text-sm font-black uppercase text-white shadow-lg shadow-violet-500/20" />
+          </div>
+        </div>
+
+        {connected && (
+          <div className="space-y-4 rounded-3xl border border-white/10 bg-[#050507] p-5">
+            {usdcBalanceSufficient ? (
+              <div className="rounded-3xl border border-emerald-500/10 bg-emerald-500/5 p-4">
+                <p className="text-[10px] uppercase tracking-[0.35em] text-emerald-300">Direct USDC Payment Available</p>
+                <p className="mt-3 text-white">You have enough USDC to pay directly.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-yellow-500/10 bg-yellow-500/5 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.35em] text-yellow-300">USDC Balance Insufficient</p>
+                  <p className="mt-3 text-white">Select another token to auto-swap into USDC.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.35em] text-zinc-500">Pay with another token</label>
+                  <select
+                    value={selectedTokenMint ?? ""}
+                    onChange={(event) => setSelectedTokenMint(event.target.value || null)}
+                    className="mt-3 w-full rounded-3xl border border-white/10 bg-[#020203] px-4 py-3 text-white outline-none"
+                  >
+                    <option value="">Select token</option>
+                    {availableSwapTokens.map((token) => (
+                      <option key={token.mint} value={token.mint}>
+                        {token.symbol} • {formatBaseUnits(token.baseUnits, token.decimals)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {quoteLoading && <p className="text-sm text-zinc-400">Fetching swap quote…</p>}
+                {quoteError && <p className="text-sm text-red-400">{quoteError}</p>}
+                {selectedBalance && requiredInput ? (
+                  <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Estimated Input</p>
+                    <p className="mt-3 text-lg font-black text-white">Pay ~{requiredInput} {selectedSymbol}</p>
+                    <p className="mt-1 text-sm text-zinc-400">for {amount?.toFixed(2)} USDC</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={!connected || checkoutLoading || (!usdcBalanceSufficient && (!selectedBalance || !quoteInputAmount))}
+          onClick={async () => {
+            try {
+              await handleCheckout();
+            } catch {
+              // error shown by toast
+            }
+          }}
+          className="w-full rounded-3xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-xl shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {checkoutLoading ? "Processing payment…" : usdcBalanceSufficient ? "Pay with USDC" : "Swap & Pay with Jito Bundle"}
+        </button>
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -354,7 +634,7 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       void supabase.removeChannel(channel);
       fleetChannelRef.current = null;
     };
-  }, [resolvedMerchantId, loadFromSupabase]);
+  }, [loadFromSupabase, resolvedMerchantId]);
 
   const pairNewTerminal = async () => {
     const defaultLabel = createDefaultTerminalLabel();
@@ -383,6 +663,10 @@ export default function TerminalManager({ terminals = [], setTerminals, showHead
       await persistTerminals(updated);
     }
   };
+
+  if (isCheckoutMode) {
+    return renderCheckoutContent();
+  }
 
   return (
     <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#0d0d11] p-6 shadow-2xl shadow-black/40">
