@@ -25,17 +25,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  if (user && request.nextUrl.pathname.startsWith('/developer')) {
-    const { data: merchant } = await supabase
-      .from('merchants')
-      .select('onboarding_status')
-      .eq('id', user.id)
-      .single();
-
-    if (!merchant || merchant.onboarding_status !== 'completed') {
-      return NextResponse.redirect(new URL('/onboarding', request.url));
-    }
-  }
 
   return response;
 }

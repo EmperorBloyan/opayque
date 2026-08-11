@@ -2,8 +2,8 @@
 /* eslint-disable react/jsx-no-comment-textnodes */
 
 import React, { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { PublicKey } from '@solana/web3.js';
 import {
   Terminal,
   Key,
@@ -17,166 +17,48 @@ import {
 } from 'lucide-react';
 
 export default function DeveloperPage() {
-  const [step, setStep] = useState<'onboarding' | 'access' | 'dashboard'>('dashboard');
-
-  // Header Modals
   const [showKeysModal, setShowKeysModal] = useState<boolean>(false);
   const [showQuickstartModal, setShowQuickstartModal] = useState<boolean>(false);
-
-  // Onboarding inputs & feedback state
-  const [projectName, setProjectName] = useState<string>('');
-  const [destinationWallet, setDestinationWallet] = useState<string>('');
-  const [webhookUrl, setWebhookUrl] = useState<string>('');
-  const [emailOrGithub, setEmailOrGithub] = useState<string>('');
-  const [controlPassword, setControlPassword] = useState<string>('');
-  const [accessPassword, setAccessPassword] = useState<string>('');
-  const [onboardingError, setOnboardingError] = useState<string | null>(null);
-  const [accessError, setAccessError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
 
-  const mockApiKey = 'opq_live_9x8f7d6e5c4b3a210';
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [totalVolume, setTotalVolume] = useState<number | null>(null);
+  const [transactionCount, setTransactionCount] = useState<number | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
 
-  const handleResetOnboarding = () => {
-    window.localStorage.removeItem('opayque_developer_onboarding');
-    window.localStorage.removeItem('opayque_developer_onboarded');
-    window.localStorage.removeItem('merchant_name');
-    window.localStorage.removeItem('developer_payout_wallet');
-    window.localStorage.removeItem('developer_webhook_url');
-    setProjectName('');
-    setDestinationWallet('');
-    setWebhookUrl('');
-    setEmailOrGithub('');
-    setControlPassword('');
-    setAccessPassword('');
-    setOnboardingError(null);
-    setAccessError(null);
-    setStep('onboarding');
-  };
-
-  const handleCopyKey = () => {
-    navigator.clipboard.writeText(mockApiKey);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
-
-  const handleOnboardingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setOnboardingError(null);
-
-    if (!projectName.trim() || !destinationWallet.trim() || !webhookUrl.trim() || !emailOrGithub.trim() || !controlPassword.trim()) {
-      setOnboardingError('Please complete all onboarding fields');
-      return;
-    }
-
-    try {
-      new PublicKey(destinationWallet.trim());
-    } catch {
-      setOnboardingError('Enter a valid Solana destination wallet address');
-      return;
-    }
-
-    try {
-      const parsedWebhookUrl = new URL(webhookUrl.trim());
-      if (!['http:', 'https:'].includes(parsedWebhookUrl.protocol)) {
-        throw new Error('Invalid webhook URL');
-      }
-    } catch {
-      setOnboardingError('Enter a valid HTTP or HTTPS webhook URL');
-      return;
-    }
-
-    const contact = emailOrGithub.trim();
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
-    const isGithub = /^(https?:\/\/github\.com\/|@)[\w-]+\/?$/i.test(contact);
-    if (!isEmail && !isGithub) {
-      setOnboardingError('Enter a valid email address or GitHub profile');
-      return;
-    }
-
-    const onboardingData = {
-      projectName: projectName.trim(),
-      destinationWallet: destinationWallet.trim(),
-      webhookUrl: webhookUrl.trim(),
-      contact,
-      controlPassword: controlPassword.trim(),
-    };
-
-    window.localStorage.setItem('opayque_developer_onboarding', JSON.stringify(onboardingData));
-    window.localStorage.setItem('merchant_name', onboardingData.projectName);
-    window.localStorage.setItem('developer_payout_wallet', onboardingData.destinationWallet);
-    window.localStorage.setItem('developer_webhook_url', onboardingData.webhookUrl);
-    window.localStorage.setItem('developer_notification_emails', JSON.stringify([{ email: contact, verified: false }]));
-
-    setStep('access');
-  };
-
-  const handleAccessSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAccessError(null);
-
-    const storedOnboarding = window.localStorage.getItem('opayque_developer_onboarding');
-    if (!storedOnboarding) {
-      setAccessError('Onboarding data is missing. Please restart the setup.');
-      setStep('onboarding');
-      return;
-    }
-
-    const parsed = JSON.parse(storedOnboarding) as {
-      projectName: string;
-      destinationWallet: string;
-      webhookUrl: string;
-      contact: string;
-      controlPassword: string;
-    };
-
-    if (accessPassword !== parsed.controlPassword) {
-      setAccessError('Control center password does not match.');
-      return;
-    }
-
-    window.localStorage.setItem('opayque_developer_onboarded', 'true');
-    setStep('dashboard');
-  };
-
+  // Fetch merchant analytics and ensure authenticated session
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onboarded = window.localStorage.getItem('opayque_developer_onboarded');
-    const storedOnboarding = window.localStorage.getItem('opayque_developer_onboarding');
-
-    if (onboarded === 'true') {
-      setStep('dashboard');
-      return;
-    }
-
-    if (storedOnboarding) {
+    let mounted = true;
+    (async () => {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
       try {
-        const parsed = JSON.parse(storedOnboarding) as {
-          projectName?: string;
-          destinationWallet?: string;
-          webhookUrl?: string;
-          contact?: string;
-          controlPassword?: string;
-        };
-        if (parsed.projectName) setProjectName(parsed.projectName);
-        if (parsed.destinationWallet) setDestinationWallet(parsed.destinationWallet);
-        if (parsed.webhookUrl) setWebhookUrl(parsed.webhookUrl);
-        if (parsed.contact) setEmailOrGithub(parsed.contact);
-        if (parsed.controlPassword) setControlPassword(parsed.controlPassword);
-        const hasCompleteOnboarding =
-          parsed.projectName &&
-          parsed.destinationWallet &&
-          parsed.webhookUrl &&
-          parsed.contact &&
-          parsed.controlPassword;
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setAnalyticsError('Unauthorized — please sign in');
+          return;
+        }
 
-        setStep(hasCompleteOnboarding ? 'access' : 'onboarding');
-      } catch {
-        setStep('onboarding');
+        const res = await fetch('/api/v1/merchant/analytics');
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.error || 'Failed to load analytics');
+        }
+        const payload = await res.json();
+        if (!mounted) return;
+        setTotalVolume(payload?.metrics?.totalVolume ?? 0);
+        setTransactionCount(payload?.metrics?.transactionCount ?? 0);
+        setRecentTransactions(payload?.recentTransactions ?? []);
+      } catch (err: any) {
+        console.error(err);
+        if (mounted) setAnalyticsError(err?.message || 'Failed to load analytics');
+      } finally {
+        if (mounted) setAnalyticsLoading(false);
       }
-      return;
-    }
-
-    setStep('onboarding');
+    })();
+    return () => { mounted = false; };
   }, []);
 
   return (
@@ -190,6 +72,42 @@ export default function DeveloperPage() {
           <span className="font-bold text-lg tracking-wider text-white">
             Opayque <span className="text-[#00ffcc]">//</span> <span className="text-gray-400 text-sm sm:text-base">Dev_Hub</span>
           </span>
+        </div>
+        {/* Recent Transactions */}
+        <div className="mt-6">
+          <h2 className="text-lg font-bold uppercase text-zinc-400 mb-3">Recent Transactions</h2>
+          <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/50 p-4">
+            {analyticsLoading ? (
+              <div className="text-sm text-zinc-500">Loading transactions…</div>
+            ) : analyticsError ? (
+              <div className="text-sm text-red-400">{analyticsError}</div>
+            ) : recentTransactions.length === 0 ? (
+              <div className="text-sm text-zinc-500">No recent transactions</div>
+            ) : (
+              <div className="w-full overflow-x-auto">
+                <table className="w-full table-auto text-sm">
+                  <thead className="text-xs text-zinc-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="text-left py-2 pr-4">Date</th>
+                      <th className="text-left py-2 pr-4">Amount</th>
+                      <th className="text-left py-2 pr-4">Status</th>
+                      <th className="text-left py-2 pr-4">Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTransactions.map((tx: any) => (
+                      <tr key={tx.id} className="border-t border-white/5">
+                        <td className="py-3 pr-4 text-zinc-300">{tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}</td>
+                        <td className="py-3 pr-4 text-zinc-300">{tx.amount ?? '—'}</td>
+                        <td className="py-3 pr-4 text-zinc-300">{tx.status ?? tx.state ?? '—'}</td>
+                        <td className="py-3 pr-4 font-mono text-zinc-300">{tx.signature ?? tx.id ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-3">
@@ -246,14 +164,14 @@ export default function DeveloperPage() {
             </div>
 
             <div className="p-4 rounded-2xl bg-[#050508] border border-[#1f293d] flex items-center justify-between font-mono text-xs sm:text-sm text-purple-300">
-              <span className="truncate mr-2">{mockApiKey}</span>
-              <button
-                onClick={handleCopyKey}
-                className="p-2 rounded-lg hover:bg-purple-900/30 text-purple-400 transition-colors flex-shrink-0"
-                title="Copy API Key"
-              >
-                {copiedKey ? <Check className="w-4 h-4 text-[#00ffcc]" /> : <Copy className="w-4 h-4" />}
-              </button>
+              <div className="text-left">
+                <div className="text-[11px] text-zinc-400">Total Volume</div>
+                <div className="text-lg font-extrabold text-white">{analyticsLoading ? 'Loading…' : totalVolume !== null ? Number(totalVolume).toLocaleString() : '—'}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[11px] text-zinc-400">Transactions</div>
+                <div className="text-lg font-extrabold text-white">{analyticsLoading ? '—' : transactionCount !== null ? transactionCount : '—'}</div>
+              </div>
             </div>
           </div>
 
@@ -378,57 +296,7 @@ export default function DeveloperPage() {
               </button>
             </form>
           </div>
-        </div>
-      )}
-
-      {step === 'access' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
-          <div className="relative w-full max-w-md overflow-hidden rounded-[3rem] border border-white/10 bg-zinc-950/95 p-8 shadow-2xl backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200">
-            <div className="pointer-events-none absolute inset-0 bg-purple-600/10" />
-            <div className="relative mb-8 flex flex-col items-center text-center gap-4">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-purple-500/30 bg-purple-600/20 text-purple-300 shadow-[0_0_35px_rgba(168,85,247,0.2)]">
-                <Terminal className="h-10 w-10" />
-              </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Access control center</p>
-              <h2 className="text-3xl font-black italic uppercase tracking-tight text-white">Unlock your dashboard</h2>
-              <p className="max-w-md text-sm text-zinc-400">Enter the control center password you created during onboarding to continue.</p>
-            </div>
-
-            <form onSubmit={handleAccessSubmit} className="space-y-4">
-              <input
-                type="password"
-                required
-                value={accessPassword}
-                onChange={(e) => setAccessPassword(e.target.value)}
-                placeholder="Control Center Password"
-                className="w-full rounded-2xl border border-white/5 bg-black/40 px-4 py-4 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-purple-500/50"
-              />
-
-              {accessError && (
-                <p className="px-2 text-[10px] font-bold uppercase tracking-tight text-red-400">{accessError}</p>
-              )}
-
-              <button
-                type="submit"
-                className="group relative w-full overflow-hidden rounded-2xl bg-purple-600 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
-              >
-                <span className="relative z-10 flex items-center justify-center gap-2">Unlock Dashboard <ArrowRight className="h-4 w-4" /></span>
-                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
-              </button>
-            </form>
-
-            <button
-              type="button"
-              onClick={handleResetOnboarding}
-              className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:border-purple-400/50 hover:bg-purple-600/10"
-            >
-              Restart onboarding
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* HEADER MODAL: API KEYS */}
+        {/* HEADER MODAL: API KEYS */}
       {showKeysModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-[#0b0c10] border border-[#1f293d] rounded-3xl p-6 sm:p-8 space-y-6 relative">
@@ -452,12 +320,9 @@ export default function DeveloperPage() {
                   Live Production Key
                 </label>
                 <div className="p-3.5 rounded-xl bg-[#050508] border border-[#1f293d] flex items-center justify-between font-mono text-sm text-purple-300">
-                  <span className="truncate mr-2">{mockApiKey}</span>
-                  <button
-                    onClick={handleCopyKey}
-                    className="p-1.5 rounded-lg hover:bg-purple-900/30 text-purple-400 flex-shrink-0"
-                  >
-                    {copiedKey ? <Check className="w-4 h-4 text-[#00ffcc]" /> : <Copy className="w-4 h-4" />}
+                  <span className="truncate mr-2">Create keys in the Keys tab</span>
+                  <button disabled className="p-1.5 rounded-lg text-gray-600 flex-shrink-0" title="Copy API Key (disabled)">
+                    <Copy className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -467,7 +332,7 @@ export default function DeveloperPage() {
                   Testnet Secret Key
                 </label>
                 <div className="p-3.5 rounded-xl bg-[#050508] border border-[#1f293d] flex items-center justify-between font-mono text-sm text-gray-500">
-                  <span>opq_test_7a6d8c9b0e1f2a3b</span>
+                  <span>Test keys available in Keys tab</span>
                 </div>
               </div>
             </div>
@@ -517,7 +382,7 @@ export default function DeveloperPage() {
                   2. Instantiate Client
                 </span>
                 <pre className="p-3 rounded-xl bg-black text-[#00ffcc] font-mono text-xs overflow-x-auto leading-relaxed">
-                  {`import { Opayque } from '@opayque/sdk';\n\nconst opayque = new Opayque({\n  apiKey: '${mockApiKey}',\n  network: 'mainnet-beta'\n});`}
+                  {`import { Opayque } from '@opayque/sdk';\n\nconst opayque = new Opayque({\n  apiKey: 'YOUR_API_KEY_HERE',\n  network: 'mainnet-beta'\n});`}
                 </pre>
               </div>
             </div>

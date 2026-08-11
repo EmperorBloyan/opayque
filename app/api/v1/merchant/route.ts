@@ -15,7 +15,7 @@ export async function GET() {
 
   const { data: merchant, error } = await supabase
     .from('merchants')
-    .select('id, email, onboarding_status, settlement_wallet_address, tee_enforcement_enabled')
+    .select('id, email, merchant_name, merchant_logo, onboarding_status, settlement_wallet_address, tee_enforcement_enabled')
     .eq('id', user.id)
     .single();
 

@@ -49,10 +49,18 @@ export default function WebhooksDeliveryLogsPage() {
   const copySecret = async () => { await navigator.clipboard.writeText(secret); setCopied(true); window.setTimeout(() => setCopied(false), 1600); };
   const sendTest = () => {
     setIsTesting(true);
-    window.setTimeout(() => {
-      setLogs((current) => [{ id: `evt_${Math.random().toString(36).slice(2, 9)}`, event: "checkout.session.simulated", status: 200, endpoint, time: new Date().toISOString().replace("T", " ").slice(0, 19), latency: "115ms" }, ...current]);
-      setIsTesting(false);
-    }, 700);
+    (async () => {
+      try {
+        const res = await fetch('/api/v1/webhooks/logs');
+        if (!res.ok) throw new Error('Failed to fetch logs');
+        const data = await res.json();
+        setLogs(data.logs || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsTesting(false);
+      }
+    })();
   };
   const retry = (id: string) => setLogs((current) => current.map((log) => log.id === id ? { ...log, status: 202, time: new Date().toISOString().replace("T", " ").slice(0, 19) } : log));
 

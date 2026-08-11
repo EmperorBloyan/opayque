@@ -26,11 +26,22 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (typeof window === "undefined") return;
     const storedEnv = window.localStorage.getItem("developer_environment");
-    const storedName = window.localStorage.getItem("merchant_name");
-    const storedLogo = window.localStorage.getItem("merchant_logo");
     if (storedEnv === "production") setIsLiveMode(true);
-    if (storedName) setMerchantName(storedName);
-    if (storedLogo) setMerchantLogo(storedLogo);
+
+    const fetchMerchantProfile = async () => {
+      try {
+        const res = await fetch('/api/v1/merchant');
+        if (!res.ok) return;
+        const payload = await res.json();
+        const merchant = payload?.merchant;
+        if (merchant?.merchant_name) setMerchantName(merchant.merchant_name);
+        if (merchant?.merchant_logo) setMerchantLogo(merchant.merchant_logo);
+      } catch (error) {
+        console.warn('Failed to load merchant profile', error);
+      }
+    };
+
+    void fetchMerchantProfile();
   }, []);
 
   const lockDeveloperHub = () => {
