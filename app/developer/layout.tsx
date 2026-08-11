@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Code2,
   Key,
@@ -21,39 +21,90 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [activeModal, setActiveModal] = useState<"quickstart" | "sandbox" | null>(null);
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
+  const [merchantName, setMerchantName] = useState("Opayque");
+  const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedEnv = window.localStorage.getItem("developer_environment");
+    const storedName = window.localStorage.getItem("merchant_name");
+    const storedLogo = window.localStorage.getItem("merchant_logo");
+    if (storedEnv === "production") setIsLiveMode(true);
+    if (storedName) setMerchantName(storedName);
+    if (storedLogo) setMerchantLogo(storedLogo);
+  }, []);
 
   const lockDeveloperHub = () => {
     clearActiveSession();
     router.push("/");
   };
 
+  const toggleEnvironment = () => {
+    setIsLiveMode((current) => {
+      const next = !current;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("developer_environment", next ? "production" : "sandbox");
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
-        <header className="mb-12 flex flex-col gap-6 border-b border-white/5 pb-8 md:flex-row md:items-center md:justify-between">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
           <div className="flex items-center gap-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-purple-500/20 bg-zinc-900 text-purple-400 shadow-inner">
-              <Code2 size={24} />
+            <div className="relative group">
+              <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden shadow-inner">
+                {merchantLogo ? (
+                  <img src={merchantLogo} alt="Merchant logo" className="h-full w-full object-cover" />
+                ) : (
+                  <Code2 size={24} className="text-purple-400" />
+                )}
+              </div>
             </div>
             <div>
-              <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none">
-                Opayque <span className="text-purple-500">//</span> Dev_Hub
-              </h1>
-              <p className="mt-2 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                Developer session active
-              </p>
+              <div className="flex flex-wrap items-center gap-4">
+                <div>
+                  <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
+                    {merchantName}
+                  </h1>
+                  <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                    Developer session active
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/developer/keys")}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                >
+                  <Key size={14} /> API Keys & Merchant Details
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
+              isLiveMode ? "bg-purple-600/10 border-purple-500/30 text-purple-300" : "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
+            }`}>
+              {isLiveMode ? "Production mode" : "Sandbox mode"}
+            </div>
+            <button
+              type="button"
+              onClick={toggleEnvironment}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
+            >
+              Switch environment
+            </button>
             <button
               type="button"
               onClick={lockDeveloperHub}
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:border-red-500/30 hover:text-red-400"
+              className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
             >
-              <Lock size={14} /> Lock Hub
+              <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
             </button>
           </div>
         </header>

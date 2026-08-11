@@ -1,287 +1,481 @@
 "use client";
 
-import React, { useState } from "react";
-import { 
-  LucideKey, 
-  LucideShield, 
-  LucideEye, 
-  LucideEyeOff, 
-  LucideRefreshCw, 
-  LucideCopy, 
-  LucideCheck,
-  LucideGlobe,
-  LucidePlus,
-  LucideTrash2,
-  LucideAlertTriangle
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  Globe,
+  Key,
+  Mail,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  X,
 } from "lucide-react";
 
-interface ApiKey {
+interface ApiKeyPair {
   id: string;
-  environment: "Mainnet" | "Testnet";
-  prefix: string;
+  environment: "Production" | "Sandbox";
+  network: "Mainnet" | "Testnet";
+  publishable: string;
   secret: string;
-  lastUsed: string;
   createdAt: string;
+  lastUsed: string;
 }
 
-const INITIAL_KEYS: ApiKey[] = [
+const INITIAL_KEY_PAIRS: ApiKeyPair[] = [
   {
-    id: "key_prod_1",
-    environment: "Mainnet",
-    prefix: "opq_live_",
-    secret: "9x8f7d6e5c4b3a210_encrypted_hash",
+    id: "prod",
+    environment: "Production",
+    network: "Mainnet",
+    publishable: "opq_pub_live_9x8f7d6e5c4b3a210",
+    secret: "opq_sec_live_2b7e8f9d4c1a0b3f56",
+    createdAt: "2026-01-15",
     lastUsed: "2 mins ago",
-    createdAt: "2026-01-15"
   },
   {
-    id: "key_test_1",
-    environment: "Testnet",
-    prefix: "opq_test_",
-    secret: "1a2b3c4d5e6f7g8h9_mock_hash",
-    lastUsed: "14 hours ago",
-    createdAt: "2026-03-22"
-  }
+    id: "sandbox",
+    environment: "Sandbox",
+    network: "Testnet",
+    publishable: "opq_pub_test_7a6d5c4b3a210f9e",
+    secret: "opq_sec_test_1f2e3d4c5b6a7e8d90",
+    createdAt: "2026-04-01",
+    lastUsed: "12 mins ago",
+  },
 ];
 
+const abbreviateAddress = (address: string) => {
+  if (!address) return "-";
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+};
+
 export default function ApiKeysPage() {
-  const [keys, setKeys] = useState<ApiKey[]>(INITIAL_KEYS);
-  const [visibleKeyId, setVisibleKeyId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  
-  // Security Settings State
+  const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>(INITIAL_KEY_PAIRS);
+  const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [merchantName, setMerchantName] = useState("Opayque");
+  const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
+  const [payoutWallet, setPayoutWallet] = useState("7Xw9uQRjKp2vTx4Kp2");
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [walletModalStep, setWalletModalStep] = useState<"input" | "code">("input");
+  const [newWalletAddress, setNewWalletAddress] = useState("");
+  const [verificationDigits, setVerificationDigits] = useState<string[]>(["", "", "", "", "", ""]);
+  const [sentCode, setSentCode] = useState("");
+  const [walletModalMessage, setWalletModalMessage] = useState("");
+  const [verificationError, setVerificationError] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [ipWhitelist, setIpWhitelist] = useState<string[]>(["192.168.1.1", "203.0.113.50"]);
   const [newIp, setNewIp] = useState("");
   const [requireTee, setRequireTee] = useState(true);
-  
-  // Modal State
-  const [showRollModal, setShowRollModal] = useState<string | null>(null);
 
-  const toggleVisibility = (id: string) => {
-    setVisibleKeyId(visibleKeyId === id ? null : id);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedEnv = window.localStorage.getItem("developer_environment");
+    const storedName = window.localStorage.getItem("merchant_name");
+    const storedLogo = window.localStorage.getItem("merchant_logo");
+    if (storedEnv === "production") setIsLiveMode(true);
+    if (storedName) setMerchantName(storedName);
+    if (storedLogo) setMerchantLogo(storedLogo);
+  }, []);
+
+  const activeEnvironmentText = isLiveMode ? "Live Mode (Production)" : "Test Mode (Sandbox)";
+  const activeBadgeClasses = isLiveMode
+    ? "bg-purple-600/10 border-purple-500/30 text-purple-300"
+    : "bg-emerald-600/10 border-emerald-500/30 text-emerald-300";
+
+  const handleToggleVisibility = (id: string) => {
+    setVisibleSecretId(visibleSecretId === id ? null : id);
   };
 
-  const handleCopy = (id: string, secret: string, prefix: string) => {
-    navigator.clipboard.writeText(`${prefix}${secret}`);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyKey = (id: string, value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedKeyId(id);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  };
+
+  const handleRollKey = (id: string) => {
+    const nextKey = keyPairs.find((item) => item.id === id);
+    if (!nextKey) return;
+    const nextSuffix = Math.random().toString(36).slice(2, 12);
+    setKeyPairs((current) => current.map((item) =>
+      item.id === id
+        ? { ...item, secret: `${item.secret.split("_")[0]}_${nextSuffix}` }
+        : item
+    ));
+    setVisibleSecretId(id);
+    setCopiedKeyId(null);
+  };
+
+  const handleToggleEnvironment = () => {
+    setIsLiveMode((current) => {
+      const next = !current;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("developer_environment", next ? "production" : "sandbox");
+      }
+      return next;
+    });
+  };
+
+  const handleSendConfirmationCode = () => {
+    if (!newWalletAddress.trim()) {
+      setWalletModalMessage("Enter the new settlement wallet address.");
+      return;
+    }
+    setIsSendingCode(true);
+    setWalletModalMessage("");
+    setVerificationError("");
+    window.setTimeout(() => {
+      setSentCode(String(Math.floor(100000 + Math.random() * 900000)));
+      setWalletModalStep("code");
+      setWalletModalMessage("Confirmation code sent to your registered email.");
+      setIsSendingCode(false);
+    }, 900);
+  };
+
+  const handleVerificationDigit = (index: number, value: string) => {
+    if (!/^[0-9]?$/.test(value)) return;
+    setVerificationDigits((current) => current.map((digit, position) => position === index ? value : digit));
+  };
+
+  const handleAuthorizeWallet = () => {
+    const code = verificationDigits.join("");
+    if (code.length !== 6) {
+      setVerificationError("Enter the complete 6-digit code.");
+      return;
+    }
+    if (code !== sentCode) {
+      setVerificationError("That code is not valid. Please retry.");
+      return;
+    }
+    setIsVerifyingCode(true);
+    window.setTimeout(() => {
+      setPayoutWallet(newWalletAddress.trim());
+      setNewWalletAddress("");
+      setVerificationDigits(["", "", "", "", "", ""]);
+      setSentCode("");
+      setWalletModalStep("input");
+      setIsWalletModalOpen(false);
+      setIsVerifyingCode(false);
+    }, 700);
   };
 
   const handleAddIp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newIp && !ipWhitelist.includes(newIp)) {
-      setIpWhitelist([...ipWhitelist, newIp]);
-      setNewIp("");
-    }
+    if (!newIp.trim() || ipWhitelist.includes(newIp.trim())) return;
+    setIpWhitelist((current) => [...current, newIp.trim()]);
+    setNewIp("");
   };
 
-  const handleRemoveIp = (ipToRemove: string) => {
-    setIpWhitelist(ipWhitelist.filter(ip => ip !== ipToRemove));
+  const handleRemoveIp = (ip: string) => {
+    setIpWhitelist((current) => current.filter((item) => item !== ip));
   };
+
+  const walletSummary = useMemo(() => abbreviateAddress(payoutWallet), [payoutWallet]);
 
   return (
     <main className="min-h-screen bg-zinc-950 p-6 md:p-12 font-sans relative overflow-hidden">
-      {/* Ambient Visuals */}
-      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-purple-600/5 blur-[120px] rounded-full -z-10 pointer-events-none" />
+      <div className="absolute inset-x-0 top-0 h-[400px] bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.16),transparent_40%)] pointer-events-none -z-10" />
+      <div className="absolute inset-x-0 bottom-0 h-[420px] bg-[radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_45%)] pointer-events-none -z-10" />
 
-      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
-        
-        {/* Header */}
-        <header className="mb-10">
-          <div className="flex items-center gap-2 text-purple-500 mb-2">
-            <LucideKey size={16} />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Authentication Center</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter text-white">
-            API Keys & Security
-          </h1>
-          <p className="text-zinc-500 text-xs mt-3 uppercase tracking-widest font-bold">
-            Manage programmatic access credentials and enclave enforcement rules.
-          </p>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: API Keys (Takes up 2 columns) */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                <LucideShield size={14} className="text-purple-400" /> Active Credentials
+      <div className="max-w-7xl mx-auto space-y-10">
+        <header className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+                <Key size={12} className="text-purple-300" />
+                Security Center
               </span>
-              <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors">
-                <LucidePlus size={14} /> Generate New Key
-              </button>
+              <h1 className="mt-4 text-4xl md:text-5xl font-black uppercase tracking-tighter text-white">
+                API Keys & Security
+              </h1>
+              <p className="max-w-2xl text-sm text-zinc-400 leading-7 mt-3">
+                Manage publishable and secret keys for your production and sandbox environments, enforce settlement wallet approvals, and harden API access.
+              </p>
             </div>
 
-            <div className="space-y-4">
-              {keys.map((key) => (
-                <div 
-                  key={key.id}
-                  className="p-8 rounded-[3rem] bg-zinc-900/80 border border-white/5 backdrop-blur-md relative overflow-hidden group hover:border-white/10 transition-all"
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${activeBadgeClasses}`}>
+                {activeEnvironmentText}
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleEnvironment}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-400/40 hover:bg-purple-500/10"
+              >
+                Switch View
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid gap-8 xl:grid-cols-[1.7fr_1fr]">
+          <section className="space-y-8">
+            <div className="rounded-[3rem] border border-white/10 bg-zinc-950/90 p-8 shadow-[0_25px_120px_rgba(15,23,42,0.15)]">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Key Suite</p>
+                  <h2 className="mt-3 text-2xl font-black text-white">Production + Sandbox Keys</h2>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full bg-purple-500 px-5 py-3 text-xs font-black uppercase tracking-[0.28em] text-white shadow-lg shadow-purple-500/20 transition hover:bg-purple-400"
                 >
-                  {/* Environment Badge */}
-                  <div className="absolute top-6 right-8">
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                      key.environment === "Mainnet" 
-                        ? "bg-purple-600/10 border-purple-500/30 text-purple-400" 
-                        : "bg-zinc-800/50 border-zinc-600/30 text-zinc-400"
-                    }`}>
-                      {key.environment}
+                  <Plus size={16} /> Create key pair
+                </button>
+              </div>
+
+              <div className="mt-10 grid gap-6 sm:grid-cols-2">
+                {keyPairs.map((item) => (
+                  <div key={item.id} className="rounded-[2.5rem] border border-white/10 bg-zinc-950/80 p-6">
+                    <div className="flex items-center justify-between gap-3 mb-6">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{item.environment}</p>
+                        <p className="mt-2 text-sm font-black uppercase tracking-[0.28em] text-white">{item.network}</p>
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
+                        {item.lastUsed}
+                      </span>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="rounded-3xl border border-white/10 bg-black/50 p-4">
+                        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+                          <span>Publishable</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyKey(`${item.id}-pub`, item.publishable)}
+                            className="inline-flex items-center gap-1 text-zinc-300 transition hover:text-white"
+                          >
+                            <Copy size={12} /> {copiedKeyId === `${item.id}-pub` ? "Copied" : "Copy"}
+                          </button>
+                        </div>
+                        <p className="mt-3 break-all text-sm font-mono text-zinc-200">{item.publishable}</p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-black/50 p-4">
+                        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+                          <span>Secret</span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVisibility(item.id)}
+                            className="inline-flex items-center gap-1 text-zinc-300 transition hover:text-white"
+                          >
+                            {visibleSecretId === item.id ? <EyeOff size={12} /> : <Eye size={12} />}
+                            {visibleSecretId === item.id ? "Hide" : "Reveal"}
+                          </button>
+                        </div>
+                        <p className="mt-3 break-all text-sm font-mono text-zinc-200">
+                          {visibleSecretId === item.id ? item.secret : "••••••••••••••••••••••••••••••"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setVisibleSecretId(item.id)}
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-white transition hover:border-purple-300/40"
+                      >
+                        Reveal secret
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRollKey(item.id)}
+                        className="rounded-full border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-amber-300 transition hover:bg-amber-500/20"
+                      >
+                        Roll secret
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[3rem] border border-white/10 bg-zinc-950/90 p-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Payout Wallet</p>
+                  <h2 className="mt-3 text-2xl font-black text-white">Settlement Address</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsWalletModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full bg-purple-500 px-5 py-3 text-xs font-black uppercase tracking-[0.28em] text-white shadow-lg shadow-purple-500/20 transition hover:bg-purple-400"
+                >
+                  <Sparkles size={16} /> Update wallet
+                </button>
+              </div>
+
+              <div className="mt-8 rounded-[2.5rem] border border-white/10 bg-black/60 p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Current wallet</p>
+                    <p className="mt-2 text-lg font-mono text-white">{walletSummary}</p>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
+                    2FA protected
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-zinc-400">
+                  Payout wallet changes require verification via your registered email. This protects your settlement flow from unauthorized updates.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <aside className="space-y-6">
+            <div className="rounded-[3rem] border border-white/10 bg-zinc-950/90 p-8">
+              <div className="flex items-center gap-3 text-purple-300">
+                <ShieldCheck size={18} />
+                <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Security posture</p>
+              </div>
+              <div className="mt-6 space-y-6">
+                <div className="rounded-[2.5rem] border border-white/10 bg-black/60 p-5">
+                  <h3 className="text-sm font-black uppercase tracking-[0.28em] text-white">TEE Enforcement</h3>
+                  <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    Requiring trusted execution environment attestation keeps high-risk operations locked to approved enclave sessions.
+                  </p>
+                  <div className="mt-5 flex items-center justify-between gap-4">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-500">Enabled</span>
+                    <button
+                      type="button"
+                      onClick={() => setRequireTee(!requireTee)}
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${requireTee ? "bg-purple-600" : "bg-zinc-700"}`}
+                    >
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${requireTee ? "translate-x-5" : "translate-x-1"}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[2.5rem] border border-white/10 bg-black/60 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black uppercase tracking-[0.28em] text-white">IP whitelist</p>
+                      <p className="mt-2 text-sm text-zinc-400">Limit API access to trusted IP ranges.</p>
+                    </div>
+                    <span className="rounded-full bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
+                      {ipWhitelist.length} entries
                     </span>
                   </div>
 
-                  <div className="mb-6">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-white mb-1">
-                      Standard Token
-                    </h3>
-                    <p className="text-[9px] text-zinc-500 uppercase tracking-widest">
-                      Created {key.createdAt} • Last used {key.lastUsed}
-                    </p>
-                  </div>
-
-                  {/* Secret Display Block */}
-                  <div className="flex items-center justify-between bg-black/60 border border-white/10 rounded-2xl p-4 mb-6">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <span className="text-zinc-500 font-mono text-xs">{key.prefix}</span>
-                      <code className="text-zinc-300 font-mono text-sm tracking-wider truncate">
-                        {visibleKeyId === key.id ? key.secret : "••••••••••••••••••••••••••••"}
-                      </code>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
-                      <button 
-                        onClick={() => toggleVisibility(key.id)}
-                        className="p-2 text-zinc-500 hover:text-white transition-colors bg-white/5 rounded-lg"
-                      >
-                        {visibleKeyId === key.id ? <LucideEyeOff size={14} /> : <LucideEye size={14} />}
-                      </button>
-                      <button 
-                        onClick={() => handleCopy(key.id, key.secret, key.prefix)}
-                        className="p-2 text-purple-400 hover:text-purple-300 transition-colors bg-purple-500/10 rounded-lg"
-                      >
-                        {copiedId === key.id ? <LucideCheck size={14} /> : <LucideCopy size={14} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Action Bar */}
-                  <div className="flex items-center justify-end border-t border-white/5 pt-4">
-                    <button 
-                      onClick={() => setShowRollModal(key.id)}
-                      className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-amber-500/80 hover:text-amber-400 transition-colors"
-                    >
-                      <LucideRefreshCw size={12} /> Roll API Key
-                    </button>
+                  <div className="mt-5 space-y-3">
+                    {ipWhitelist.map((ip) => (
+                      <div key={ip} className="flex items-center justify-between rounded-3xl border border-white/10 bg-zinc-950/70 px-4 py-3 text-xs text-zinc-300">
+                        <span className="font-mono">{ip}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveIp(ip)}
+                          className="text-rose-400 transition hover:text-rose-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column: Security Rules */}
-          <div className="space-y-6">
-            
-            {/* TEE Enforcement */}
-            <div className="p-8 rounded-[3rem] bg-purple-900/10 border border-purple-500/20 space-y-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-widest text-purple-400 mb-1">
-                    Enclave Enforcement
-                  </h3>
-                  <p className="text-[10px] text-zinc-400 leading-relaxed">
-                    Require cryptographic attestation from TEE environments for all API requests.
-                  </p>
-                </div>
-                {/* Custom Toggle */}
-                <button 
-                  onClick={() => setRequireTee(!requireTee)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    requireTee ? 'bg-purple-600' : 'bg-zinc-700'
-                  }`}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    requireTee ? 'translate-x-5' : 'translate-x-0'
-                  }`} />
-                </button>
               </div>
             </div>
 
-            {/* IP Whitelist */}
-            <div className="p-8 rounded-[3rem] bg-zinc-900/80 border border-white/5 backdrop-blur-md space-y-6">
-              <div className="flex items-center gap-3 mb-2">
-                <LucideGlobe size={16} className="text-purple-500" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-white">IP Whitelist</h3>
+            <div className="rounded-[3rem] border border-white/10 bg-zinc-950/90 p-8">
+              <div className="flex items-center gap-3 text-zinc-300">
+                <Mail size={18} />
+                <p className="text-sm uppercase tracking-[0.28em] text-zinc-500">Notifications</p>
               </div>
-
-              <form onSubmit={handleAddIp} className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder="e.g., 198.51.100.1"
-                  value={newIp}
-                  onChange={(e) => setNewIp(e.target.value)}
-                  className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-xs font-mono text-white focus:outline-none focus:border-purple-500"
-                />
-                <button 
-                  type="submit"
-                  className="px-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-500 transition-colors"
-                >
-                  <LucidePlus size={16} />
-                </button>
-              </form>
-
-              <div className="space-y-2">
-                {ipWhitelist.map((ip) => (
-                  <div key={ip} className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl group">
-                    <code className="text-xs font-mono text-zinc-300">{ip}</code>
-                    <button 
-                      onClick={() => handleRemoveIp(ip)}
-                      className="text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <LucideTrash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-                {ipWhitelist.length === 0 && (
-                  <p className="text-[10px] text-zinc-500 italic">No IP addresses restricted. Open access.</p>
-                )}
+              <div className="mt-6 space-y-4 text-sm text-zinc-400">
+                <p>Receive alerts when payout wallet updates are requested or when a new secret is rolled.</p>
+                <p className="rounded-3xl border border-white/10 bg-black/50 px-4 py-4">
+                  Email notifications are currently configured for <span className="text-white">security@{merchantName.toLowerCase() || "opayque"}.com</span>.
+                </p>
               </div>
             </div>
-
-          </div>
+          </aside>
         </div>
-
       </div>
 
-      {/* Roll Key Confirmation Modal */}
-      {showRollModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-zinc-900 border border-red-500/20 p-8 rounded-[3rem] max-w-md w-full space-y-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-amber-500" />
-            
-            <div className="flex items-center gap-3 text-amber-500">
-              <LucideAlertTriangle size={24} />
-              <h3 className="text-lg font-black italic uppercase tracking-tight">
-                Roll API Key?
-              </h3>
+      {isWalletModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-md">
+          <div className="w-full max-w-2xl rounded-[3rem] border border-white/10 bg-zinc-950/95 p-8 text-white shadow-2xl shadow-black/40">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-purple-300">Protected wallet update</p>
+                <h2 className="mt-3 text-2xl font-black uppercase tracking-tight">Authorize settlement wallet change</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWalletModalOpen(false);
+                  setWalletModalStep("input");
+                  setVerificationError("");
+                }}
+                className="rounded-full bg-white/5 p-3 text-white transition hover:bg-white/10"
+              >
+                <X size={18} />
+              </button>
             </div>
-            
-            <p className="text-[11px] text-zinc-400 leading-relaxed uppercase tracking-widest font-bold">
-              Rolling this key will instantly invalidate the current secret. Any active integration using the old key will fail immediately. 
-            </p>
 
-            <div className="flex gap-4 pt-4">
-              <button 
-                onClick={() => setShowRollModal(null)}
-                className="w-1/2 py-3 bg-black/40 border border-white/10 text-zinc-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-white"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={() => setShowRollModal(null)} // Hook up actual roll logic here later
-                className="w-1/2 py-3 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-500/20"
-              >
-                Confirm Roll
-              </button>
+            <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_0.8fr]">
+              <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
+                <label className="text-xs uppercase tracking-[0.28em] text-zinc-500">New wallet address</label>
+                <input
+                  type="text"
+                  value={newWalletAddress}
+                  onChange={(event) => setNewWalletAddress(event.target.value)}
+                  placeholder="Enter Solana payout wallet"
+                  className="w-full rounded-3xl border border-white/10 bg-zinc-900/80 px-4 py-4 text-sm text-white outline-none transition focus:border-purple-500"
+                />
+                <p className="text-sm leading-6 text-zinc-400">
+                  All payout wallet updates are held until email verification completes. This prevents unsanctioned settlement changes.
+                </p>
+              </div>
+
+              <div className="space-y-4 rounded-[2.5rem] border border-white/10 bg-zinc-900/80 p-6">
+                <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Verification</p>
+                <div className="rounded-3xl border border-white/10 bg-black/60 p-4">
+                  <p className="text-sm text-zinc-300">We will send a one-time code to the merchant email on file.</p>
+                  <button
+                    type="button"
+                    onClick={handleSendConfirmationCode}
+                    disabled={isSendingCode}
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-3xl bg-purple-500 px-4 py-3 text-sm font-black uppercase tracking-[0.28em] text-white transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:bg-purple-500/50"
+                  >
+                    {isSendingCode ? "Sending code..." : "Send verification code"}
+                  </button>
+                  {walletModalMessage && <p className="mt-4 text-sm text-emerald-300">{walletModalMessage}</p>}
+                </div>
+
+                {walletModalStep === "code" && (
+                  <div className="rounded-3xl border border-white/10 bg-black/60 p-4">
+                    <p className="text-sm text-zinc-300">Enter the 6-digit code.</p>
+                    <div className="mt-4 grid grid-cols-6 gap-3">
+                      {verificationDigits.map((digit, index) => (
+                        <input
+                          key={index}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(event) => handleVerificationDigit(index, event.target.value)}
+                          className="h-14 w-full rounded-3xl border border-white/10 bg-zinc-900/90 text-center text-xl font-black text-white outline-none transition focus:border-purple-500"
+                        />
+                      ))}
+                    </div>
+                    {verificationError && <p className="mt-3 text-sm text-rose-400">{verificationError}</p>}
+                    <button
+                      type="button"
+                      onClick={handleAuthorizeWallet}
+                      disabled={isVerifyingCode}
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase tracking-[0.28em] text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                    >
+                      {isVerifyingCode ? "Verifying..." : "Authorize wallet change"}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
