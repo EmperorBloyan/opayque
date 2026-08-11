@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { authenticateApiKey } from '@/lib/auth/apiKey';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: Request) {
+  const supabaseAdmin = createSupabaseServerClient(request);
   // 1. Authenticate the API Key
   const authHeader = request.headers.get('Authorization');
   const auth = await authenticateApiKey(authHeader);

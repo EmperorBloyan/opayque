@@ -1,10 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import crypto from 'node:crypto';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServerClient();
 
 export async function authenticateApiKey(authHeader: string | null) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

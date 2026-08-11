@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Client } from '@upstash/qstash';
 import crypto from 'node:crypto';
 
