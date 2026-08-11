@@ -216,6 +216,11 @@ export default function TerminalManager({
   const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();
 
+  const closePairingModal = () => {
+    setIsPairingOpen(false);
+    setPairingState('idle');
+  };
+
   const networkIsDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
   const usdcMintAddress = getAssetMintAddress("USDC" as any, networkIsDevnet);
   const solMintAddress = getAssetMintAddress("SOL" as any, networkIsDevnet);
