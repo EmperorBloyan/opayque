@@ -84,7 +84,7 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
         {!success ? (
           <div className="space-y-6 text-center">
             <h2 className="text-2xl font-extrabold text-white">Pay {currency} {Number(amount) / 100}</h2>
-            {customer_email && <p className="text-sm text-zinc-400">Buyer's email: {customer_email}</p>}
+            {customer_email && <p className="text-sm text-zinc-400">Buyer&apos;s email: {customer_email}</p>}
 
             <div className="flex flex-col items-center gap-4">
               {solana_pay_url ? (
