@@ -12,7 +12,8 @@ function initSentry() {
   try {
     // Avoid pulling the full Sentry runtime into the build path when no DSN is configured.
     // The app still exposes a safe capture hook for server-side logging.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // Use a generic eslint disable here to avoid requiring the @typescript-eslint plugin in the dev container.
+    /* eslint-disable-next-line */
     const runtime = require('@sentry/nextjs') as SentryLike & { init?: (options: unknown) => void };
     runtime.init?.({
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,

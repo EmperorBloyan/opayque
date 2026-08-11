@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react/jsx-no-comment-textnodes */
 
 import React, { useState } from 'react';
 import { Terminal, Shield, Play, ArrowLeft, Settings2 } from 'lucide-react';

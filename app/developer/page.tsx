@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react/jsx-no-comment-textnodes */
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
