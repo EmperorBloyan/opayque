@@ -27,7 +27,7 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [payLoading, setPayLoading] = useState(false);
-  const { connection } = useConnection ? useConnection() : { connection: null };
+  const { connection } = useConnection();
   const intervalRef = useRef<number | null>(null);
 
   // Wallet adapters
