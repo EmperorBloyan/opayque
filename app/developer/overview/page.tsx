@@ -104,7 +104,7 @@ export default function DeveloperOverviewPage() {
       {/* CORE DEVELOPER WORKSPACE CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Solana RPC Config Card */}
-        <div className="p-8 rounded-[3rem] bg-zinc-900 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.3)] hover:border-purple-500/40 transition-all flex flex-col justify-between">
+        <div className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="p-4 rounded-3xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
@@ -122,20 +122,22 @@ export default function DeveloperOverviewPage() {
             </p>
           </div>
 
-          <div className="mt-6 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-purple-200">
-            <div className="flex items-center justify-between gap-4">
-              <span className="uppercase tracking-[0.35em] text-zinc-500">Primary Node</span>
-              <span className="font-black text-white">rpc.opayque.sol</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
-              <span>Latency</span>
-              <span>24ms</span>
+          <div className="mt-6 flex gap-2">
+            <div className="flex-1 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-purple-200">
+              <div className="flex items-center justify-between gap-4">
+                <span className="uppercase tracking-[0.35em] text-zinc-500">Primary Node</span>
+                <span className="font-black text-white">rpc.opayque.sol</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
+                <span>Latency</span>
+                <span>24ms</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Mobile Wallet Adapter Card */}
-        <div className="p-8 rounded-[3rem] bg-zinc-900 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.3)] hover:border-purple-500/40 transition-all flex flex-col justify-between">
+        <div className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="p-4 rounded-3xl bg-zinc-800 text-zinc-200 border border-white/10">
@@ -153,14 +155,16 @@ export default function DeveloperOverviewPage() {
             </p>
           </div>
 
-          <div className="mt-6 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-zinc-300">
-            <div className="flex items-center justify-between gap-4">
-              <span className="uppercase tracking-[0.35em] text-zinc-500">Protocol</span>
-              <span className="font-black text-white">WSS</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-emerald-400">
-              <span>Status</span>
-              <span>Connected</span>
+          <div className="mt-6 flex gap-2">
+            <div className="flex-1 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-zinc-300">
+              <div className="flex items-center justify-between gap-4">
+                <span className="uppercase tracking-[0.35em] text-zinc-500">Protocol</span>
+                <span className="font-black text-white">WSS</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-emerald-400">
+                <span>Status</span>
+                <span>Connected</span>
+              </div>
             </div>
           </div>
         </div>
