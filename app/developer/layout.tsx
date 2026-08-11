@@ -13,13 +13,11 @@ import {
   LayoutDashboard,
   Webhook,
 } from "lucide-react";
-import OpayqueCheckout from "@/components/OpayqueCheckout";
 import { clearActiveSession } from "@/lib/crypto/session";
 
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [activeModal, setActiveModal] = useState<"quickstart" | "sandbox" | null>(null);
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
@@ -134,29 +132,23 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
 
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveModal('sandbox');
-              setIsSpeedDialOpen(false);
-            }}
+          <Link
+            href="/sandbox"
+            onClick={() => setIsSpeedDialOpen(false)}
             className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-zinc-900/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(0,0,0,0.45)] transition-all hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-white/5 active:scale-[0.98]"
           >
-            <span>Sandbox Checkout</span>
+            <span>Sandbox</span>
             <Zap size={16} className="text-purple-400" />
-          </button>
+          </Link>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveModal('quickstart');
-              setIsSpeedDialOpen(false);
-            }}
+          <Link
+            href="/quickstart"
+            onClick={() => setIsSpeedDialOpen(false)}
             className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-purple-700/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(80,0,140,0.35)] transition-all hover:-translate-y-0.5 hover:border-purple-300/50 hover:bg-purple-600/90 active:scale-[0.98]"
           >
-            <span>Quickstart / API Keys</span>
+            <span>Quickstart</span>
             <Key size={16} className="text-white" />
-          </button>
+          </Link>
         </div>
 
         <button
@@ -170,35 +162,6 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         </button>
       </div>
 
-      {activeModal === 'quickstart' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-md">
-          <div className="relative w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-zinc-950 p-8 shadow-[0_0_25px_rgba(168,85,247,0.35)]">
-            <button type="button" onClick={() => setActiveModal(null)} className="absolute right-6 top-6 rounded-2xl border border-white/10 p-2 text-zinc-500 transition hover:text-white" aria-label="Close modal"><X size={18} /></button>
-            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-purple-400">Developer Hub</p>
-            <h2 className="mt-3 text-3xl font-black italic uppercase tracking-tighter">Quickstart Tools</h2>
-            <p className="mt-4 text-sm leading-relaxed text-zinc-400">Launch the developer onboarding workspace or inspect your API credentials from anywhere inside the hub.</p>
-            <div className="mt-8 grid gap-4">
-              <Link href="/developer/keys" onClick={() => setActiveModal(null)} className="inline-flex w-full items-center justify-between rounded-3xl border border-purple-600/40 bg-purple-600 px-6 py-4 text-[10px] font-black uppercase tracking-[0.25em] text-white shadow-[0_0_25px_rgba(168,85,247,0.25)] transition hover:bg-purple-500">
-                <span>API Keys Workspace</span>
-                <X className="opacity-0" />
-              </Link>
-              <Link href="/developer/sandbox" onClick={() => setActiveModal(null)} className="inline-flex w-full items-center justify-between rounded-3xl border border-white/10 bg-zinc-900 px-6 py-4 text-[10px] font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/5">
-                <span>Open Sandbox Page</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeModal === 'sandbox' && (
-        <OpayqueCheckout
-          apiKey="opq_sandbox_demo_key"
-          orderId="DEV-SANDBOX-001"
-          amountUsdc={19.99}
-          merchantWallet="BPFLoaderTest11111111111111111111111"
-          onClose={() => setActiveModal(null)}
-        />
-      )}
     </div>
   );
 }

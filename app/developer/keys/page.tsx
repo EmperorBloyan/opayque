@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Copy,
   Eye,
@@ -26,26 +27,7 @@ interface ApiKeyPair {
   lastUsed: string;
 }
 
-const INITIAL_KEY_PAIRS: ApiKeyPair[] = [
-  {
-    id: "prod",
-    environment: "Production",
-    network: "Mainnet",
-    publishable: "opq_pub_live_9x8f7d6e5c4b3a210",
-    secret: "opq_sec_live_2b7e8f9d4c1a0b3f56",
-    createdAt: "2026-01-15",
-    lastUsed: "2 mins ago",
-  },
-  {
-    id: "sandbox",
-    environment: "Sandbox",
-    network: "Testnet",
-    publishable: "opq_pub_test_7a6d5c4b3a210f9e",
-    secret: "opq_sec_test_1f2e3d4c5b6a7e8d90",
-    createdAt: "2026-04-01",
-    lastUsed: "12 mins ago",
-  },
-];
+
 
 const abbreviateAddress = (address: string) => {
   if (!address) return "-";
@@ -53,7 +35,10 @@ const abbreviateAddress = (address: string) => {
 };
 
 export default function ApiKeysPage() {
-  const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>(INITIAL_KEY_PAIRS);
+  const router = useRouter();
+  const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [creatingKey, setCreatingKey] = useState(false);
   const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [isLiveMode, setIsLiveMode] = useState(false);
@@ -69,9 +54,14 @@ export default function ApiKeysPage() {
   const [verificationError, setVerificationError] = useState("");
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
-  const [ipWhitelist, setIpWhitelist] = useState<string[]>(["192.168.1.1", "203.0.113.50"]);
+  const [ipWhitelist, setIpWhitelist] = useState<string[]>([]);
   const [newIp, setNewIp] = useState("");
   const [requireTee, setRequireTee] = useState(true);
+  // Notifications and verification
+  const [notificationEmails, setNotificationEmails] = useState<{ email: string; verified: boolean }[]>([]);
+  const [newNotificationEmail, setNewNotificationEmail] = useState("");
+  const [sentVerificationCodes, setSentVerificationCodes] = useState<Record<string, string>>({});
+  const [verificationInputs, setVerificationInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -81,6 +71,44 @@ export default function ApiKeysPage() {
     if (storedEnv === "production") setIsLiveMode(true);
     if (storedName) setMerchantName(storedName);
     if (storedLogo) setMerchantLogo(storedLogo);
+    const storedIps = window.localStorage.getItem("developer_ip_whitelist");
+    if (storedIps) {
+      try { setIpWhitelist(JSON.parse(storedIps)); } catch {}
+    }
+    const storedEmails = window.localStorage.getItem("developer_notification_emails");
+    if (storedEmails) {
+      try { setNotificationEmails(JSON.parse(storedEmails)); } catch {}
+    }
+  }, []);
+
+  // Load keys from API
+  useEffect(() => {
+    let mounted = true;
+    async function loadKeys() {
+      setLoadingKeys(true);
+      try {
+        const res = await fetch('/api/v1/keys');
+        if (!res.ok) throw new Error('Failed to load keys');
+        const data = await res.json();
+        if (!mounted) return;
+        const transformed = (data.keys || []).map((k: any) => ({
+          id: k.id,
+          environment: k.environment === 'mainnet' ? 'Production' : 'Sandbox',
+          network: k.environment === 'mainnet' ? 'Mainnet' : 'Testnet',
+          publishable: `${k.prefix}pub_${k.id.slice(0,8)}`,
+          secret: '••••••••••••••••••••',
+          createdAt: k.created_at ?? '',
+          lastUsed: k.last_used_at ? 'recent' : 'never',
+        }));
+        setKeyPairs(transformed);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingKeys(false);
+      }
+    }
+    loadKeys();
+    return () => { mounted = false; };
   }, []);
 
   const activeEnvironmentText = isLiveMode ? "Live Mode (Production)" : "Test Mode (Sandbox)";
@@ -153,15 +181,24 @@ export default function ApiKeysPage() {
       return;
     }
     setIsVerifyingCode(true);
-    window.setTimeout(() => {
-      setPayoutWallet(newWalletAddress.trim());
-      setNewWalletAddress("");
-      setVerificationDigits(["", "", "", "", "", ""]);
-      setSentCode("");
-      setWalletModalStep("input");
-      setIsWalletModalOpen(false);
-      setIsVerifyingCode(false);
-    }, 700);
+    (async () => {
+      try {
+        const res = await fetch('/api/v1/merchant', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settlementWalletAddress: newWalletAddress.trim() }) });
+        if (!res.ok) throw new Error('Failed to update wallet');
+        const data = await res.json();
+        setPayoutWallet(data.merchant.settlement_wallet_address || newWalletAddress.trim());
+        setNewWalletAddress('');
+        setVerificationDigits(["", "", "", "", "", ""]);
+        setSentCode('');
+        setWalletModalStep('input');
+        setIsWalletModalOpen(false);
+      } catch (err) {
+        console.error(err);
+        setVerificationError('Failed to authorize wallet change');
+      } finally {
+        setIsVerifyingCode(false);
+      }
+    })();
   };
 
   const handleAddIp = (e: React.FormEvent) => {
@@ -216,16 +253,40 @@ export default function ApiKeysPage() {
         <div className="grid gap-8 xl:grid-cols-[1.7fr_1fr]">
           <section className="space-y-8">
             <div className="rounded-[3rem] border border-white/10 bg-zinc-950/90 p-8 shadow-[0_25px_120px_rgba(15,23,42,0.15)]">
-              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Key Suite</p>
                   <h2 className="mt-3 text-2xl font-black text-white">Production + Sandbox Keys</h2>
                 </div>
                 <button
                   type="button"
+                  onClick={async () => {
+                    setCreatingKey(true);
+                    try {
+                      const res = await fetch('/api/v1/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ environment: isLiveMode ? 'mainnet' : 'sandbox' }) });
+                      if (!res.ok) throw new Error('Failed to create key');
+                      const data = await res.json();
+                      // Insert the new key showing raw secret briefly
+                      const newKey: ApiKeyPair = {
+                        id: data.id,
+                        environment: data.environment === 'mainnet' ? 'Production' : 'Sandbox',
+                        network: data.environment === 'mainnet' ? 'Mainnet' : 'Testnet',
+                        publishable: data.prefix + 'pub_' + data.id.slice(0,8),
+                        secret: data.rawSecretKey,
+                        createdAt: data.createdAt || new Date().toISOString(),
+                        lastUsed: 'never',
+                      };
+                      setKeyPairs((cur) => [newKey, ...cur]);
+                      setVisibleSecretId(data.id);
+                    } catch (err) {
+                      console.error(err);
+                    } finally {
+                      setCreatingKey(false);
+                    }
+                  }}
                   className="inline-flex items-center gap-2 rounded-full bg-purple-500 px-5 py-3 text-xs font-black uppercase tracking-[0.28em] text-white shadow-lg shadow-purple-500/20 transition hover:bg-purple-400"
                 >
-                  <Plus size={16} /> Create key pair
+                  <Plus size={16} /> {creatingKey ? 'Creating…' : 'Create key pair'}
                 </button>
               </div>
 
@@ -289,6 +350,21 @@ export default function ApiKeysPage() {
                         className="rounded-full border border-amber-600/20 bg-amber-500/10 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-amber-300 transition hover:bg-amber-500/20"
                       >
                         Roll secret
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/v1/keys?id=${item.id}`, { method: 'DELETE' });
+                            if (!res.ok) throw new Error('Delete failed');
+                            setKeyPairs((cur) => cur.filter((k) => k.id !== item.id));
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="rounded-full border border-white/10 bg-rose-700/10 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-rose-300 transition hover:bg-rose-700/20"
+                      >
+                        <Trash2 size={14} /> Revoke
                       </button>
                     </div>
                   </div>

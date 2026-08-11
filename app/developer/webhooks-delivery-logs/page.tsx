@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Activity, Check, CheckCircle2, Copy, Eye, EyeOff, Radio, RefreshCw, ShieldCheck, Webhook, XCircle } from "lucide-react";
 
 interface DeliveryLog {
@@ -12,22 +12,38 @@ interface DeliveryLog {
   latency: string;
 }
 
-const initialLogs: DeliveryLog[] = [
-  { id: "evt_99a81f01", event: "checkout.session.completed", status: 200, endpoint: "https://api.merchant.com/v1/opayque-webhook", time: "2026-08-10 09:32:11", latency: "142ms" },
-  { id: "evt_99a81f02", event: "tx.shielded.settled", status: 200, endpoint: "https://api.merchant.com/v1/opayque-webhook", time: "2026-08-10 09:28:45", latency: "98ms" },
-  { id: "evt_99a81f03", event: "terminal.node.paired", status: 500, endpoint: "https://api.merchant.com/v1/opayque-webhook", time: "2026-08-10 08:15:02", latency: "502ms" },
-];
+// initial logs removed; using live API
 
 const eventTypes = ["checkout.session.completed", "tx.shielded.settled", "terminal.node.paired", "transfer.failed"];
 
 export default function WebhooksDeliveryLogsPage() {
-  const [endpoint, setEndpoint] = useState("https://api.merchant.com/v1/opayque-webhook");
-  const [secret, setSecret] = useState("whsec_sol_99x82a10f_live_hash");
+  const [endpoint, setEndpoint] = useState("");
+  const [secret, setSecret] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
   const [copied, setCopied] = useState(false);
   const [selectedEvents, setSelectedEvents] = useState(eventTypes.slice(0, 3));
-  const [logs, setLogs] = useState(initialLogs);
+  const [logs, setLogs] = useState<any[]>([]);
   const [isTesting, setIsTesting] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/v1/webhooks/logs');
+        if (!res.ok) throw new Error('Failed to load logs');
+        const data = await res.json();
+        if (!mounted) return;
+        setLogs(data.logs || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const toggleEvent = (event: string) => setSelectedEvents((current) => current.includes(event) ? current.filter((item) => item !== event) : [...current, event]);
   const copySecret = async () => { await navigator.clipboard.writeText(secret); setCopied(true); window.setTimeout(() => setCopied(false), 1600); };

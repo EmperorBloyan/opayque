@@ -102,33 +102,31 @@ export default function DeveloperOverviewPage() {
       </div>
 
       {/* CORE DEVELOPER WORKSPACE CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Solana RPC Config Card */}
-        <div className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500">
-          <div className="space-y-4">
+        <div className="group bg-black/40 border border-white/5 p-8 rounded-[3.5rem] min-h-[420px] hover:border-purple-500/30 transition-all duration-500">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <div className="p-4 rounded-3xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
+              <div className="p-5 rounded-3xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
                 <BookOpen className="w-6 h-6" />
               </div>
-              <span className="text-[10px] px-3 py-1 rounded-full bg-[#111118] text-emerald-400 border border-emerald-800/50 font-black uppercase tracking-[0.3em]">
+              <span className="text-[10px] px-4 py-2 rounded-full bg-[#111118] text-emerald-400 border border-emerald-800/50 font-black uppercase tracking-[0.3em]">
                 Active Relay
               </span>
             </div>
-            <h3 className="text-2xl font-black uppercase tracking-tight text-white">
+            <h3 className="text-3xl font-black uppercase tracking-tight text-white">
               Solana RPC Config
             </h3>
-            <p className="text-sm text-zinc-400 tracking-wide leading-relaxed">
+            <p className="max-w-2xl text-sm text-zinc-400 tracking-wide leading-relaxed">
               Setup multi-provider RPC layer abstractions for resilient network settlement and instant state syncing.
             </p>
-          </div>
 
-          <div className="mt-6 flex gap-2">
-            <div className="flex-1 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-purple-200">
+            <div className="rounded-[2.5rem] border border-white/10 bg-black/40 p-6 text-sm text-purple-200">
               <div className="flex items-center justify-between gap-4">
                 <span className="uppercase tracking-[0.35em] text-zinc-500">Primary Node</span>
                 <span className="font-black text-white">rpc.opayque.sol</span>
               </div>
-              <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
+              <div className="mt-4 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
                 <span>Latency</span>
                 <span>24ms</span>
               </div>
@@ -137,31 +135,29 @@ export default function DeveloperOverviewPage() {
         </div>
 
         {/* Mobile Wallet Adapter Card */}
-        <div className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500">
-          <div className="space-y-4">
+        <div className="group bg-black/40 border border-white/5 p-8 rounded-[3.5rem] min-h-[420px] hover:border-purple-500/30 transition-all duration-500">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <div className="p-4 rounded-3xl bg-zinc-800 text-zinc-200 border border-white/10">
+              <div className="p-5 rounded-3xl bg-zinc-800 text-zinc-200 border border-white/10">
                 <Terminal className="w-6 h-6" />
               </div>
-              <span className="text-[10px] px-3 py-1 rounded-full bg-[#111118] text-[#a3a3ff] border border-[#5b4dff]/20 font-black uppercase tracking-[0.3em]">
+              <span className="text-[10px] px-4 py-2 rounded-full bg-[#111118] text-[#a3a3ff] border border-[#5b4dff]/20 font-black uppercase tracking-[0.3em]">
                 Hardware Ready
               </span>
             </div>
-            <h3 className="text-2xl font-black uppercase tracking-tight text-white">
+            <h3 className="text-3xl font-black uppercase tracking-tight text-white">
               Mobile Wallet Adapter
             </h3>
-            <p className="text-sm text-zinc-400 tracking-wide leading-relaxed">
+            <p className="max-w-2xl text-sm text-zinc-400 tracking-wide leading-relaxed">
               Deep-linking configurations and secure pairing payloads for POS and remote checkout integrations.
             </p>
-          </div>
 
-          <div className="mt-6 flex gap-2">
-            <div className="flex-1 rounded-3xl border border-white/10 bg-black/40 p-5 text-sm text-zinc-300">
+            <div className="rounded-[2.5rem] border border-white/10 bg-black/40 p-6 text-sm text-zinc-300">
               <div className="flex items-center justify-between gap-4">
                 <span className="uppercase tracking-[0.35em] text-zinc-500">Protocol</span>
                 <span className="font-black text-white">WSS</span>
               </div>
-              <div className="mt-3 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-emerald-400">
+              <div className="mt-4 flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-emerald-400">
                 <span>Status</span>
                 <span>Connected</span>
               </div>

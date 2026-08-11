@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   LucideWebhook, 
   LucideActivity, 
@@ -22,60 +22,77 @@ interface WebhookLog {
   duration: string;
 }
 
-const INITIAL_LOGS: WebhookLog[] = [
-  {
-    id: "evt_99a81f01",
-    event: "checkout.session.completed",
-    status: 200,
-    url: "https://api.merchant.com/v1/opayque-webhook",
-    timestamp: "2026-08-10 09:32:11",
-    duration: "142ms"
-  },
-  {
-    id: "evt_99a81f02",
-    event: "tx.shielded.settled",
-    status: 200,
-    url: "https://api.merchant.com/v1/opayque-webhook",
-    timestamp: "2026-08-10 09:28:45",
-    duration: "98ms"
-  },
-  {
-    id: "evt_99a81f03",
-    event: "terminal.node.paired",
-    status: 500,
-    url: "https://api.merchant.com/v1/opayque-webhook",
-    timestamp: "2026-08-10 08:15:02",
-    duration: "502ms"
-  }
-];
-
 export default function WebhooksPage() {
-  const [endpointUrl, setEndpointUrl] = useState("https://api.merchant.com/v1/opayque-webhook");
-  const [webhookSecret] = useState("whsec_sol_99x82a10f_live_hash");
-  const [logs, setLogs] = useState<WebhookLog[]>(INITIAL_LOGS);
+  const [endpointUrl, setEndpointUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const handleCopySecret = () => {
-    navigator.clipboard.writeText(webhookSecret);
+  // Load webhooks
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/v1/webhooks');
+        if (!res.ok) throw new Error('Failed to load webhooks');
+        const data = await res.json();
+        if (!mounted) return;
+        setWebhooks(data.webhooks || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleCopySecret = (secret: string) => {
+    navigator.clipboard.writeText(secret);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendTestWebhook = () => {
+  const handleSendTestWebhook = async (w: any) => {
     setIsTesting(true);
-    setTimeout(() => {
-      const newLog: WebhookLog = {
-        id: `evt_${Math.random().toString(36).substring(2, 9)}`,
-        event: "checkout.session.simulated",
-        status: 200,
-        url: endpointUrl,
-        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-        duration: "115ms"
-      };
-      setLogs([newLog, ...logs]);
+    try {
+      const res = await fetch('/api/v1/webhooks/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ webhookId: w.id }) });
+      if (!res.ok) throw new Error('Failed to dispatch test webhook');
+      setToast('Dispatched signed HMAC test.ping payload — delivery logged');
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setToast('Failed to dispatch test webhook');
+      setTimeout(() => setToast(null), 3000);
+    } finally {
       setIsTesting(false);
-    }, 1000);
+    }
+  };
+
+  const handleCreateWebhook = async () => {
+    try {
+      const res = await fetch('/api/v1/webhooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpointUrl: endpointUrl || '', environment: 'sandbox' }) });
+      if (!res.ok) throw new Error('Create failed');
+      const data = await res.json();
+      setWebhooks((cur) => [data, ...cur]);
+      setWebhookSecret(data.rawSecret || null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteWebhook = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/webhooks?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setWebhooks((cur) => cur.filter((w) => w.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -134,9 +151,9 @@ export default function WebhooksPage() {
                     Signing Secret (HMAC-SHA256)
                   </label>
                   <div className="flex items-center justify-between bg-black/60 border border-white/10 rounded-2xl p-4">
-                    <code className="text-zinc-400 font-mono text-[11px] truncate mr-2">{webhookSecret}</code>
+                    <code className="text-zinc-400 font-mono text-[11px] truncate mr-2">{webhookSecret ?? '—'}</code>
                     <button 
-                      onClick={handleCopySecret}
+                      onClick={() => webhookSecret && handleCopySecret(webhookSecret)}
                       className="text-purple-400 hover:text-purple-300 shrink-0 text-[10px] font-black uppercase"
                     >
                       {copied ? <LucideCheck size={14} /> : <LucideCopy size={14} />}
@@ -146,12 +163,12 @@ export default function WebhooksPage() {
               </div>
 
               <button
-                onClick={handleSendTestWebhook}
+                onClick={handleCreateWebhook}
                 disabled={isTesting}
                 className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <LucideRefreshCw size={14} className={isTesting ? "animate-spin" : ""} />
-                {isTesting ? "Dispatching..." : "Test Webhook Trigger"}
+                Create webhook
               </button>
             </div>
 
@@ -169,53 +186,33 @@ export default function WebhooksPage() {
           </div>
 
           {/* Right Column: Live Event Stream Logs */}
-          <div className="lg:col-span-2 space-y-4">
+            <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-2">
                 <LucideActivity size={14} className="text-purple-400" /> Dispatch Audit Logs
               </span>
               <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest">
-                Showing last {logs.length} events
+                Showing {webhooks.length} configured endpoints
               </span>
             </div>
 
             <div className="p-6 rounded-[3rem] bg-zinc-900/80 border border-white/5 backdrop-blur-md space-y-4">
-              {logs.map((log) => (
-                <div 
-                  key={log.id} 
-                  className="p-5 bg-black/40 border border-white/5 rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-white/10 transition-all"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1">
-                      {log.status === 200 ? (
-                        <LucideCheckCircle2 size={18} className="text-green-400" />
-                      ) : (
-                        <LucideXCircle size={18} className="text-red-400" />
-                      )}
+              {webhooks.length === 0 && (
+                <div className="p-6 rounded-2xl bg-black/50 text-zinc-400">No webhooks configured yet.</div>
+              )}
+              {webhooks.map((w) => (
+                <div key={w.id} className="p-4 bg-black/40 border border-white/5 rounded-[1.5rem] flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <code className="text-sm font-mono text-white truncate">{w.endpoint_url}</code>
+                      <span className="text-[9px] text-zinc-400">{w.environment}</span>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono font-bold text-white">{log.event}</code>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-black ${
-                          log.status === 200 
-                            ? "bg-green-500/10 border border-green-500/20 text-green-400" 
-                            : "bg-red-500/10 border border-red-500/20 text-red-400"
-                        }`}>
-                          {log.status}
-                        </span>
-                      </div>
-                      <p className="text-[10px] font-mono text-zinc-500 mt-1 truncate max-w-xs">{log.url}</p>
-                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-1">Created {new Date(w.created_at).toLocaleString()}</p>
                   </div>
-
-                  <div className="flex items-center justify-between md:justify-end gap-4 text-right">
-                    <div>
-                      <div className="text-[10px] font-mono text-zinc-400">{log.timestamp}</div>
-                      <div className="text-[9px] font-mono text-zinc-600">{log.duration} latency</div>
-                    </div>
-                    <code className="text-[10px] font-mono text-purple-400 bg-purple-900/20 px-2 py-1 rounded-lg border border-purple-500/20">
-                      {log.id}
-                    </code>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => handleSendTestWebhook(w)} className="px-3 py-2 rounded-lg bg-purple-600 text-white text-xs">Test</button>
+                    <button onClick={() => handleCopySecret(w.rawSecret || w.endpoint_url)} className="px-3 py-2 rounded-lg bg-white/5 text-xs">Copy Secret</button>
+                    <button onClick={() => handleDeleteWebhook(w.id)} className="px-3 py-2 rounded-lg bg-rose-700/10 text-rose-300 text-xs">Delete</button>
                   </div>
                 </div>
               ))}
@@ -225,6 +222,13 @@ export default function WebhooksPage() {
         </div>
 
       </div>
+      {toast && (
+        <div role="status" className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest text-white shadow-2xl">
+            {toast}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
