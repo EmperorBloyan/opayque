@@ -20,12 +20,24 @@ export default function DeveloperPage() {
   const [showKeysModal, setShowKeysModal] = useState<boolean>(false);
   const [showQuickstartModal, setShowQuickstartModal] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
+  const [step, setStep] = useState<'onboarding' | 'ready'>('ready');
+  const [projectName, setProjectName] = useState<string>('');
+  const [destinationWallet, setDestinationWallet] = useState<string>('');
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const [emailOrGithub, setEmailOrGithub] = useState<string>('');
+  const [controlPassword, setControlPassword] = useState<string>('');
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
 
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [totalVolume, setTotalVolume] = useState<number | null>(null);
   const [transactionCount, setTransactionCount] = useState<number | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+
+  const handleOnboardingSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setOnboardingError(null);
+  };
 
   // Fetch merchant analytics and ensure authenticated session
   useEffect(() => {
@@ -296,7 +308,9 @@ export default function DeveloperPage() {
               </button>
             </form>
           </div>
-        {/* HEADER MODAL: API KEYS */}
+        </div>
+      )}
+      {/* HEADER MODAL: API KEYS */}
       {showKeysModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-[#0b0c10] border border-[#1f293d] rounded-3xl p-6 sm:p-8 space-y-6 relative">
