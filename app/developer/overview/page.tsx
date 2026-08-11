@@ -85,11 +85,11 @@ export default function DeveloperOverviewPage() {
             <span>0.02% dropped packets</span>
           </div>
         </div>
-            const handleCopyKey = () => {
-              // keys are managed in the Keys page
-              setCopiedKey(true);
-              setTimeout(() => setCopiedKey(false), 2000);
-            };
+
+        {/* Metric 3: Average Latency */}
+        <div className="p-5 rounded-2xl bg-[#0b0c10] border border-[#1f293d] space-y-2 hover:border-[#00ffcc]/40 transition-colors">
+          <div className="flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider">
+            <span>Avg Response Latency</span>
             <Zap className="w-4 h-4 text-[#00ffcc]" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-white">120ms</div>
