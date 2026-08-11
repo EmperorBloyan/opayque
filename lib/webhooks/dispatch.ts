@@ -2,10 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Client } from '@upstash/qstash';
 import crypto from 'node:crypto';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createSupabaseServerClient();
 
 const qstashClient = process.env.QSTASH_TOKEN
   ? new Client({ token: process.env.QSTASH_TOKEN })
