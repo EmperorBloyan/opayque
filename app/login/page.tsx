@@ -1,41 +1,40 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { CheckCircle2, Lock, Mail, UserPlus, ArrowRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { ArrowRight, Lock, Mail } from "lucide-react";
 
-const authModes = ['signIn', 'signUp'] as const;
+function getSavedMerchantName() {
+  if (typeof window === "undefined") return "Opayque Merchant";
+  const merchantName = window.localStorage.getItem("merchant_name")?.trim();
+  return merchantName || "Opayque Merchant";
+}
 
-type AuthMode = (typeof authModes)[number];
+function getSavedMerchantLogo() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>('signIn');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [merchantName, setMerchantName] = useState("Opayque Merchant");
+  const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [useMagicLink, setUseMagicLink] = useState(false);
 
-  const title = mode === 'signIn' ? 'Sign in to Opayque' : 'Create an account';
-  const buttonLabel = useMagicLink
-    ? mode === 'signIn'
-      ? 'Send Magic Link'
-      : 'Send Signup Link'
-    : mode === 'signIn'
-    ? 'Sign In'
-    : 'Create Account';
+  useEffect(() => {
+    setMerchantName(getSavedMerchantName());
+    setMerchantLogo(getSavedMerchantLogo());
+  }, []);
 
-  const infoText = useMemo(() => {
-    if (useMagicLink) {
-      return 'Enter your email and we’ll send you a secure link to complete login.';
-    }
-    return mode === 'signIn'
-      ? 'Enter your email and password to access your developer dashboard.'
-      : 'Create a new Opayque account with email and password.';
-  }, [mode, useMagicLink]);
+  const infoText = useMemo(
+    () => "Enter your company password to unlock the developer hub and continue managing your merchant session.",
+    []
+  );
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,139 +44,109 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-
-      if (useMagicLink) {
-        const { error: signInError } = await supabase.auth.signInWithOtp({ email });
-        if (signInError) throw signInError;
-        setMessage('Magic link sent to your inbox. Check email to continue.');
-        return;
-      }
-
-      if (mode === 'signUp') {
-        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
-        if (signUpError) throw signUpError;
-        if (data?.user) {
-          router.push('/developer/overview');
-          return;
-        }
-        setMessage('Check your email to confirm your account before signing in.');
-        return;
-      }
-
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
       if (data?.user) {
-        router.push('/developer/overview');
+        router.push("/developer/overview");
       } else {
-        setMessage('Signed in successfully. Redirecting…');
+        setMessage("Signed in successfully. Redirecting…");
       }
     } catch (err: any) {
-      setError(err?.message || 'Unable to sign in.');
+      setError(err?.message || "Unable to sign in. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const merchantInitial = merchantName.trim().charAt(0).toUpperCase() || "O";
+
   return (
-    <div className="min-h-screen bg-[#050508] text-white flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md space-y-8 rounded-[2rem] border border-white/10 bg-[#0b0c10]/90 p-8 shadow-2xl shadow-purple-900/10 backdrop-blur-xl">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-purple-600/10 text-purple-300 border border-purple-500/20">
-            <CheckCircle2 className="h-8 w-8" />
-          </div>
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-zinc-500">Secure Developer Login</p>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-white">{title}</h1>
-            <p className="mt-2 text-sm leading-6 text-zinc-400">{infoText}</p>
-          </div>
+    <main className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-2xl">
+        <div className="mb-10 space-y-4 text-center">
+          <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Access Control Center</p>
+          <h1 className="text-5xl font-black uppercase tracking-tighter text-white">Secure Hub Unlock</h1>
+          <p className="mx-auto max-w-2xl text-sm leading-7 text-zinc-400">
+            Re-enter your credentials to restore access to your developer workspace.
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 rounded-3xl bg-[#08090f] p-1 text-xs uppercase tracking-[0.3em] text-zinc-400">
-          {authModes.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setMode(tab)}
-              className={`rounded-3xl py-3 transition ${mode === tab ? 'bg-purple-600/80 text-white shadow-lg shadow-purple-500/20' : 'hover:bg-white/5'}`}
-            >
-              {tab === 'signIn' ? 'Sign In' : 'Sign Up'}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
-            Email address
-            <div className="mt-2 rounded-3xl border border-white/10 bg-[#050508] px-4 py-3 focus-within:border-purple-500/60">
-              <div className="flex items-center gap-3 text-zinc-400">
-                <Mail className="h-4 w-4" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
-                  required
-                />
-              </div>
+        <div className="rounded-[3rem] border border-white/10 bg-zinc-900/70 p-8 shadow-[0_0_40px_rgba(168,85,247,0.18)]">
+          <div className="flex flex-col items-center gap-5 rounded-[2.5rem] border border-white/10 bg-zinc-950/90 p-6 text-center shadow-xl shadow-black/30">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 overflow-hidden shadow-[0_0_30px_rgba(168,85,247,0.25)]">
+              {merchantLogo ? (
+                <img src={merchantLogo} alt={`${merchantName} logo`} className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-4xl font-black text-white">{merchantInitial}</span>
+              )}
             </div>
-          </label>
-
-          {!useMagicLink && (
-            <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
-              Password
-              <div className="mt-2 rounded-3xl border border-white/10 bg-[#050508] px-4 py-3 focus-within:border-purple-500/60">
-                <div className="flex items-center gap-3 text-zinc-400">
-                  <Lock className="h-4 w-4" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
-                    required
-                  />
-                </div>
-              </div>
-            </label>
-          )}
-
-          <div className="flex items-center justify-between gap-3 text-sm text-zinc-400">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useMagicLink}
-                onChange={() => setUseMagicLink((current) => !current)}
-                className="h-4 w-4 rounded border-white/20 bg-[#050508] text-purple-500 accent-purple-500"
-              />
-              Magic link only
-            </label>
-            <button
-              type="button"
-              onClick={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}
-              className="text-purple-300 hover:text-purple-100"
-            >
-              {mode === 'signIn' ? 'Create account' : 'Have an account?'}
-            </button>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Merchant Identity</p>
+              <h2 className="mt-3 text-3xl font-black uppercase tracking-tight text-white">{merchantName}</h2>
+            </div>
           </div>
 
-          {error && <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-          {message && <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{message}</div>}
+          <div className="mt-8 rounded-[2.5rem] border border-white/10 bg-black/50 p-8">
+            <p className="text-sm leading-6 text-zinc-400">{infoText}</p>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-3xl bg-gradient-to-r from-purple-600 to-indigo-600 px-5 py-4 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span>{isLoading ? 'Processing…' : buttonLabel}</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </form>
+            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+              <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
+                Email address
+                <div className="mt-3 rounded-3xl border border-white/10 bg-[#050508] px-4 py-3 focus-within:border-purple-500/60">
+                  <div className="flex items-center gap-3 text-zinc-400">
+                    <Mail className="h-4 w-4" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@company.com"
+                      className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
+                      required
+                    />
+                  </div>
+                </div>
+              </label>
 
-        <div className="mt-4 rounded-3xl border border-white/10 bg-[#08090f]/80 p-4 text-center text-sm text-zinc-500">
-          By signing in, you agree to manage your developer workspace and billing settings through Opayque.
+              <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
+                Password
+                <div className="mt-3 rounded-3xl border border-white/10 bg-[#050508] px-4 py-3 focus-within:border-purple-500/60">
+                  <div className="flex items-center gap-3 text-zinc-400">
+                    <Lock className="h-4 w-4" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
+                      required
+                    />
+                  </div>
+                </div>
+              </label>
+
+              {error && (
+                <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </div>
+              )}
+              {message && (
+                <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {message}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

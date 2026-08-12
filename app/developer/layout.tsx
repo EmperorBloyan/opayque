@@ -18,6 +18,7 @@ import { clearActiveSession } from "@/lib/crypto/session";
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isKeysPage = pathname === "/developer/keys";
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
@@ -46,7 +47,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
 
   const lockDeveloperHub = () => {
     clearActiveSession();
-    router.push("/");
+    router.push("/login");
   };
 
   const toggleEnvironment = () => {
@@ -63,8 +64,10 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
-          <div className="flex items-center gap-5">
+        {!isKeysPage && (
+          <>
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
+              <div className="flex items-center gap-5">
             <div className="relative group">
               <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden shadow-inner">
                 {merchantLogo ? (
@@ -118,9 +121,10 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
-          <Link
-            href="/developer/overview"
+        {!isKeysPage && (
+          <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
+            <Link
+              href="/developer/overview"
             className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
           >
             <LayoutDashboard size={14} /> Overview
@@ -132,16 +136,22 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
             <Webhook size={14} /> Webhooks &amp; Delivery Logs
           </Link>
         </nav>
+        )}
 
         <main>{children}</main>
 
-        <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
-          <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">Powered by Solana TEE Infrastructure</p>
-          <div className="flex gap-4"><span className="h-2 w-2 rounded-full bg-green-500" /><span className="h-2 w-2 rounded-full bg-purple-500" /></div>
-        </footer>
+        {!isKeysPage && (
+          <>
+            <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
+              <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">Powered by Solana TEE Infrastructure</p>
+              <div className="flex gap-4"><span className="h-2 w-2 rounded-full bg-green-500" /><span className="h-2 w-2 rounded-full bg-purple-500" /></div>
+            </footer>
+          </>
+        )}
       </div>
 
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      {!isKeysPage && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
           <Link
             href="/sandbox"
@@ -172,7 +182,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           {isSpeedDialOpen ? <X size={24} /> : <Wrench size={24} />}
         </button>
       </div>
-
+      )}
     </div>
   );
 }
