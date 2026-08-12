@@ -68,59 +68,60 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           <>
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
               <div className="flex items-center gap-5">
-            <div className="relative group">
-              <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden shadow-inner">
-                {merchantLogo ? (
-                  <img src={merchantLogo} alt="Merchant logo" className="h-full w-full object-cover" />
-                ) : (
-                  <Code2 size={24} className="text-purple-400" />
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-4">
+                <div className="relative group">
+                  <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden shadow-inner">
+                    {merchantLogo ? (
+                      <img src={merchantLogo} alt="Merchant logo" className="h-full w-full object-cover" />
+                    ) : (
+                      <Code2 size={24} className="text-purple-400" />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
-                    {merchantName}
-                  </h1>
-                  <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                    Developer session active
-                  </p>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div>
+                      <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
+                        {merchantName}
+                      </h1>
+                      <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                        Developer session active
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/developer/keys")}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                    >
+                      <Key size={14} /> API Keys & Merchant Details
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
+                  isLiveMode ? "bg-purple-600/10 border-purple-500/30 text-purple-300" : "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
+                }`}>
+                  {isLiveMode ? "Production mode" : "Sandbox mode"}
                 </div>
                 <button
                   type="button"
-                  onClick={() => router.push("/developer/keys")}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                  onClick={toggleEnvironment}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
                 >
-                  <Key size={14} /> API Keys & Merchant Details
+                  Switch environment
+                </button>
+                <button
+                  type="button"
+                  onClick={lockDeveloperHub}
+                  className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
+                >
+                  <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
                 </button>
               </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
-              isLiveMode ? "bg-purple-600/10 border-purple-500/30 text-purple-300" : "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
-            }`}>
-              {isLiveMode ? "Production mode" : "Sandbox mode"}
-            </div>
-            <button
-              type="button"
-              onClick={toggleEnvironment}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
-            >
-              Switch environment
-            </button>
-            <button
-              type="button"
-              onClick={lockDeveloperHub}
-              className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
-            >
-              <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
-            </button>
-          </div>
-        </header>
-        </>
+            </header>
+          </>
+        )}
 
         {!isKeysPage && (
           <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
