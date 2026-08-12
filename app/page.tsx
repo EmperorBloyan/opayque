@@ -102,6 +102,7 @@ export default function UnifiedLanding() {
   const handleVaultEntrance = async () => {
     const canSignMessage = Boolean(signMessage);
     const canSignTransaction = Boolean(signTransaction || signAndSendTransaction);
+    const canPerformConfidentialSetup = canSignMessage || canSignTransaction;
 
     if (!connected || !publicKey) {
       if (mobileWalletContext.isMobile && !mobileWalletContext.isInAppBrowser) {
@@ -123,19 +124,14 @@ export default function UnifiedLanding() {
       }
     }
 
-    if (!publicKey || !canSignMessage) {
+    if (!publicKey || !canPerformConfidentialSetup) {
       if (mobileWalletContext.isMobile && !mobileWalletContext.isInAppBrowser) {
         setAuthError("Phantom is required for secure mobile signing. Opening Phantom...");
         openPhantomUniversalLink(window.location.href);
         return;
       }
 
-      setAuthError("Connected wallet lacks signing capabilities. Please use Phantom or another supported wallet.");
-      return;
-    }
-
-    if (!canSignMessage && !canSignTransaction) {
-      setAuthError("This wallet cannot sign the confidential account setup. Please use Phantom or another supported wallet.");
+      setAuthError("Connected wallet cannot perform confidential signing operations. Please use Phantom or another supported wallet.");
       return;
     }
 
@@ -146,7 +142,7 @@ export default function UnifiedLanding() {
       const merchantId = await registerMerchant(publicKey.toBase58());
       const challenge = createSessionChallenge();
       const message = new TextEncoder().encode(challenge.nonce);
-      const signature = await signMessage(message);
+      const signature = canSignMessage ? await signMessage(message) : new Uint8Array();
       const session = await createTerminalSession({
         merchantId,
         walletAddress: publicKey.toBase58(),
@@ -156,8 +152,6 @@ export default function UnifiedLanding() {
 
       const mint = new PublicKey(getAssetMintAddress("USDC", true));
       const confidentialSummary = await configureConfidentialAccount(
-        new PublicKey("11111111111111111111111111111111") as never,
-        {} as never,
         { publicKey, signMessage, signTransaction, signAndSendTransaction },
         mint
       );
@@ -268,7 +262,7 @@ export default function UnifiedLanding() {
                 </p>
               </div>
               <div className="flex gap-3 mt-auto">
-                <a href="/developer" className="flex-1">
+                <a href="/developer/overview" className="flex-1">
                   <button className="w-full bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white text-xs font-bold uppercase tracking-wider py-4 px-4 rounded-xl transition-colors">
                     Dashboard
                   </button>

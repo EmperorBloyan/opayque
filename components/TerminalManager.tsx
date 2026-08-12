@@ -213,7 +213,7 @@ export default function TerminalManager({
   const pairingChannelRef = React.useRef<any | null>(null);
   const fleetChannelRef = React.useRef<any | null>(null);
 
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
   const { connection } = useConnection();
 
   const closePairingModal = () => {
@@ -412,13 +412,33 @@ export default function TerminalManager({
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, quoteInputAmount, selectedTokenMint, usdcMintAddress]);
 
   const submitSwapPayment = useCallback(async () => {
-    if (!signTransaction || !connection) {
+    if (!(signTransaction || signAndSendTransaction) || !connection) {
       throw new Error("Wallet must support transaction signing");
     }
 
     const transaction = await buildSwapTransaction();
-    const signed = await signTransaction(transaction as any);
-    const serialized = signed.serialize();
+    let serialized: Uint8Array;
+
+    if (signAndSendTransaction) {
+      // signAndSendTransaction may return a signature or response; fall back to serializing if needed
+      const res = await signAndSendTransaction(transaction as any);
+      if (res && (res as any).signature) {
+        // We still want to return signature later; serialize from transaction if possible
+        try {
+          const signed = await (transaction as any).serialize?.() ?? null;
+          serialized = signed || new Uint8Array();
+        } catch {
+          serialized = new Uint8Array();
+        }
+      } else {
+        // If signAndSendTransaction did not provide signature, attempt to sign locally
+        const signed = await signTransaction!(transaction as any);
+        serialized = signed.serialize();
+      }
+    } else {
+      const signed = await signTransaction!(transaction as any);
+      serialized = signed.serialize();
+    }
     const encoded = toBase64(serialized);
 
     try {
@@ -437,7 +457,7 @@ export default function TerminalManager({
   }, [buildSwapTransaction, connection, signTransaction]);
 
   const handleDirectUsdcPay = useCallback(async () => {
-    if (!publicKey || !connection || !signTransaction || !merchantWallet) {
+    if (!publicKey || !connection || !(signTransaction || signAndSendTransaction) || !merchantWallet) {
       throw new Error("Wallet connection is required");
     }
 
@@ -447,8 +467,14 @@ export default function TerminalManager({
     const transferIx = createTransferInstruction(payerTokenAccount, destinationTokenAccount, publicKey, expectedUsdcBaseUnits);
 
     const tx = new Transaction().add(transferIx);
-    const signedTx = await signTransaction(tx as any);
-    const signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
+    let signature: string;
+    if (signAndSendTransaction) {
+      const res = await signAndSendTransaction(tx as any);
+      signature = (res && (res as any).signature) || String(res);
+    } else {
+      const signedTx = await signTransaction!(tx as any);
+      signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
+    }
     await connection.confirmTransaction(signature, "confirmed");
     return signature;
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);

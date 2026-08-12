@@ -40,10 +40,14 @@ export async function POST(request: Request) {
     const recipientPubkey = new PublicKey(recipient);
     const mintPubkey = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint) : USDC_MINT;
 
+    // The frontend sends `amount` in atomic token units (USDC has 6 decimals).
+    // Normalize to token base units (e.g. 1 USDC = 1.0) for the internal helper
+    // which expects a human-readable amount.
+    const normalizedAmount = amount / 1_000_000;
     const bundle = await createShieldedPaymentInstruction(
       senderPubkey,
       recipientPubkey,
-      amount,
+      normalizedAmount,
       mintPubkey
     );
 

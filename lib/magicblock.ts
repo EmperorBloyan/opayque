@@ -2,7 +2,7 @@ import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { createShieldedPaymentInstruction as createShieldedPaymentInstructionImpl } from '@/lib/solana/confidential';
 import { getAssetMintAddress } from "@/lib/solana/constants";
 
-export const PAYMENTS_API = 'https://payments.magicblock.app';
+export const PAYMENTS_API = process.env.NEXT_PUBLIC_MAGICBLOCK_API || 'https://payments.magicblock.app';
 export const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -93,7 +93,12 @@ export async function buildShieldedTransfer(sender: string, recipient: string, a
     throw new Error(errorMessage);
   }
 
-  return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
+  try {
+    return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
+  } catch (err) {
+    console.error('Failed to deserialize transaction from MagicBlock:', err, data);
+    throw new Error('Invalid transaction payload returned from MagicBlock TEE.');
+  }
 }
 
 export async function buildWithdraw(merchantPubkey: string, destination: string, amount: number) {
@@ -126,5 +131,10 @@ export async function buildWithdraw(merchantPubkey: string, destination: string,
     throw new Error(errorMessage);
   }
 
-  return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
+  try {
+    return VersionedTransaction.deserialize(base64ToUint8Array(data.transaction));
+  } catch (err) {
+    console.error('Failed to deserialize withdraw transaction from MagicBlock:', err, data);
+    throw new Error('Invalid withdrawal transaction payload returned from MagicBlock TEE.');
+  }
 }

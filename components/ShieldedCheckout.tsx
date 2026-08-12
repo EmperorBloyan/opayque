@@ -47,9 +47,10 @@ export default function ShieldedCheckout({
   allowCustomAmount?: boolean;
   recipientName?: string;
 }) {
-  const { publicKey, signTransaction, connected } = useWallet() as {
+  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet() as {
     publicKey: { toBase58(): string } | null;
     signTransaction?: (tx: any) => Promise<any>;
+    signAndSendTransaction?: (tx: any) => Promise<any>;
     connected: boolean;
   };
 
@@ -69,7 +70,7 @@ export default function ShieldedCheckout({
   const safeMerchantPubkey = useMemo(() => merchantPubkey?.trim() || '', [merchantPubkey]);
   const effectiveAmount = allowCustomAmount ? draftAmount : amount;
   const isAmountValid = Number.isFinite(effectiveAmount) && effectiveAmount > 0;
-  const isReadyToPay = connected && !!safeMerchantPubkey && !!signTransaction && isAmountValid && !loading;
+  const isReadyToPay = connected && !!safeMerchantPubkey && (Boolean(signTransaction) || Boolean(signAndSendTransaction)) && isAmountValid && !loading;
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -101,8 +102,8 @@ export default function ShieldedCheckout({
       return;
     }
 
-    if (!signTransaction) {
-      setErrorMessage('Your connected wallet cannot sign transactions.');
+    if (!signTransaction && !signAndSendTransaction) {
+      setErrorMessage('Your connected wallet cannot sign transactions. Please use Phantom or another supported wallet.');
       return;
     }
 
@@ -124,12 +125,18 @@ export default function ShieldedCheckout({
       const tx = await buildShieldedTransfer(publicKey.toBase58(), safeMerchantPubkey, atomicAmount);
 
       setStatus('signing');
-      const signedTx = await signTransaction(tx);
-      if (!signedTx) throw new Error('Transaction signing failed.');
+      let signature: string;
 
-      setStatus('sending');
-      const signature = await teeConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
-      if (!signature) throw new Error('Transaction submission failed.');
+      if (signAndSendTransaction) {
+        const res = await signAndSendTransaction(tx as any);
+        signature = (res && (res as any).signature) || String(res);
+      } else {
+        const signedTx = await signTransaction(tx as any);
+        if (!signedTx) throw new Error('Transaction signing failed.');
+        setStatus('sending');
+        signature = await teeConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
+        if (!signature) throw new Error('Transaction submission failed.');
+      }
 
       const initialTx = {
         id: signature,

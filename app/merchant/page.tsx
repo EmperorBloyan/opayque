@@ -14,7 +14,7 @@ import { getActiveMerchantId } from '@/lib/crypto/session';
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
 export default function MerchantDashboard() {
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
   const [privateBalance, setPrivateBalance] = useState(0);
   const [mainWallet, setMainWallet] = useState("");
   const [flushLoading, setFlushLoading] = useState(false);
@@ -230,12 +230,22 @@ export default function MerchantDashboard() {
 
     try {
       const tx = await buildWithdraw(publicKey.toBase58(), mainWallet, privateBalance);
-      const signedTx = await signTransaction!(tx);
       const connection = new Connection(TEE_RPC, 'processed');
-      const sig = await connection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: true,
-        maxRetries: 5,
-      });
+      let sig: string;
+
+      if (signAndSendTransaction) {
+        // Some wallets (e.g., Phantom) provide a combined sign+send helper
+        const res = await signAndSendTransaction(tx as any);
+        sig = (res && (res as any).signature) || String(res);
+      } else if (signTransaction) {
+        const signedTx = await signTransaction(tx as any);
+        sig = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: true,
+          maxRetries: 5,
+        });
+      } else {
+        throw new Error('Connected wallet cannot sign transactions.');
+      }
 
       await waitForSignatureConfirmation(connection, sig);
 

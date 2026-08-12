@@ -14,10 +14,10 @@ export default function QuickstartPage() {
         <div className="relative w-full max-w-4xl rounded-[4rem] border border-white/10 bg-zinc-950/95 p-10 shadow-2xl">
           <button
             type="button"
-            onClick={() => router.push("/developer")}
+            onClick={() => router.push("/developer/overview")}
             className="absolute right-8 top-8 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
           >
-            <ArrowLeft size={16} className="inline-block mr-2" /> Return
+            <ArrowLeft size={16} className="inline-block mr-2" /> Close
           </button>
 
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -53,7 +53,7 @@ export default function QuickstartPage() {
                   <Zap size={18} /> Launch Sandbox
                 </Link>
                 <Link
-                  href="/developer"
+                  href="/developer/overview"
                   className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10"
                 >
                   <ShieldCheck size={18} /> Open Developer Hub

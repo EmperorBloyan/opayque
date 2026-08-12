@@ -29,8 +29,6 @@ export interface ConfidentialTransferInstructionBundle {
 }
 
 export async function configureConfidentialAccount(
-  connection: Connection,
-  payer: any,
   wallet: ConfidentialWallet,
   mint: PublicKey
 ): Promise<ConfidentialTransferSummary> {
@@ -41,11 +39,13 @@ export async function configureConfidentialAccount(
     };
   }
 
-  const canSign = Boolean(wallet.signMessage || wallet.signTransaction || wallet.signAndSendTransaction);
-  if (!canSign) {
+  const canSignTransaction = Boolean(wallet.signTransaction || wallet.signAndSendTransaction);
+  const canSignMessage = Boolean(wallet.signMessage);
+
+  if (!canSignTransaction && !canSignMessage) {
     return {
       status: "unsupported",
-      message: "Connected wallet does not support signing. Please use Phantom or another supported wallet.",
+      message: "Connected wallet does not support signing transactions or messages. Use Phantom or a supported wallet.",
     };
   }
 

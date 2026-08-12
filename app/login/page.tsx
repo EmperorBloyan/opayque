@@ -57,7 +57,7 @@ export default function LoginPage() {
         const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
         if (data?.user) {
-          router.push('/developer');
+          router.push('/developer/overview');
           return;
         }
         setMessage('Check your email to confirm your account before signing in.');
@@ -67,7 +67,7 @@ export default function LoginPage() {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
       if (data?.user) {
-        router.push('/developer');
+        router.push('/developer/overview');
       } else {
         setMessage('Signed in successfully. Redirecting…');
       }
