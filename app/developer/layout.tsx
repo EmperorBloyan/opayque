@@ -120,22 +120,23 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </header>
+        </>
 
         {!isKeysPage && (
           <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
             <Link
               href="/developer/overview"
-            className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
-          >
-            <LayoutDashboard size={14} /> Overview
-          </Link>
-          <Link
-            href="/developer/webhooks-delivery-logs"
-            className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/webhooks-delivery-logs") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
-          >
-            <Webhook size={14} /> Webhooks &amp; Delivery Logs
-          </Link>
-        </nav>
+              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
+            >
+              <LayoutDashboard size={14} /> Overview
+            </Link>
+            <Link
+              href="/developer/webhooks-delivery-logs"
+              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/webhooks-delivery-logs") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
+            >
+              <Webhook size={14} /> Webhooks &amp; Delivery Logs
+            </Link>
+          </nav>
         )}
 
         <main>{children}</main>
@@ -152,36 +153,36 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
 
       {!isKeysPage && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-        <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <Link
-            href="/sandbox"
-            onClick={() => setIsSpeedDialOpen(false)}
-            className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-zinc-900/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(0,0,0,0.45)] transition-all hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-white/5 active:scale-[0.98]"
-          >
-            <span>Sandbox</span>
-            <Zap size={16} className="text-purple-400" />
-          </Link>
+          <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <Link
+              href="/sandbox"
+              onClick={() => setIsSpeedDialOpen(false)}
+              className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-zinc-900/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(0,0,0,0.45)] transition-all hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-white/5 active:scale-[0.98]"
+            >
+              <span>Sandbox</span>
+              <Zap size={16} className="text-purple-400" />
+            </Link>
 
-          <Link
-            href="/quickstart"
-            onClick={() => setIsSpeedDialOpen(false)}
-            className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-purple-700/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(80,0,140,0.35)] transition-all hover:-translate-y-0.5 hover:border-purple-300/50 hover:bg-purple-600/90 active:scale-[0.98]"
+            <Link
+              href="/quickstart"
+              onClick={() => setIsSpeedDialOpen(false)}
+              className="group flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-purple-700/95 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-white shadow-[0_15px_40px_rgba(80,0,140,0.35)] transition-all hover:-translate-y-0.5 hover:border-purple-300/50 hover:bg-purple-600/90 active:scale-[0.98]"
+            >
+              <span>Quickstart</span>
+              <Key size={16} className="text-white" />
+            </Link>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsSpeedDialOpen((current) => !current)}
+            aria-expanded={isSpeedDialOpen}
+            aria-label="Toggle developer quick actions"
+            className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-black/90 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] transition-transform duration-200 hover:scale-105 active:scale-95"
           >
-            <span>Quickstart</span>
-            <Key size={16} className="text-white" />
-          </Link>
+            {isSpeedDialOpen ? <X size={24} /> : <Wrench size={24} />}
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsSpeedDialOpen((current) => !current)}
-          aria-expanded={isSpeedDialOpen}
-          aria-label="Toggle developer quick actions"
-          className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-black/90 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] transition-transform duration-200 hover:scale-105 active:scale-95"
-        >
-          {isSpeedDialOpen ? <X size={24} /> : <Wrench size={24} />}
-        </button>
-      </div>
       )}
     </div>
   );

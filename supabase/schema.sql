@@ -17,6 +17,7 @@ create table if not exists merchants (
   wallet_address text not null unique,
   merchant_name text not null,
   merchant_logo text,
+  secondary_email text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

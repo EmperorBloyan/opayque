@@ -3,13 +3,14 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getActiveSession, getActiveMerchantId } from '@/lib/crypto/session';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { getAssetMintAddress } from '@/lib/solana/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { getActiveMerchantId } from '@/lib/crypto/session';
 
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
@@ -26,6 +27,15 @@ export default function MerchantDashboard() {
   const connectionRef = useRef<Connection | null>(null);
   const supabaseChannelRef = useRef<any | null>(null);
 
+  const router = useRouter();
+  const activeSession = getActiveSession();
+
+  useEffect(() => {
+    if (!activeSession) {
+      router.replace('/login');
+    }
+  }, [activeSession, router]);
+
   const merchantAta = useMemo(() => {
     if (!publicKey) return null;
     const mintAddress = new PublicKey(getAssetMintAddress('USDC', true));
@@ -39,6 +49,20 @@ export default function MerchantDashboard() {
       return () => clearTimeout(timer);
     }
   }, [publicKey]);
+
+  if (!activeSession) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-8 text-center">
+          <p className="text-sm font-bold uppercase tracking-[0.3em] text-zinc-500">Session locked</p>
+          <h1 className="mt-4 text-3xl font-black text-white">Merchant dashboard is locked</h1>
+          <p className="mt-4 text-sm leading-6 text-zinc-400">
+            Unlock the developer hub to continue. Redirecting to login...
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   useEffect(() => {
     if (!publicKey || !showVault) return;

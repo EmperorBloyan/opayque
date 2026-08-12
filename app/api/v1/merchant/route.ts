@@ -15,7 +15,7 @@ export async function GET() {
 
   const { data: merchant, error } = await supabase
     .from('merchants')
-    .select('id, email, merchant_name, merchant_logo, onboarding_status, settlement_wallet_address, tee_enforcement_enabled')
+    .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, settlement_wallet_address, tee_enforcement_enabled')
     .eq('id', user.id)
     .single();
 
@@ -35,9 +35,12 @@ export async function PATCH(request: Request) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const { settlementWalletAddress, teeEnforcementEnabled } = body;
+  const { merchantName, merchantLogo, secondaryEmail, settlementWalletAddress, teeEnforcementEnabled } = body;
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (merchantName !== undefined) updates.merchant_name = merchantName;
+  if (merchantLogo !== undefined) updates.merchant_logo = merchantLogo;
+  if (secondaryEmail !== undefined) updates.secondary_email = secondaryEmail;
   if (settlementWalletAddress !== undefined) updates.settlement_wallet_address = settlementWalletAddress;
   if (teeEnforcementEnabled !== undefined) updates.tee_enforcement_enabled = teeEnforcementEnabled;
 

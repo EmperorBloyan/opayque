@@ -2,6 +2,10 @@ export interface MerchantRecord {
   id: string;
   wallet_address: string;
   merchant_name: string;
+  merchant_logo?: string | null;
+  secondary_email?: string | null;
+  settlement_wallet_address?: string | null;
+  tee_enforcement_enabled?: boolean | null;
   created_at: string;
 }
 
