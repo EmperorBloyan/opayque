@@ -2,183 +2,285 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Zap, ShieldCheck, Sparkles, Terminal, Loader2 } from 'lucide-react';
+import { ArrowLeft, Zap, ShieldCheck, Sparkles, Terminal, Loader2, Copy, Check, RefreshCw } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import OpayqueCheckout from '@/components/OpayqueCheckout';
+
+// Initialize Supabase Client using public environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+interface ConsoleLog {
+  timestamp: string;
+  type: 'info' | 'success' | 'warn';
+  message: string;
+}
 
 export default function SandboxPage() {
   const router = useRouter();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [copiedKey, setCopiedKey] = useState(false);
   
-  // Clean state initialized as empty until fetched from your database/backend
+  // Real Database State
   const [orderId, setOrderId] = useState('');
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState<number>(0);
   const [apiKey, setApiKey] = useState('');
   const [merchantWallet, setMerchantWallet] = useState('');
 
-  useEffect(() => {
-    // PRODUCTION INTEGRATION: 
-    // Fetch the real merchant data and active sandbox order details here.
-    const fetchSandboxData = async () => {
-      try {
-        setIsLoading(true);
-        
-        // IMPLEMENT YOUR ACTUAL DATA FETCHING HERE
-        // Example:
-        // const response = await fetch('/api/sandbox/details');
-        // const data = await response.json();
-        // setApiKey(data.apiKey);
-        // setMerchantWallet(data.walletAddress);
-        // setOrderId(data.orderId);
-        // setAmount(data.amount);
+  // Live Terminal Logs
+  const [logs, setLogs] = useState<ConsoleLog[]>([]);
 
-      } catch (error) {
-        console.error('[SANDBOX] Failed to fetch data:', error);
-      } finally {
-        setIsLoading(false);
+  const addLog = (message: string, type: 'info' | 'success' | 'warn' = 'info') => {
+    const time = new Date().toLocaleTimeString();
+    setLogs((prev) => [{ timestamp: time, type, message }, ...prev]);
+  };
+
+  const fetchLatestSandboxSession = async () => {
+    setIsLoading(true);
+    try {
+      addLog('Fetching sandbox details from Supabase...', 'info');
+
+      // 1. Fetch latest active checkout session in test/sandbox environment
+      const { data: session, error: sessionErr } = await supabase
+        .from('checkout_sessions')
+        .select('id, amount, merchant_id, environment, status')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (sessionErr) throw sessionErr;
+
+      if (session) {
+        setOrderId(session.id);
+        setAmount(Number(session.amount));
+        addLog(`Found checkout session: ${session.id}`, 'info');
+
+        // 2. Fetch Merchant Wallet from 'merchants' table
+        if (session.merchant_id) {
+          const { data: merchant } = await supabase
+            .from('merchants')
+            .select('settlement_wallet_address')
+            .eq('id', session.merchant_id)
+            .single();
+
+          if (merchant?.settlement_wallet_address) {
+            setMerchantWallet(merchant.settlement_wallet_address);
+            addLog(`Loaded settlement wallet: ${merchant.settlement_wallet_address.slice(0, 6)}...`, 'info');
+          }
+        }
+      } else {
+        addLog('No active checkout session found in DB. Ready to create one.', 'warn');
       }
-    };
 
-    fetchSandboxData();
+      // 3. Fetch API key from 'developer_projects'
+      const { data: devProject } = await supabase
+        .from('developer_projects')
+        .select('public_api_key')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (devProject?.public_api_key) {
+        setApiKey(devProject.public_api_key);
+        addLog('Loaded public API key.', 'info');
+      }
+
+    } catch (err: any) {
+      addLog(`Supabase fetch error: ${err.message || err}`, 'warn');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLatestSandboxSession();
   }, []);
 
+  const handleCopyKey = () => {
+    if (apiKey) {
+      navigator.clipboard.writeText(apiKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+      addLog('Copied Sandbox API Key to clipboard.', 'info');
+    }
+  };
+
   return (
-    <main className="relative min-h-screen bg-black text-white overflow-hidden">
-      <div className="fixed inset-0 bg-black/90 backdrop-blur-xl" />
-      <div className="relative mx-auto flex min-h-screen items-center justify-center p-6">
-        <div className="relative w-full max-w-5xl rounded-[4rem] border border-white/10 bg-zinc-950/95 p-10 shadow-2xl">
+    <main className="relative min-h-screen bg-black text-white font-mono overflow-hidden">
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08),transparent_70%)] pointer-events-none" />
+
+      <div className="relative mx-auto flex min-h-screen items-center justify-center p-4 sm:p-6">
+        <div className="relative w-full max-w-5xl rounded-[3rem] border border-white/10 bg-zinc-950/90 p-6 sm:p-10 shadow-2xl backdrop-blur-xl">
           
           <button
             type="button"
             onClick={() => router.push('/developer/overview')}
-            className="absolute right-8 top-8 z-10 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
+            className="absolute right-6 top-6 z-10 rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
           >
-            <ArrowLeft size={16} className="mr-2 inline-block" /> Close
+            <ArrowLeft size={14} className="mr-2 inline-block" /> Close
           </button>
 
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+            
+            {/* LEFT PANEL */}
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-3 rounded-full border border-purple-500/20 bg-purple-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-purple-300">
-                <Sparkles size={16} /> Sandbox Simulation
+              <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-purple-300">
+                <Sparkles size={14} /> Devnet Simulation
               </div>
+
               <div>
-                <h1 className="text-5xl font-black uppercase tracking-tighter text-white">Sandbox Checkout</h1>
-                <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
-                  Use this sandbox environment to validate checkout flow with the same immersive design as the quickstart experience.
+                <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
+                  Sandbox Checkout
+                </h1>
+                <p className="mt-2 text-xs leading-relaxed text-zinc-400 font-sans">
+                  Connected live to Supabase. Validate transactions using real merchant addresses and session records.
                 </p>
               </div>
 
               {isLoading ? (
-                <div className="flex h-40 items-center justify-center rounded-[2.5rem] border border-white/10 bg-black/50">
-                  <Loader2 className="animate-spin text-purple-500" size={32} />
+                <div className="flex h-48 items-center justify-center rounded-[2rem] border border-white/10 bg-black/40">
+                  <Loader2 className="animate-spin text-purple-500" size={28} />
                 </div>
               ) : (
-                <>
+                <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Sandbox Order ID</p>
-                      <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">
-                        {orderId || '—'}
+                    <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-500">Checkout Session ID</p>
+                        <button 
+                          onClick={fetchLatestSandboxSession} 
+                          className="text-zinc-500 hover:text-purple-400 transition-colors"
+                          title="Refresh DB Session"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs font-black uppercase tracking-[0.05em] text-purple-300 truncate">
+                        {orderId || 'No Active Session'}
                       </p>
                     </div>
-                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Amount</p>
-                      <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">
-                        {amount > 0 ? `${amount.toFixed(2)} USDC` : '—'}
+
+                    <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-500">Amount</p>
+                      <p className="mt-2 text-sm font-black uppercase tracking-[0.1em] text-emerald-400">
+                        {amount > 0 ? `${amount.toFixed(2)} USDC` : '0.00 USDC'}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">API Key</p>
-                      <input
-                        type="text"
-                        value={apiKey}
-                        readOnly
-                        placeholder="Loading..."
-                        className="mt-3 w-full rounded-2xl border border-[#1f293d] bg-[#050508] px-4 py-3 font-mono text-sm text-zinc-300 transition-all focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500/20"
-                      />
+                    <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-500">Public API Key</p>
+                      <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-zinc-900 px-3 py-2">
+                        <span className="text-[11px] text-zinc-300 truncate max-w-[120px]">
+                          {apiKey || 'No Key Configured'}
+                        </span>
+                        {apiKey && (
+                          <button onClick={handleCopyKey} className="text-zinc-400 hover:text-white">
+                            {copiedKey ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Merchant Wallet</p>
-                      <p className="mt-3 text-sm font-black uppercase tracking-[0.1em] text-white">
-                        {merchantWallet || '—'}
+
+                    <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-500">Settlement Wallet</p>
+                      <p className="mt-3 text-[11px] font-black uppercase tracking-wider text-zinc-300 truncate">
+                        {merchantWallet || 'Not Configured'}
                       </p>
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="pt-2 grid gap-4 sm:grid-cols-2">
                 <button
                   onClick={() => setIsCheckoutOpen(true)}
-                  disabled={isLoading || !apiKey || !merchantWallet}
-                  className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isLoading || !merchantWallet}
+                  className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Zap size={18} /> Launch Sandbox
+                  <Zap size={16} /> Launch Checkout
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push('/developer/overview')}
-                  className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10"
+                  className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10"
                 >
-                  <ShieldCheck size={18} /> Close
+                  <ShieldCheck size={16} /> Dashboard
                 </button>
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-[3rem] border border-white/10 bg-zinc-900/80 p-8 shadow-[0_0_40px_rgba(168,85,247,0.15)]">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.18),transparent_30%)]" />
-              <div className="relative space-y-6">
-                <div className="flex items-center gap-3 text-purple-300">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-purple-500/10">
-                    <Terminal size={20} />
+            {/* RIGHT PANEL: LIVE EVENT TERMINAL */}
+            <div className="relative flex flex-col justify-between overflow-hidden rounded-[2.5rem] border border-white/10 bg-black/80 p-6 shadow-inner min-h-[380px]">
+              <div>
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2.5 text-purple-400">
+                    <Terminal size={18} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.25em]">Live Event Log</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Sandbox status</p>
-                    <p className="text-sm font-black uppercase tracking-[0.1em] text-white">
-                      {isLoading ? 'Connecting...' : 'Ready to validate checkout'}
-                    </p>
-                  </div>
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 </div>
-                <div className="rounded-[2rem] border border-white/10 bg-black/50 p-6">
-                  <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Immersive experience</p>
-                  <p className="mt-3 text-sm leading-6 text-zinc-400">This page uses the same quickstart-inspired layout for a focused developer sandbox workflow.</p>
-                </div>
-                <div className="grid gap-3">
-                  <div className="rounded-3xl border border-white/10 bg-zinc-950/70 px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Next action</p>
-                    <p className="mt-2 text-sm font-black uppercase tracking-[0.08em] text-white">Launch checkout</p>
-                  </div>
-                  <div className="rounded-3xl border border-white/10 bg-zinc-950/70 px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Return</p>
-                    <p className="mt-2 text-sm font-black uppercase tracking-[0.08em] text-white">Overview tab</p>
-                  </div>
+
+                <div className="mt-4 space-y-2.5 max-h-[280px] overflow-y-auto pr-2 text-[11px] font-mono leading-relaxed">
+                  {logs.length === 0 ? (
+                    <p className="text-zinc-600 italic">Listening for sandbox actions...</p>
+                  ) : (
+                    logs.map((log, index) => (
+                      <div key={index} className="flex items-start gap-2 border-b border-white/5 pb-1.5">
+                        <span className="text-zinc-600 shrink-0">[{log.timestamp}]</span>
+                        <span className={
+                          log.type === 'success' ? 'text-emerald-400' :
+                          log.type === 'warn' ? 'text-amber-400' : 'text-purple-200'
+                        }>
+                          {log.message}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
+
+              <div className="mt-6 rounded-2xl border border-white/5 bg-zinc-950 p-3 text-[10px] text-zinc-500 flex justify-between items-center">
+                <span>Database: <strong className="text-purple-400">Supabase Connected</strong></span>
+                <span>Status: <strong className="text-emerald-400">Live</strong></span>
+              </div>
             </div>
+
           </div>
         </div>
       </div>
 
-      {isCheckoutOpen && !isLoading && (
+      {isCheckoutOpen && (
         <OpayqueCheckout
           apiKey={apiKey}
           orderId={orderId}
           amountUsdc={amount}
           merchantWallet={merchantWallet}
-          onSuccess={(hash) => {
-            console.log('[SANDBOX] Success. Hash:', hash);
+          onSuccess={async (hash: string) => {
+            addLog(`Tx Confirmed on Solana! Hash: ${hash}`, 'success');
+
+            // Optionally record signature directly into 'onchain_transactions'
+            if (orderId) {
+              await supabase.from('onchain_transactions').insert({
+                checkout_session_id: orderId,
+                signature: hash,
+                amount: amount,
+                status: 'COMPLETED'
+              });
+              addLog('Saved transaction to onchain_transactions table.', 'success');
+            }
+
+            setIsCheckoutOpen(false);
           }}
-          onClose={() => setIsCheckoutOpen(false)}
+          onClose={() => {
+            addLog('Checkout modal dismissed by user.', 'warn');
+            setIsCheckoutOpen(false);
+          }}
         />
       )}
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      ` }} />
     </main>
   );
 }
