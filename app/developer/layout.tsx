@@ -27,6 +27,9 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
 
+  // Setup completion state to gate header/nav rendering
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
+
   // Global Environment Context
   const { isSandbox, network, toggleEnvironment } = useEnvironment();
 
@@ -36,8 +39,17 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     // 1. Read instantly from local storage to prevent UI flicker
     const localName = window.localStorage.getItem("merchant_name") || window.localStorage.getItem("business_name");
     const localLogo = window.localStorage.getItem("merchant_logo") || window.localStorage.getItem("merchant_avatar");
-    
-    if (localName) setMerchantName(localName);
+    const isCompleted = window.localStorage.getItem("merchant_setup_completed") === "true";
+
+    if (localName) {
+      setMerchantName(localName);
+      setIsSetupComplete(true);
+    } else if (isCompleted) {
+      setIsSetupComplete(true);
+    } else {
+      setIsSetupComplete(false);
+    }
+
     if (localLogo) setMerchantLogo(localLogo);
 
     // 2. Fetch ground-truth profile from database / API
@@ -51,7 +63,12 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         if (merchant?.merchant_name) {
           setMerchantName(merchant.merchant_name);
           window.localStorage.setItem("merchant_name", merchant.merchant_name);
+          window.localStorage.setItem("merchant_setup_completed", "true");
+          setIsSetupComplete(true);
+        } else if (!localName) {
+          setIsSetupComplete(false);
         }
+
         if (merchant?.merchant_logo) {
           setMerchantLogo(merchant.merchant_logo);
           window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
@@ -64,16 +81,37 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     void fetchMerchantProfile();
   }, []);
 
+  // Sync state instantly when merchant profile is updated from modal/forms
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      const localName = window.localStorage.getItem("merchant_name");
+      if (localName) {
+        setMerchantName(localName);
+        setIsSetupComplete(true);
+      }
+    };
+
+    window.addEventListener("storage", handleProfileUpdate);
+    window.addEventListener("merchant_profile_updated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("storage", handleProfileUpdate);
+      window.removeEventListener("merchant_profile_updated", handleProfileUpdate);
+    };
+  }, []);
+
   const lockDeveloperHub = () => {
     clearActiveSession();
     router.push("/login");
   };
 
+  // Only render layout chrome (Header, Nav, Footer, Speed Dial) if not on keys page AND setup is complete
+  const showChrome = !isKeysPage && isSetupComplete === true;
+
   return (
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
-        {!isKeysPage && (
+        {showChrome && (
           <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
             <div className="flex items-center gap-5">
               <div className="relative group">
@@ -100,7 +138,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                     onClick={() => router.push("/developer/keys")}
                     className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
                   >
-                    <Key size={14} /> API Keys & Merchant Details
+                    <Key size={14} /> API Keys &amp; Merchant Details
                   </button>
                 </div>
               </div>
@@ -136,7 +174,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           </header>
         )}
 
-        {!isKeysPage && (
+        {showChrome && (
           <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
             <Link
               href="/developer/overview"
@@ -159,7 +197,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
 
         <main>{children}</main>
 
-        {!isKeysPage && (
+        {showChrome && (
           <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
             <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
               Powered by Solana TEE Infrastructure
@@ -172,7 +210,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         )}
       </div>
 
-      {!isKeysPage && (
+      {showChrome && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
           <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
             <Link
