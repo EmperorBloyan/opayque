@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Code2,
   Key,
   Lock,
   X,
@@ -12,37 +11,43 @@ import {
   Wrench,
   LayoutDashboard,
   Webhook,
+  Globe,
+  Building2
 } from "lucide-react";
 import { clearActiveSession } from "@/lib/crypto/session";
+import { useEnvironment } from "@/lib/context/EnvironmentContext";
 
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isKeysPage = pathname === "/developer/keys";
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
-  const [merchantName, setMerchantName] = useState("Opayque");
+  
+  // Dynamic Merchant Profile State
+  const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
-  const [isLiveMode, setIsLiveMode] = useState(false);
+
+  // Global Environment Context
+  const { isSandbox, network, toggleEnvironment } = useEnvironment();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // 1. Instantly read from local storage to prevent flicker
-    const localName = window.localStorage.getItem("merchant_name");
-    const localLogo = window.localStorage.getItem("merchant_logo");
+    // 1. Read instantly from local storage to prevent UI flicker
+    const localName = window.localStorage.getItem("merchant_name") || window.localStorage.getItem("business_name");
+    const localLogo = window.localStorage.getItem("merchant_logo") || window.localStorage.getItem("merchant_avatar");
+    
     if (localName) setMerchantName(localName);
     if (localLogo) setMerchantLogo(localLogo);
 
-    const storedEnv = window.localStorage.getItem("developer_environment");
-    if (storedEnv === "production") setIsLiveMode(true);
-
-    // 2. Fetch ground-truth profile from database/API
+    // 2. Fetch ground-truth profile from database / API
     const fetchMerchantProfile = async () => {
       try {
         const res = await fetch('/api/v1/merchant');
         if (!res.ok) return;
         const payload = await res.json();
         const merchant = payload?.merchant;
+        
         if (merchant?.merchant_name) {
           setMerchantName(merchant.merchant_name);
           window.localStorage.setItem("merchant_name", merchant.merchant_name);
@@ -64,90 +69,88 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     router.push("/login");
   };
 
-  const toggleEnvironment = () => {
-    setIsLiveMode((current) => {
-      const next = !current;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("developer_environment", next ? "production" : "sandbox");
-      }
-      return next;
-    });
-  };
-
   return (
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
         {!isKeysPage && (
-          <>
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
-              <div className="flex items-center gap-5">
-                <div className="relative group">
-                  <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden shadow-inner">
-                    {merchantLogo ? (
-                      <img src={merchantLogo} alt="Merchant logo" className="h-full w-full object-cover" />
-                    ) : (
-                      <Code2 size={24} className="text-purple-400" />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div>
-                      <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
-                        {merchantName}
-                      </h1>
-                      <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                        Developer session active
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => router.push("/developer/keys")}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
-                    >
-                      <Key size={14} /> API Keys & Merchant Details
-                    </button>
-                  </div>
+          <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
+            <div className="flex items-center gap-5">
+              <div className="relative group">
+                <div className="h-16 w-16 rounded-2xl bg-zinc-900 border border-purple-500/30 flex items-center justify-center overflow-hidden shadow-inner">
+                  {merchantLogo ? (
+                    <img src={merchantLogo} alt={merchantName} className="h-full w-full object-cover" />
+                  ) : (
+                    <Building2 size={28} className="text-purple-400" />
+                  )}
                 </div>
               </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div>
+                    <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
+                      {merchantName}
+                    </h1>
+                    <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                      Developer session active
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/developer/keys")}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                  >
+                    <Key size={14} /> API Keys & Merchant Details
+                  </button>
+                </div>
+              </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
-                  isLiveMode ? "bg-purple-600/10 border-purple-500/30 text-purple-300" : "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
-                }`}>
-                  {isLiveMode ? "Production mode" : "Sandbox mode"}
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleEnvironment}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
-                >
-                  Switch environment
-                </button>
-                <button
-                  type="button"
-                  onClick={lockDeveloperHub}
-                  className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
-                >
-                  <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
-                </button>
+            {/* UNIFIED ENVIRONMENT SELECTOR */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
+                isSandbox 
+                  ? "bg-emerald-600/10 border-emerald-500/30 text-emerald-300" 
+                  : "bg-amber-600/10 border-amber-500/30 text-amber-300"
+              }`}>
+                {isSandbox ? "Sandbox Mode (Devnet)" : "Production Mode (Mainnet)"}
               </div>
-            </header>
-          </>
+              
+              <button
+                type="button"
+                onClick={toggleEnvironment}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
+              >
+                <Globe size={14} className="text-purple-400" />
+                <span>Switch to {isSandbox ? "Mainnet" : "Devnet"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={lockDeveloperHub}
+                className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
+              >
+                <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
+              </button>
+            </div>
+          </header>
         )}
 
         {!isKeysPage && (
           <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
             <Link
               href="/developer/overview"
-              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
+              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"
+              }`}
             >
               <LayoutDashboard size={14} /> Overview
             </Link>
             <Link
               href="/developer/webhooks-delivery-logs"
-              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${pathname.startsWith("/developer/webhooks-delivery-logs") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}
+              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                pathname.startsWith("/developer/webhooks-delivery-logs") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"
+              }`}
             >
               <Webhook size={14} /> Webhooks &amp; Delivery Logs
             </Link>
@@ -157,12 +160,15 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         <main>{children}</main>
 
         {!isKeysPage && (
-          <>
-            <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
-              <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">Powered by Solana TEE Infrastructure</p>
-              <div className="flex gap-4"><span className="h-2 w-2 rounded-full bg-green-500" /><span className="h-2 w-2 rounded-full bg-purple-500" /></div>
-            </footer>
-          </>
+          <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
+            <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
+              Powered by Solana TEE Infrastructure
+            </p>
+            <div className="flex gap-4">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="h-2 w-2 rounded-full bg-purple-500" />
+            </div>
+          </footer>
         )}
       </div>
 
