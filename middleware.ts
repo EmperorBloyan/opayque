@@ -21,11 +21,12 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Allow unauthenticated users to access the onboarding/signup page
   const isTargetingOnboarding = request.nextUrl.pathname === '/developer/onboarding';
 
+  // If there is no user and they are trying to access the developer hub,
+  // redirect them to the onboarding page to sign up.
   if (!user && request.nextUrl.pathname.startsWith('/developer') && !isTargetingOnboarding) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL('/developer/onboarding', request.url));
   }
 
   return response;
