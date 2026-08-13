@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearActiveSession } from "@/lib/crypto/session";
+import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import {
   ArrowLeft,
   Copy,
@@ -29,10 +30,12 @@ interface ApiKeyPair {
   secret?: string;
   createdAt: string;
   lastUsed: string;
+  environment?: "mainnet" | "devnet";
 }
 
 export default function ApiKeysPage() {
   const router = useRouter();
+  const { isSandbox } = useEnvironment();
   
   // API Keys State
   const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
@@ -105,8 +108,14 @@ export default function ApiKeysPage() {
           const merchant = payload?.merchant;
           if (merchant) {
             if (merchant.email) setMerchantEmail(merchant.email);
-            if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
-            if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
+            if (merchant.merchant_name) {
+              setMerchantName(merchant.merchant_name);
+              window.localStorage.setItem("merchant_name", merchant.merchant_name);
+            }
+            if (merchant.merchant_logo) {
+              setMerchantLogo(merchant.merchant_logo);
+              window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+            }
             if (merchant.secondary_email) setSecondaryEmail(merchant.secondary_email);
             if (merchant.settlement_wallet_address) setSettlementWalletAddress(merchant.settlement_wallet_address);
             if (merchant.website_url) setWebsiteUrl(merchant.website_url);
@@ -117,12 +126,13 @@ export default function ApiKeysPage() {
         if (keysRes && keysRes.ok) {
           const data = await keysRes.json();
           if (data.keys && Array.isArray(data.keys)) {
-            const transformed = data.keys.map((k: any) => ({
+            const transformed: ApiKeyPair[] = data.keys.map((k: any) => ({
               id: k.id,
               publishable: k.prefix ? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`,
               secret: k.rawSecretKey || undefined,
               createdAt: k.created_at ?? new Date().toISOString(),
               lastUsed: k.last_used_at ? 'recent' : 'never',
+              environment: k.environment || 'mainnet',
             }));
             setKeyPairs(transformed);
             window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
@@ -171,38 +181,42 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
+    const targetEnv = isSandbox ? "devnet" : "mainnet";
+    const envPrefix = isSandbox ? "osk_test_" : "osk_live_";
     let newKey: ApiKeyPair | null = null;
 
     try {
       const res = await fetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: 'mainnet' }),
+        body: JSON.stringify({ environment: targetEnv }),
       });
 
       if (res.ok) {
         const data = await res.json();
         newKey = {
           id: data.id || Math.random().toString(36).substring(2, 9),
-          publishable: (data.prefix || "osk_live_") + 'pub_' + (data.id ? data.id.slice(0, 8) : '8f921a'),
-          secret: data.rawSecretKey || `osk_live_${Math.random().toString(36).substring(2, 15)}`,
+          publishable: (data.prefix || envPrefix) + 'pub_' + (data.id ? data.id.slice(0, 8) : '8f921a'),
+          secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
           createdAt: data.createdAt || new Date().toISOString(),
           lastUsed: 'never',
+          environment: targetEnv,
         };
       }
     } catch (error) {
       console.warn('API endpoint offline, generating key locally', error);
     }
 
-    // Local fallback key pair generation if server is offline
+    // Local fallback key pair generation
     if (!newKey) {
       const randomId = Math.random().toString(36).substring(2, 10);
       newKey = {
         id: randomId,
-        publishable: `osk_live_pub_${randomId}`,
-        secret: `osk_live_sec_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
+        publishable: `${envPrefix}pub_${randomId}`,
+        secret: `${envPrefix}sec_${Math.random().toString(36).substring(2, 15)}`,
         createdAt: new Date().toISOString(),
         lastUsed: 'never',
+        environment: targetEnv,
       };
     }
 
@@ -215,7 +229,7 @@ export default function ApiKeysPage() {
     });
 
     setVisibleSecretId(newKey.id);
-    setProfileMessage("New API key pair generated.");
+    setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated.`);
     setCreatingKey(false);
   };
 
@@ -311,7 +325,7 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem('merchant_email');
       window.localStorage.removeItem('developer_environment');
     }
-    router.push('/developer/onboarding');
+    router.push('/login');
   };
 
   return (
@@ -550,7 +564,7 @@ export default function ApiKeysPage() {
               disabled={creatingKey}
               className="inline-flex items-center gap-2 rounded-full bg-purple-500 px-5 py-3 text-xs font-black uppercase tracking-[0.28em] text-white shadow-lg shadow-purple-500/20 transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:bg-purple-500/40"
             >
-              <Plus size={16} /> {creatingKey ? 'Creating…' : 'Create new key pair'}
+              <Plus size={16} /> {creatingKey ? 'Creating…' : `Create ${isSandbox ? 'Devnet' : 'Mainnet'} Key`}
             </button>
           </div>
 
@@ -565,7 +579,16 @@ export default function ApiKeysPage() {
                   <div className="flex items-center justify-between gap-3 mb-6">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">API Configuration</p>
-                      <p className="mt-2 text-sm font-black uppercase tracking-[0.28em] text-white">Standard Access</p>
+                      <p className="mt-2 text-sm font-black uppercase tracking-[0.28em] text-white flex items-center gap-2">
+                        <span>Standard Access</span>
+                        <span className={`text-[9px] px-2 py-0.5 rounded-full border ${
+                          item.environment === 'devnet' || item.publishable.includes('test')
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                        }`}>
+                          {item.environment === 'devnet' || item.publishable.includes('test') ? 'Devnet' : 'Mainnet'}
+                        </span>
+                      </p>
                     </div>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
                       {item.lastUsed}
