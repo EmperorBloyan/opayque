@@ -1,29 +1,59 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Zap, ShieldCheck, Sparkles, Settings2, Terminal } from 'lucide-react';
+import { ArrowLeft, Zap, ShieldCheck, Sparkles, Terminal, Loader2 } from 'lucide-react';
 import OpayqueCheckout from '@/components/OpayqueCheckout';
 
 export default function SandboxPage() {
   const router = useRouter();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [orderId, setOrderId] = useState(`ORD-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [amount, setAmount] = useState(15.0);
-  const [apiKey, setApiKey] = useState('osk_live_9f87d6abcdef88219903');
-  const [merchantWallet, setMerchantWallet] = useState('7xKXtg2b...3b9Y');
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Clean state initialized as empty until fetched from your database/backend
+  const [orderId, setOrderId] = useState('');
+  const [amount, setAmount] = useState(0);
+  const [apiKey, setApiKey] = useState('');
+  const [merchantWallet, setMerchantWallet] = useState('');
+
+  useEffect(() => {
+    // PRODUCTION INTEGRATION: 
+    // Fetch the real merchant data and active sandbox order details here.
+    const fetchSandboxData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // IMPLEMENT YOUR ACTUAL DATA FETCHING HERE
+        // Example:
+        // const response = await fetch('/api/sandbox/details');
+        // const data = await response.json();
+        // setApiKey(data.apiKey);
+        // setMerchantWallet(data.walletAddress);
+        // setOrderId(data.orderId);
+        // setAmount(data.amount);
+
+      } catch (error) {
+        console.error('[SANDBOX] Failed to fetch data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSandboxData();
+  }, []);
 
   return (
     <main className="relative min-h-screen bg-black text-white overflow-hidden">
       <div className="fixed inset-0 bg-black/90 backdrop-blur-xl" />
       <div className="relative mx-auto flex min-h-screen items-center justify-center p-6">
         <div className="relative w-full max-w-5xl rounded-[4rem] border border-white/10 bg-zinc-950/95 p-10 shadow-2xl">
+          
           <button
             type="button"
             onClick={() => router.push('/developer/overview')}
-            className="absolute right-8 top-8 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
+            className="absolute right-8 top-8 z-10 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-[0.28em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
           >
-            <ArrowLeft size={16} className="inline-block mr-2" /> Close
+            <ArrowLeft size={16} className="mr-2 inline-block" /> Close
           </button>
 
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -38,37 +68,53 @@ export default function SandboxPage() {
                 </p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Sandbox Order ID</p>
-                  <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">{orderId}</p>
+              {isLoading ? (
+                <div className="flex h-40 items-center justify-center rounded-[2.5rem] border border-white/10 bg-black/50">
+                  <Loader2 className="animate-spin text-purple-500" size={32} />
                 </div>
-                <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Amount</p>
-                  <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">{amount.toFixed(2)} USDC</p>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Sandbox Order ID</p>
+                      <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">
+                        {orderId || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Amount</p>
+                      <p className="mt-3 text-lg font-black uppercase tracking-[0.1em] text-white">
+                        {amount > 0 ? `${amount.toFixed(2)} USDC` : '—'}
+                      </p>
+                    </div>
+                  </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">API Key</p>
-                  <input
-                    type="text"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="mt-3 w-full bg-[#050508] border border-[#1f293d] rounded-2xl px-4 py-3 text-sm text-zinc-300 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 transition-all font-mono"
-                  />
-                </div>
-                <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Merchant Wallet</p>
-                  <p className="mt-3 text-sm font-black uppercase tracking-[0.1em] text-white">{merchantWallet}</p>
-                </div>
-              </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">API Key</p>
+                      <input
+                        type="text"
+                        value={apiKey}
+                        readOnly
+                        placeholder="Loading..."
+                        className="mt-3 w-full rounded-2xl border border-[#1f293d] bg-[#050508] px-4 py-3 font-mono text-sm text-zinc-300 transition-all focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500/20"
+                      />
+                    </div>
+                    <div className="rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Merchant Wallet</p>
+                      <p className="mt-3 text-sm font-black uppercase tracking-[0.1em] text-white">
+                        {merchantWallet || '—'}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
                 <button
                   onClick={() => setIsCheckoutOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500"
+                  disabled={isLoading || !apiKey || !merchantWallet}
+                  className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Zap size={18} /> Launch Sandbox
                 </button>
@@ -91,7 +137,9 @@ export default function SandboxPage() {
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Sandbox status</p>
-                    <p className="text-sm font-black uppercase tracking-[0.1em] text-white">Ready to validate checkout</p>
+                    <p className="text-sm font-black uppercase tracking-[0.1em] text-white">
+                      {isLoading ? 'Connecting...' : 'Ready to validate checkout'}
+                    </p>
                   </div>
                 </div>
                 <div className="rounded-[2rem] border border-white/10 bg-black/50 p-6">
@@ -114,7 +162,7 @@ export default function SandboxPage() {
         </div>
       </div>
 
-      {isCheckoutOpen && (
+      {isCheckoutOpen && !isLoading && (
         <OpayqueCheckout
           apiKey={apiKey}
           orderId={orderId}
