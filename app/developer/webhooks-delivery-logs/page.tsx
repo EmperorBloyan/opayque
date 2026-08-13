@@ -10,6 +10,7 @@ import {
   EyeOff, 
   Radio, 
   RefreshCw, 
+  Save,
   ShieldCheck, 
   Webhook, 
   XCircle 
@@ -33,28 +34,43 @@ const eventTypes = [
 
 export default function WebhooksDeliveryLogsPage() {
   const [endpoint, setEndpoint] = useState<string>("");
-  const [secret, setSecret] = useState<string>("whsec_8f92a1b4c3d2e1f0a9b8c7d6e5f4a3b2");
+  const [secret, setSecret] = useState<string>("whsec_loading...");
   const [showSecret, setShowSecret] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
-  const [selectedEvents, setSelectedEvents] = useState<string[]>(eventTypes.slice(0, 3));
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
   const [isTesting, setIsTesting] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
-  // Fetch initial telemetry logs
+  // Fetch initial telemetry logs & settings from Supabase
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/v1/webhooks/logs");
-        if (!res.ok) throw new Error("Failed to load webhooks logs");
-        const data = await res.json();
-        if (mounted) {
-          setLogs(data.logs || []);
+        // Load webhook settings
+        const configRes = await fetch("/api/v1/webhooks/config");
+        if (configRes.ok) {
+          const config = await configRes.json();
+          if (mounted) {
+            setEndpoint(config.endpoint || "");
+            setSecret(config.secret || "");
+            setSelectedEvents(config.subscribed_events || eventTypes.slice(0, 3));
+          }
+        }
+
+        // Load telemetry logs
+        const logsRes = await fetch("/api/v1/webhooks/logs");
+        if (logsRes.ok) {
+          const logsData = await logsRes.json();
+          if (mounted) {
+            setLogs(logsData.logs || []);
+          }
         }
       } catch (err) {
-        console.error("Error fetching logs:", err);
+        console.error("Error initializing webhook workspace:", err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -64,12 +80,35 @@ export default function WebhooksDeliveryLogsPage() {
     };
   }, []);
 
+  const saveConfig = async (newEndpoint?: string, newEvents?: string[]) => {
+    setIsSaving(true);
+    setSaveSuccess(false);
+    try {
+      const res = await fetch("/api/v1/webhooks/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: newEndpoint !== undefined ? newEndpoint : endpoint,
+          subscribed_events: newEvents !== undefined ? newEvents : selectedEvents,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save webhook settings");
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error("Error saving webhook configuration:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const toggleEvent = (event: string) => {
-    setSelectedEvents((current) =>
-      current.includes(event)
-        ? current.filter((item) => item !== event)
-        : [...current, event]
-    );
+    const updated = selectedEvents.includes(event)
+      ? selectedEvents.filter((item) => item !== event)
+      : [...selectedEvents, event];
+    
+    setSelectedEvents(updated);
+    saveConfig(endpoint, updated);
   };
 
   const copySecret = async () => {
@@ -82,16 +121,14 @@ export default function WebhooksDeliveryLogsPage() {
   const sendTest = async () => {
     setIsTesting(true);
     try {
-      const res = await fetch("/api/v1/webhooks/logs", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to trigger test payload");
+      const res = await fetch("/api/v1/webhooks/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint }),
+      });
       const data = await res.json();
       if (data.logs) {
         setLogs(data.logs);
-      } else {
-        // Refresh logs fallback
-        const updated = await fetch("/api/v1/webhooks/logs");
-        const updatedData = await updated.json();
-        setLogs(updatedData.logs || []);
       }
     } catch (err) {
       console.error("Error sending test webhook:", err);
@@ -101,18 +138,7 @@ export default function WebhooksDeliveryLogsPage() {
   };
 
   const retry = async (id: string) => {
-    try {
-      // Optimistic state update to 202 Accepted
-      setLogs((current) =>
-        current.map((log) =>
-          log.id === id
-            ? { ...log, status: 202, time: new Date().toISOString().replace("T", " ").slice(0, 19) }
-            : log
-        )
-      );
-    } catch (err) {
-      console.error("Failed to retry webhook:", err);
-    }
+    sendTest();
   };
 
   return (
@@ -150,7 +176,8 @@ export default function WebhooksDeliveryLogsPage() {
                 type="url"
                 placeholder="https://your-api.com/webhooks"
                 value={endpoint}
-                onChange={(event) => setEndpoint(event.target.value)}
+                onChange={(e) => setEndpoint(e.target.value)}
+                onBlur={() => saveConfig()}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-xs font-mono text-zinc-200 outline-none transition focus:border-purple-500/50"
               />
             </label>
@@ -180,15 +207,27 @@ export default function WebhooksDeliveryLogsPage() {
               </div>
             </label>
 
-            <button
-              type="button"
-              onClick={sendTest}
-              disabled={isTesting}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] transition hover:bg-purple-500 disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={isTesting ? "animate-spin" : ""} />
-              {isTesting ? "Dispatching..." : "Test Webhook"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => saveConfig()}
+                disabled={isSaving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-800 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {saveSuccess ? <Check size={14} className="text-emerald-400" /> : <Save size={14} />}
+                {isSaving ? "Saving..." : saveSuccess ? "Saved!" : "Save Config"}
+              </button>
+
+              <button
+                type="button"
+                onClick={sendTest}
+                disabled={isTesting}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-purple-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] transition hover:bg-purple-500 disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={isTesting ? "animate-spin" : ""} />
+                {isTesting ? "Dispatching..." : "Test Webhook"}
+              </button>
+            </div>
           </div>
 
           <div className="rounded-[2.5rem] border border-purple-500/20 bg-purple-900/10 p-6">
@@ -266,7 +305,7 @@ export default function WebhooksDeliveryLogsPage() {
                       <code className="text-xs font-bold text-white truncate">{log.event}</code>
                     </div>
                     <p className="mt-2 text-[10px] font-mono text-zinc-600">
-                      {log.id} · {log.latency}
+                      {log.id.slice(0, 8)} · {log.latency}
                     </p>
                   </div>
 
