@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { 
   X, 
   Upload, 
@@ -10,7 +11,8 @@ import {
   Webhook, 
   Mail, 
   Lock, 
-  ArrowRight 
+  ArrowRight,
+  LogIn
 } from "lucide-react";
 import { createClient } from '@/lib/supabase/client';
 
@@ -225,14 +227,26 @@ export default function DeveloperOnboardingPage() {
             )}
 
             <div className="pt-4 text-center">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <span>{isLoading ? "Setting up..." : "Create Account"}</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                {/* Sign In Link */}
+                <Link
+                  href="/login"
+                  className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto"
+                >
+                  <LogIn className="h-4 w-4" />
+                  <span>Sign In</span>
+                </Link>
+
+                {/* Submit Form Button */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex flex-1 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span>{isLoading ? "Setting up..." : "Create Account"}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
               
               <p className="mt-6 text-[10px] leading-relaxed text-zinc-500 px-4">
                 By setting up your control center, you agree to manage your developer workspace and billing settings through Opayque.
