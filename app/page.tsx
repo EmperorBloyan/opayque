@@ -5,7 +5,13 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { LucideShieldCheck, LucideLoader2, LucideLock, LucideMonitorSmartphone } from "lucide-react";
+import { 
+  LucideShieldCheck, 
+  LucideLoader2, 
+  LucideLock, 
+  LucideMonitorSmartphone, 
+  LucideCode2 
+} from "lucide-react";
 import { clearActiveSession, createSessionChallenge, createTerminalSession, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
 import { getAssetMintAddress } from "@/lib/solana/constants";
@@ -206,14 +212,17 @@ export default function UnifiedLanding() {
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:border-purple-500/30 shadow-2xl">
-              <div className="flex justify-between items-start mb-6">
-                <h2 className="text-2xl font-black italic uppercase">Merchant Vault</h2>
-                <LucideLock className="text-zinc-700" size={20} />
+            {/* CARD 1: MERCHANT VAULT */}
+            <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:border-purple-500/30 shadow-2xl flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <h2 className="text-2xl font-black italic uppercase">Merchant Vault</h2>
+                  <LucideLock className="text-zinc-700" size={20} />
+                </div>
+                <p className="text-zinc-500 text-sm mb-12 h-12">
+                  Manage staff, pair terminals, and audit transactions via TEE-shielded protocols.
+                </p>
               </div>
-              <p className="text-zinc-500 text-sm mb-12 h-12">
-                Manage staff, pair terminals, and audit transactions via TEE-shielded protocols.
-              </p>
 
               {connected ? (
                 <button
@@ -230,50 +239,55 @@ export default function UnifiedLanding() {
               {authError ? <p className="mt-4 text-sm text-amber-400">{authError}</p> : null}
             </div>
 
+            {/* CARD 2: STAFF TERMINAL */}
             <Link
               href="/terminal"
-              className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10"
+              className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10 shadow-2xl flex flex-col justify-between"
             >
-              <div className="flex justify-between items-start mb-6">
-                <h2 className="text-2xl font-black italic uppercase text-zinc-400 group-hover:text-white transition-colors">
-                  Staff Terminal
-                </h2>
-                <LucideMonitorSmartphone className="text-zinc-700" size={20} />
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <h2 className="text-2xl font-black italic uppercase text-zinc-400 group-hover:text-white transition-colors">
+                    Staff Terminal
+                  </h2>
+                  <LucideMonitorSmartphone className="text-zinc-700" size={20} />
+                </div>
+                <p className="text-zinc-500 text-sm mb-12 h-12">
+                  Launch the hardware interface for point-of-sale operations.
+                </p>
               </div>
-              <p className="text-zinc-500 text-sm mb-12 h-12">
-                Launch the hardware interface for point-of-sale operations.
-              </p>
               <span className="block w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
                 Open Terminal
               </span>
             </Link>
 
-            {/* API & DEVELOPERS CARD */}
-            <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-3xl p-6 flex flex-col justify-between hover:border-gray-800 transition-all duration-300">
+            {/* CARD 3: API & DEVELOPERS (UNIFIED DESIGN) */}
+            <div className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10 shadow-2xl flex flex-col justify-between">
               <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-white text-xl font-black italic tracking-wide">API & DEVELOPERS</h2>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
+                <div className="flex justify-between items-start mb-6">
+                  <h2 className="text-2xl font-black italic uppercase text-zinc-400 group-hover:text-white transition-colors">
+                    API & Developers
+                  </h2>
+                  <LucideCode2 className="text-zinc-700" size={20} />
                 </div>
-                <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                  Manage API keys, configure live webhooks, and read the documentation to integrate Opayque into your custom platforms.
+                <p className="text-zinc-500 text-sm mb-12 h-12">
+                  Manage API keys, configure live webhooks, and integrate custom payment platforms.
                 </p>
               </div>
-              <div className="flex gap-3 mt-auto">
-                <a href="/developer/overview" className="flex-1">
-                  <button className="w-full bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white text-xs font-bold uppercase tracking-wider py-4 px-4 rounded-xl transition-colors">
+
+              <div className="flex gap-3">
+                <Link href="/developer/overview" className="flex-1">
+                  <button className="w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
                     Dashboard
                   </button>
-                </a>
-                <a href="/developer/docs" className="flex-1">
-                  <button className="w-full bg-transparent border border-[#333] hover:border-gray-500 text-white text-xs font-bold uppercase tracking-wider py-4 px-4 rounded-xl transition-colors">
-                    Read Docs
+                </Link>
+                <Link href="/developer/docs" className="flex-1">
+                  <button className="w-full py-5 border border-white/10 text-zinc-300 text-center rounded-2xl font-black uppercase text-xs tracking-widest hover:border-white/20 hover:text-white transition-all">
+                    Docs
                   </button>
-                </a>
+                </Link>
               </div>
             </div>
+
           </div>
         </div>
       )}
