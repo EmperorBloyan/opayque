@@ -21,10 +21,12 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith('/developer')) {
+  // Allow unauthenticated users to access the onboarding/signup page
+  const isTargetingOnboarding = request.nextUrl.pathname === '/developer/onboarding';
+
+  if (!user && request.nextUrl.pathname.startsWith('/developer') && !isTargetingOnboarding) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
-
 
   return response;
 }
