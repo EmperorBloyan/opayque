@@ -14,12 +14,12 @@ import {
   Send,
   ShieldCheck,
   Wallet,
-  Lock,
-  Unlock,
   Check,
   AlertCircle,
   Upload,
   Building2,
+  Lock,
+  Unlock,
   Image as ImageIcon
 } from "lucide-react";
 
@@ -49,8 +49,8 @@ export default function ApiKeysPage() {
   const [settlementWalletAddress, setSettlementWalletAddress] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  
-  // Editable State for Primary Email
+
+  // UI Control States
   const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
 
   // Status States
@@ -61,12 +61,12 @@ export default function ApiKeysPage() {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
-  // Load Data with LocalStorage Hydration + API Sync
+  // Hydrate from LocalStorage first, then fetch latest API state
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const loadData = async () => {
-      // 1. Instant hydration from LocalStorage (Matches onboarding keys)
+      // 1. Zero-Latency LocalStorage Hydration
       const localEmail = window.localStorage.getItem("merchant_email") || window.localStorage.getItem("email") || "";
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
@@ -83,17 +83,17 @@ export default function ApiKeysPage() {
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
 
-      // Load cached keys if available
+      // Load cached API keys if present
       const cachedKeys = window.localStorage.getItem("opayque_api_keys");
       if (cachedKeys) {
         try {
           setKeyPairs(JSON.parse(cachedKeys));
         } catch (e) {
-          console.warn("Failed to parse cached API keys", e);
+          console.warn("Failed to parse cached keys", e);
         }
       }
 
-      // 2. Fetch latest from API endpoint
+      // 2. Fetch Sync from Backend API
       try {
         const [merchantRes, keysRes] = await Promise.all([
           fetch('/api/v1/merchant').catch(() => null),
@@ -129,7 +129,7 @@ export default function ApiKeysPage() {
           }
         }
       } catch (error) {
-        console.warn('Backend API offline or unauthenticated; using cached localStorage data.', error);
+        console.warn('Backend API offline or unauthenticated. Using local cache.', error);
       } finally {
         setLoadingKeys(false);
       }
@@ -140,6 +140,7 @@ export default function ApiKeysPage() {
 
   const primaryEmailAvailable = Boolean(merchantEmail.trim());
 
+  // Handle local image file upload -> Base64
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -184,15 +185,16 @@ export default function ApiKeysPage() {
         newKey = {
           id: data.id || Math.random().toString(36).substring(2, 9),
           publishable: (data.prefix || "osk_live_") + 'pub_' + (data.id ? data.id.slice(0, 8) : '8f921a'),
-          secret: data.rawSecretKey || `osk_live_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
+          secret: data.rawSecretKey || `osk_live_${Math.random().toString(36).substring(2, 15)}`,
           createdAt: data.createdAt || new Date().toISOString(),
           lastUsed: 'never',
         };
       }
     } catch (error) {
-      console.warn('API endpoint unavailable, generating local key pair', error);
+      console.warn('API endpoint offline, generating key locally', error);
     }
 
+    // Local fallback key pair generation if server is offline
     if (!newKey) {
       const randomId = Math.random().toString(36).substring(2, 10);
       newKey = {
@@ -213,7 +215,7 @@ export default function ApiKeysPage() {
     });
 
     setVisibleSecretId(newKey.id);
-    setProfileMessage("New API Key pair generated successfully.");
+    setProfileMessage("New API key pair generated.");
     setCreatingKey(false);
   };
 
@@ -222,7 +224,7 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    // Save locally first so data persists seamlessly
+    // Save locally first for zero delay
     if (typeof window !== "undefined") {
       window.localStorage.setItem("merchant_email", merchantEmail.trim());
       window.localStorage.setItem("merchant_name", merchantName.trim());
@@ -248,22 +250,26 @@ export default function ApiKeysPage() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const updated = data?.merchant;
-        if (updated) {
-          if (updated.email) setMerchantEmail(updated.email);
-          if (updated.merchant_name) setMerchantName(updated.merchant_name);
-          if (updated.merchant_logo) setMerchantLogo(updated.merchant_logo);
-          if (updated.secondary_email) setSecondaryEmail(updated.secondary_email);
-          if (updated.settlement_wallet_address) setSettlementWalletAddress(updated.settlement_wallet_address);
-          if (updated.website_url) setWebsiteUrl(updated.website_url);
-          if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
-        }
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body?.error || 'Unable to save merchant details');
       }
-      setProfileMessage('Merchant details saved successfully.');
+
+      const data = await res.json();
+      setProfileMessage('Merchant details updated successfully.');
+      
+      const updated = data?.merchant;
+      if (updated) {
+        if (updated.email) setMerchantEmail(updated.email);
+        if (updated.merchant_name) setMerchantName(updated.merchant_name);
+        if (updated.merchant_logo) setMerchantLogo(updated.merchant_logo);
+        if (updated.secondary_email) setSecondaryEmail(updated.secondary_email);
+        if (updated.settlement_wallet_address) setSettlementWalletAddress(updated.settlement_wallet_address);
+        if (updated.website_url) setWebsiteUrl(updated.website_url);
+        if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
+      }
     } catch (error: any) {
-      console.warn('API sync failed, saved to local cache', error);
+      console.warn('API update failed; saved to local cache', error);
       setProfileMessage('Merchant details saved locally.');
     } finally {
       setProfileSaving(false);
@@ -302,6 +308,7 @@ export default function ApiKeysPage() {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('merchant_name');
       window.localStorage.removeItem('merchant_logo');
+      window.localStorage.removeItem('merchant_email');
       window.localStorage.removeItem('developer_environment');
     }
     router.push('/developer/onboarding');
@@ -348,35 +355,34 @@ export default function ApiKeysPage() {
               </div>
             </div>
 
-            {/* BRANDING LOGO PREVIEW SLOT */}
+            {/* Visual Branding Logo Card */}
             <div className="mt-8 rounded-[2.5rem] border border-purple-500/20 bg-purple-950/10 p-6 flex flex-col sm:flex-row items-center gap-6">
               <div className="relative group">
-                <div className="h-24 w-24 rounded-full border-2 border-purple-500/50 bg-purple-500/10 overflow-hidden flex items-center justify-center shadow-lg shadow-purple-500/10">
+                <div className="h-20 w-20 rounded-full border-2 border-purple-500/50 bg-purple-500/10 overflow-hidden flex items-center justify-center shadow-lg shadow-purple-500/10">
                   {merchantLogo ? (
                     <img src={merchantLogo} alt={merchantName || "Merchant Logo"} className="h-full w-full object-cover" />
                   ) : (
                     <div className="text-center p-2">
-                      <Building2 className="h-8 w-8 text-purple-400 mx-auto" />
-                      <span className="text-[9px] font-bold text-purple-300 uppercase block mt-1">No Logo</span>
+                      <Building2 className="h-7 w-7 text-purple-400 mx-auto" />
                     </div>
                   )}
                 </div>
-                <label className="absolute bottom-0 right-0 p-2 rounded-full bg-purple-600 text-white cursor-pointer shadow-md hover:bg-purple-500 transition-all">
-                  <Upload className="h-3.5 w-3.5" />
+                <label className="absolute bottom-0 right-0 p-1.5 rounded-full bg-purple-600 text-white cursor-pointer shadow-md hover:bg-purple-500 transition-all">
+                  <Upload className="h-3 w-3" />
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                 </label>
               </div>
 
-              <div className="flex-1 space-y-2 text-center sm:text-left">
-                <span className="text-[10px] uppercase tracking-[0.28em] text-purple-400 font-bold">Brand Identity</span>
-                <h3 className="text-xl font-bold text-white">{merchantName || "Unconfigured Workspace"}</h3>
+              <div className="flex-1 space-y-1 text-center sm:text-left">
+                <span className="text-[10px] uppercase tracking-[0.28em] text-purple-400 font-bold">Brand Logo</span>
+                <h3 className="text-lg font-bold text-white">{merchantName || "Unconfigured Workspace"}</h3>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Your logo icon will appear on checkout links, payment gateway popups, and automated merchant receipts.
+                  Upload an image file or paste an HTTP URL below.
                 </p>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="mt-8 grid gap-6 lg:grid-cols-2">
               <div className="space-y-5 rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
                 <div>
                   <label className="block text-xs uppercase tracking-[0.28em] text-zinc-500 mb-3">Merchant name</label>
@@ -390,14 +396,14 @@ export default function ApiKeysPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase tracking-[0.28em] text-zinc-500 mb-3">Merchant logo URL / Base64</label>
+                  <label className="block text-xs uppercase tracking-[0.28em] text-zinc-500 mb-3">Merchant logo URL</label>
                   <div className="relative">
                     <input
                       type="text"
                       value={merchantLogo}
                       onChange={(event) => setMerchantLogo(event.target.value)}
                       className="w-full rounded-3xl border border-white/10 bg-zinc-900/80 px-4 py-4 pr-10 text-sm text-white outline-none transition focus:border-purple-500 truncate"
-                      placeholder="https://example.com/logo.png or uploaded image"
+                      placeholder="https://example.com/logo.png"
                     />
                     <ImageIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
                   </div>
@@ -422,10 +428,10 @@ export default function ApiKeysPage() {
                     <button
                       type="button"
                       onClick={() => setIsEmailReadOnly(!isEmailReadOnly)}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-purple-300 hover:text-white"
+                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-purple-300 hover:text-white"
                     >
                       {isEmailReadOnly ? <Lock size={10} /> : <Unlock size={10} />}
-                      {isEmailReadOnly ? "Locked" : "Editable"}
+                      {isEmailReadOnly ? "Read only" : "Editable"}
                     </button>
                   </div>
                   <input
@@ -464,20 +470,20 @@ export default function ApiKeysPage() {
               </div>
             </div>
 
-            {/* Settlement Wallet Address */}
+            {/* Settlement Wallet Field Span */}
             <div className="mt-6 rounded-[2.5rem] border border-white/10 bg-black/50 p-6">
               <div className="flex items-center gap-3 mb-3">
                  <Wallet size={16} className="text-purple-400" />
-                 <label className="text-xs uppercase tracking-[0.28em] text-zinc-500">Destination Settlement Wallet</label>
+                 <label className="text-xs uppercase tracking-[0.28em] text-zinc-500">Settlement Wallet Address</label>
               </div>
               <input
                 type="text"
                 value={settlementWalletAddress}
                 onChange={(event) => setSettlementWalletAddress(event.target.value)}
                 className="w-full rounded-3xl border border-white/10 bg-zinc-900/80 px-4 py-4 text-sm font-mono text-emerald-400 outline-none transition focus:border-purple-500"
-                placeholder="Enter your decentralized wallet address (e.g. 0x... or Solana pubkey)"
+                placeholder="Enter your decentralized settlement wallet address"
               />
-              <p className="mt-4 text-sm text-zinc-400">This destination address receives automated payout settlements and smart contract routing.</p>
+              <p className="mt-4 text-sm text-zinc-400">This address will securely receive all payout settlements and automated distributions.</p>
             </div>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -551,7 +557,7 @@ export default function ApiKeysPage() {
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             {!loadingKeys && keyPairs.length === 0 ? (
               <div className="rounded-[2.5rem] border border-dashed border-white/10 bg-black/50 p-8 text-center text-zinc-400">
-                No API keys created yet. Click "Create new key pair" above to generate your credentials.
+                No API keys created yet. Generate a key pair to start integrating.
               </div>
             ) : (
               keyPairs.map((item) => (
@@ -559,7 +565,7 @@ export default function ApiKeysPage() {
                   <div className="flex items-center justify-between gap-3 mb-6">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">API Configuration</p>
-                      <p className="mt-2 text-sm font-black uppercase tracking-[0.28em] text-white">Mainnet Access</p>
+                      <p className="mt-2 text-sm font-black uppercase tracking-[0.28em] text-white">Standard Access</p>
                     </div>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-300">
                       {item.lastUsed}
