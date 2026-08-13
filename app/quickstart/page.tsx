@@ -15,7 +15,7 @@ import {
   Link2,
   Zap,
   ExternalLink,
-  QrCode
+  Code
 } from "lucide-react";
 
 const REQUEST_SNIPPET = `const response = await fetch('https://opayque-three.vercel.app/api/v1/sessions', {
@@ -49,33 +49,36 @@ const RESPONSE_SNIPPET = `{
 export default function QuickstartPage() {
   const router = useRouter();
   
-  // Navigation & Tab State
   const [activeMode, setActiveMode] = useState<"no-code" | "api">("no-code");
-  const [copiedBlock, setCopiedBlock] = useState<"request" | "response" | "link" | null>(null);
+  const [copiedBlock, setCopiedBlock] = useState<"request" | "response" | "link" | "embed" | null>(null);
 
-  // No-Code Link Generator Form State
+  // Generator Form State
   const [productTitle, setProductTitle] = useState("Custom Order / Payment");
   const [amount, setAmount] = useState("15.00");
   const [currency, setCurrency] = useState("USDC");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [generatedEmbed, setGeneratedEmbed] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleCopy = (text: string, block: "request" | "response" | "link") => {
+  const handleCopy = (text: string, block: "request" | "response" | "link" | "embed") => {
     navigator.clipboard.writeText(text);
     setCopiedBlock(block);
     setTimeout(() => setCopiedBlock(null), 2000);
   };
 
-  const handleGenerateLink = (e: React.FormEvent) => {
+  const handleGenerate = (e: React.FormEvent) => {
     e.preventDefault();
     setIsGenerating(true);
     
     setTimeout(() => {
       const slug = Math.random().toString(36).substring(2, 9);
       const url = `https://opayque-three.vercel.app/pay/lnk_${slug}`;
+      const embedCode = `<!-- Opayque Pay Button -->\n<script src="https://opayque-three.vercel.app/v1/checkout.js" data-amount="${amount}" data-token="${currency}"></script>\n<button onclick="Opayque.checkout('${slug}')" style="background:#a855f7;color:#fff;padding:12px 24px;border-radius:12px;font-weight:bold;border:none;cursor:pointer;">\n  Pay $${amount} with ${currency}\n</button>`;
+      
       setGeneratedLink(url);
+      setGeneratedEmbed(embedCode);
       setIsGenerating(false);
-    }, 600);
+    }, 500);
   };
 
   return (
@@ -84,7 +87,6 @@ export default function QuickstartPage() {
       <div className="relative mx-auto flex min-h-screen items-center justify-center p-4 md:p-6">
         <div className="relative w-full max-w-5xl rounded-[3.5rem] border border-white/10 bg-zinc-950/95 p-6 md:p-10 shadow-2xl">
           
-          {/* Top Close Button */}
           <button
             type="button"
             onClick={() => router.push("/developer/overview")}
@@ -93,7 +95,7 @@ export default function QuickstartPage() {
             <ArrowLeft size={16} className="mr-2 inline-block" /> Close
           </button>
 
-          {/* Mode Selector Tabs */}
+          {/* Mode Tabs */}
           <div className="mb-8 flex flex-wrap items-center gap-3 border-b border-white/5 pb-6">
             <button
               onClick={() => setActiveMode("no-code")}
@@ -103,7 +105,7 @@ export default function QuickstartPage() {
                   : "border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
-              <Zap size={14} /> 1-Click Payment Link (No-Code)
+              <Zap size={14} /> No-Code Link &amp; Button Generator
             </button>
             <button
               onClick={() => setActiveMode("api")}
@@ -119,7 +121,7 @@ export default function QuickstartPage() {
 
           <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
             
-            {/* Left Column: Context / Descriptions */}
+            {/* Left Instructions */}
             <div className="space-y-6">
               <div className="inline-flex items-center gap-3 rounded-full border border-purple-500/20 bg-purple-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-purple-300">
                 <Sparkles size={16} /> Quickstart Launchpad
@@ -129,23 +131,23 @@ export default function QuickstartPage() {
                 <>
                   <div>
                     <h1 className="text-4xl font-black uppercase tracking-tighter text-white md:text-5xl">
-                      Instant Payment Links
+                      Links &amp; Pay Buttons
                     </h1>
                     <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-400">
-                      Create a direct checkout link or QR code in seconds. No coding, no server setups, and no API keys required.
+                      Generate shareable payment URLs or embeddable HTML checkout button snippets to paste onto any website without writing backend code.
                     </p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Step 1</p>
-                      <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">Set Details</p>
-                      <p className="mt-2 text-xs leading-5 text-zinc-400">Specify your item name and amount in USDC or SOL.</p>
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Option A</p>
+                      <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">Direct Link</p>
+                      <p className="mt-2 text-xs leading-5 text-zinc-400">Share on social media or send in chat DMs.</p>
                     </div>
                     <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Step 2</p>
-                      <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">Share Link</p>
-                      <p className="mt-2 text-xs leading-5 text-zinc-400">Send the generated URL directly to your buyer or embed it anywhere.</p>
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Option B</p>
+                      <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">HTML Widget</p>
+                      <p className="mt-2 text-xs leading-5 text-zinc-400">Paste code into WordPress, Wix, or custom site.</p>
                     </div>
                   </div>
                 </>
@@ -164,12 +166,12 @@ export default function QuickstartPage() {
                     <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
                       <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Step 1</p>
                       <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">Authentication</p>
-                      <p className="mt-2 text-xs leading-5 text-zinc-400">Attach secret key <code className="text-purple-400 font-mono">osk_live_...</code> as a Bearer token.</p>
+                      <p className="mt-2 text-xs leading-5 text-zinc-400">Attach secret key as Bearer token.</p>
                     </div>
                     <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5">
                       <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Step 2</p>
                       <p className="mt-2 text-base font-black uppercase tracking-[0.1em] text-white">Create Session</p>
-                      <p className="mt-2 text-xs leading-5 text-zinc-400">POST payload to generate an active checkout intent.</p>
+                      <p className="mt-2 text-xs leading-5 text-zinc-400">POST payload to generate payment intent.</p>
                     </div>
                   </div>
                 </>
@@ -191,33 +193,32 @@ export default function QuickstartPage() {
               </div>
             </div>
 
-            {/* Right Column: Dynamic Interactive Area */}
+            {/* Right Panel */}
             <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900/80 p-6 md:p-8 shadow-[0_0_40px_rgba(168,85,247,0.15)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.18),transparent_40%)]" />
               
               {activeMode === "no-code" ? (
-                /* NO-CODE PAYMENT LINK GENERATOR INTERFACE */
                 <div className="relative space-y-6">
                   <div className="flex items-center gap-3 text-purple-300">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/20">
                       <Link2 size={20} />
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">No-Code Tool</p>
-                      <p className="text-sm font-black uppercase tracking-[0.1em] text-white">Payment Link Generator</p>
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">No-Code Generator</p>
+                      <p className="text-sm font-black uppercase tracking-[0.1em] text-white">Checkout Link &amp; Button</p>
                     </div>
                   </div>
 
-                  <form onSubmit={handleGenerateLink} className="space-y-4">
+                  <form onSubmit={handleGenerate} className="space-y-4">
                     <div>
                       <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">
-                        Product / Payment Label
+                        Product / Service Label
                       </label>
                       <input
                         type="text"
                         value={productTitle}
                         onChange={(e) => setProductTitle(e.target.value)}
-                        placeholder="e.g. Custom Merchandise"
+                        placeholder="e.g. Custom Denim Jacket"
                         className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none"
                         required
                       />
@@ -240,7 +241,7 @@ export default function QuickstartPage() {
                       </div>
                       <div>
                         <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">
-                          Asset Token
+                          Settlement Token
                         </label>
                         <select
                           value={currency}
@@ -258,47 +259,53 @@ export default function QuickstartPage() {
                       disabled={isGenerating}
                       className="w-full flex items-center justify-center gap-2 rounded-2xl bg-purple-600 py-3.5 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-purple-500 active:scale-[0.98] disabled:opacity-50"
                     >
-                      {isGenerating ? "Generating Unique URL..." : "🪄 Generate Payment Link"}
+                      {isGenerating ? "Building Checkout Assets..." : "🪄 Generate Link & Embed Code"}
                     </button>
                   </form>
 
-                  {/* Generated Link Display Card */}
-                  {generatedLink && (
-                    <div className="mt-6 space-y-3 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
-                          <CheckCircle2 size={12} /> Active Hosted Link
-                        </span>
-                        <span className="text-[9px] font-mono text-zinc-500">{currency} Settlement</span>
+                  {/* Outputs */}
+                  {generatedLink && generatedEmbed && (
+                    <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      
+                      {/* Output 1: Direct Link */}
+                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
+                            <CheckCircle2 size={12} /> 1. Hosted Link
+                          </span>
+                          <a href={generatedLink} target="_blank" rel="noreferrer" className="text-[9px] text-zinc-400 hover:text-white flex items-center gap-1">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-black/80 p-2.5 flex items-center justify-between gap-2">
+                          <code className="text-[10px] font-mono text-emerald-300 truncate">{generatedLink}</code>
+                          <button onClick={() => handleCopy(generatedLink, "link")} className="text-zinc-300 hover:text-white shrink-0">
+                            {copiedBlock === "link" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="rounded-xl border border-white/10 bg-black/80 p-3 flex items-center justify-between gap-2">
-                        <code className="text-[11px] font-mono text-emerald-300 truncate">
-                          {generatedLink}
-                        </code>
-                        <button
-                          onClick={() => handleCopy(generatedLink, "link")}
-                          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-300 hover:text-white transition shrink-0"
-                        >
-                          {copiedBlock === "link" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                        </button>
+                      {/* Output 2: Embeddable Code */}
+                      <div className="rounded-2xl border border-purple-500/30 bg-purple-950/20 p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-purple-400">
+                            <Code size={12} /> 2. HTML Pay Button Snippet
+                          </span>
+                          <button onClick={() => handleCopy(generatedEmbed, "embed")} className="text-[10px] font-bold text-purple-300 hover:text-white flex items-center gap-1">
+                            {copiedBlock === "embed" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                            {copiedBlock === "embed" ? "Copied Snippet" : "Copy Code"}
+                          </button>
+                        </div>
+                        <pre className="rounded-xl border border-white/10 bg-black/80 p-3 text-[10px] font-mono text-purple-200/80 overflow-x-auto max-h-28">
+                          <code>{generatedEmbed}</code>
+                        </pre>
                       </div>
 
-                      <div className="flex gap-2 pt-1">
-                        <a
-                          href={generatedLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-white/10"
-                        >
-                          <ExternalLink size={12} /> Open Test Checkout
-                        </a>
-                      </div>
                     </div>
                   )}
                 </div>
               ) : (
-                /* DEVELOPER API SNIPPETS INTERFACE */
+                /* Developer API Snippets */
                 <div className="relative space-y-4">
                   <div className="flex items-center gap-3 text-purple-300">
                     <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-purple-500/10">
@@ -310,28 +317,11 @@ export default function QuickstartPage() {
                     </div>
                   </div>
 
-                  {/* Node.js Request Snippet */}
                   <div className="rounded-[2rem] border border-white/10 bg-black/60 p-5 overflow-x-auto">
                     <div className="mb-3 flex items-center justify-between">
-                      <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
-                        1. Request Example (Node.js)
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(REQUEST_SNIPPET, "request")}
-                        className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-400 transition hover:text-white"
-                      >
-                        {copiedBlock === "request" ? (
-                          <>
-                            <Check size={12} className="text-emerald-400" />
-                            <span className="text-emerald-400 font-bold">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={12} />
-                            <span>Copy</span>
-                          </>
-                        )}
+                      <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">1. Request Example (Node.js)</p>
+                      <button type="button" onClick={() => handleCopy(REQUEST_SNIPPET, "request")} className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-400 hover:text-white">
+                        {copiedBlock === "request" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                       </button>
                     </div>
                     <pre className="text-[11px] font-mono leading-relaxed text-zinc-300">
@@ -339,31 +329,14 @@ export default function QuickstartPage() {
                     </pre>
                   </div>
 
-                  {/* JSON Response Snippet */}
                   <div className="rounded-[2rem] border border-white/10 bg-black/60 p-5 overflow-x-auto">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 size={14} className="text-emerald-400" />
-                        <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
-                          2. Expected JSON Response
-                        </p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">2. Expected JSON Response</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(RESPONSE_SNIPPET, "response")}
-                        className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-400 transition hover:text-white"
-                      >
-                        {copiedBlock === "response" ? (
-                          <>
-                            <Check size={12} className="text-emerald-400" />
-                            <span className="text-emerald-400 font-bold">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={12} />
-                            <span>Copy</span>
-                          </>
-                        )}
+                      <button type="button" onClick={() => handleCopy(RESPONSE_SNIPPET, "response")} className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-400 hover:text-white">
+                        {copiedBlock === "response" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                       </button>
                     </div>
                     <pre className="text-[11px] font-mono leading-relaxed text-emerald-400/90">
