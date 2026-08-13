@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { Terminal, Shield, Play, ArrowLeft, Settings2 } from "lucide-react";
+import { Terminal, Play, ArrowLeft, Settings2, RefreshCw } from "lucide-react";
 import OpayqueCheckout from "@/components/OpayqueCheckout";
+import { useEnvironment } from "@/lib/context/EnvironmentContext";
 
 export default function DeveloperSandbox() {
+  const { isSandbox, network, toggleEnvironment, rpcEndpoint } = useEnvironment();
+
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [orderId, setOrderId] = useState(`ORD-${Math.floor(1000 + Math.random() * 9000)}`);
   const [amount, setAmount] = useState(15.0);
@@ -19,10 +22,12 @@ export default function DeveloperSandbox() {
             <Terminal className="w-5 h-5 text-[#ffb86c]" />
           </div>
           <div>
-            <h1 className="text-sm md:text-lg font-bold tracking-widest text-white uppercase">
-              Opayque <span className="text-[#ffb86c] opacity-80">{'// Sandbox'}</span>
+            <h1 className="text-sm md:text-lg font-bold tracking-widest text-white uppercase flex items-center gap-2">
+              Opayque <span className="text-[#ffb86c] opacity-80">{'// Sandbox Harness'}</span>
             </h1>
-            <p className="text-[10px] text-gray-500 hidden md:block mt-1">TESTING ENVIRONMENT • ISOLATED RUNTIME</p>
+            <p className="text-[10px] text-gray-500 hidden md:block mt-1 uppercase">
+              CLUSTER: {network.toUpperCase()} • {rpcEndpoint}
+            </p>
           </div>
         </div>
 
@@ -38,13 +43,29 @@ export default function DeveloperSandbox() {
       <div className="max-w-3xl mx-auto bg-[#0a0d14] border border-[#1f293d] rounded-xl p-8 shadow-2xl relative overflow-hidden fade-in">
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#ffb86c] to-transparent opacity-50" />
 
-        <div className="flex items-center space-x-3 mb-6 pb-4 border-b border-[#1f293d]/50">
-          <Settings2 className="w-5 h-5 text-gray-400" />
-          <h2 className="text-xs font-bold text-white tracking-widest uppercase">Simulation_Parameters</h2>
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#1f293d]/50">
+          <div className="flex items-center space-x-3">
+            <Settings2 className="w-5 h-5 text-gray-400" />
+            <h2 className="text-xs font-bold text-white tracking-widest uppercase">Simulation_Parameters</h2>
+          </div>
+
+          {/* ACTIVE ENVIRONMENT TOGGLE BUTTON */}
+          <button
+            type="button"
+            onClick={toggleEnvironment}
+            className={`flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase rounded-md border transition-all ${
+              isSandbox
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                : "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+            }`}
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>ENV: {network.toUpperCase()}</span>
+          </button>
         </div>
 
         <p className="text-xs text-gray-400 leading-relaxed mb-8">
-          Configure your mock transaction payload below. This harness tests your integration with the atomic fee-splitting compiler before deploying to mainnet production.
+          Configure your test transaction payload below. Executing this test sends raw instructions to the active <strong className="text-white">{network.toUpperCase()}</strong> RPC compiler endpoint.
         </p>
 
         <div className="space-y-6">
@@ -99,7 +120,7 @@ export default function DeveloperSandbox() {
           amountUsdc={amount}
           merchantWallet={merchantWallet}
           onSuccess={(hash) => {
-            console.log('[SANDBOX] Success. Hash:', hash);
+            console.log(`[SANDBOX-${network.toUpperCase()}] Success. Signature Hash:`, hash);
           }}
           onClose={() => setIsCheckoutOpen(false)}
         />
@@ -107,7 +128,7 @@ export default function DeveloperSandbox() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       ` }} />
     </main>
   );
