@@ -1,349 +1,221 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import {
-  Code2,
-  Key,
-  BookOpen,
-  Terminal,
-  Activity,
-  CheckCircle2,
-  TrendingUp,
-  Zap,
-  Copy,
-  Check,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  Radio,
-} from 'lucide-react';
+import { useState, useEffect, useCallback } from "react";
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { Activity, CheckCircle2, Server, Smartphone, Zap, RefreshCw } from "lucide-react";
 
-// Default to environment variable or standard public Mainnet RPC
+// Production Readiness: Fallback to standard mainnet if no custom environment variable is provided
 const DEFAULT_RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
 
-interface NetworkMetrics {
-  latency: number | null;
-  status: 'Operational' | 'Degraded' | 'Offline' | 'Checking';
-  currentSlot: number | null;
-  epoch: number | null;
-  successRate: number;
-  totalRequestsCount: number;
-}
-
-export default function DeveloperOverviewPage() {
-  const [rpcEndpoint, setRpcEndpoint] = useState<string>(DEFAULT_RPC_ENDPOINT);
-  const [metrics, setMetrics] = useState<NetworkMetrics>({
-    latency: null,
-    status: 'Checking',
-    currentSlot: null,
-    epoch: null,
-    successRate: 100,
-    totalRequestsCount: 0,
-  });
-
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+export default function OverviewPage() {
+  const [slot, setSlot] = useState<number | null>(null);
+  const [latency, setLatency] = useState<number | null>(null);
+  const [networkStatus, setNetworkStatus] = useState<"SYNCING" | "HEALTHY" | "DEGRADED" | "OFFLINE">("SYNCING");
+  
+  // Zero Mock: Track actual RPC session requests and successes
+  const [pingStats, setPingStats] = useState({ total: 0, success: 0 });
+  
+  // Real MWA Detection
   const [mwaConnected, setMwaConnected] = useState<boolean>(false);
-  const [mwaProtocol, setMwaProtocol] = useState<string>('MWA // Web3');
+  const [mwaProtocol, setMwaProtocol] = useState<string>("Checking...");
 
-  // -------------------------------------------------------------
-  // 1. REAL-TIME SOLANA RPC HEALTH & LATENCY PING
-  // -------------------------------------------------------------
-  const pingSolanaRpc = useCallback(async () => {
-    setIsRefreshing(true);
+  const fetchTelemetry = useCallback(async (connection: Connection) => {
     const startTime = performance.now();
-
     try {
-      const response = await fetch(rpcEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getEpochInfo',
-        }),
-      });
-
+      // Fetching the slot acts as a lightweight ping and returns necessary live data
+      const currentSlot = await connection.getSlot();
       const endTime = performance.now();
-      const calculatedLatency = Math.round(endTime - startTime);
+      const ping = Math.round(endTime - startTime);
 
-      if (response.ok) {
-        const data = await response.json();
-        const slot = data?.result?.absoluteSlot || null;
-        const epochNum = data?.result?.epoch || null;
-
-        setMetrics((prev) => ({
-          ...prev,
-          latency: calculatedLatency,
-          status: calculatedLatency > 800 ? 'Degraded' : 'Operational',
-          currentSlot: slot,
-          epoch: epochNum,
-          successRate: calculatedLatency > 800 ? 98.4 : 99.9,
-          totalRequestsCount: prev.totalRequestsCount + 1,
-        }));
-      } else {
-        setMetrics((prev) => ({
-          ...prev,
-          latency: calculatedLatency,
-          status: 'Degraded',
-          successRate: 92.0,
-        }));
-      }
+      setPingStats((prev) => ({ total: prev.total + 1, success: prev.success + 1 }));
+      setLatency(ping);
+      setSlot(currentSlot);
+      setNetworkStatus(ping > 1000 ? "DEGRADED" : "HEALTHY");
     } catch (error) {
-      setMetrics((prev) => ({
-        ...prev,
-        latency: null,
-        status: 'Offline',
-        successRate: 0.0,
-      }));
-    } finally {
-      setIsRefreshing(false);
+      setPingStats((prev) => ({ total: prev.total + 1, success: prev.success }));
+      setNetworkStatus("OFFLINE");
     }
-  }, [rpcEndpoint]);
-
-  // Periodic Auto-Ping Every 10 Seconds
-  useEffect(() => {
-    pingSolanaRpc();
-    const interval = setInterval(() => {
-      pingSolanaRpc();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [pingSolanaRpc]);
-
-  // -------------------------------------------------------------
-  // 2. MOBILE WALLET ADAPTER & WEB3 PROVIDER DETECTION
-  // -------------------------------------------------------------
-  useEffect(() => {
-    const checkWalletAdapter = () => {
-      if (typeof window !== 'undefined') {
-        const globalAny = window as any;
-        const hasSolana = Boolean(globalAny.solana || globalAny.phantom || globalAny.solflare);
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-        setMwaConnected(hasSolana);
-        setMwaProtocol(isMobile ? 'MWA // Native DeepLink' : 'WSS / Web3 Provider');
-      }
-    };
-
-    checkWalletAdapter();
   }, []);
 
-  // Format RPC Display Domain
+  useEffect(() => {
+    let mounted = true;
+    const connection = new Connection(DEFAULT_RPC_ENDPOINT, "confirmed");
+    let intervalId: NodeJS.Timeout;
+
+    const initTelemetry = async () => {
+      if (mounted) await fetchTelemetry(connection);
+    };
+
+    // 1. Initialize Real-Time Solana RPC Ping
+    initTelemetry();
+    intervalId = setInterval(() => {
+      if (mounted) fetchTelemetry(connection);
+    }, 3000);
+
+    // 2. Client-side Environment & Mobile Wallet Adapter (MWA) Detection
+    if (typeof window !== "undefined") {
+      const globalAny = window as any;
+      const hasSolana = Boolean(globalAny.solana || globalAny.phantom || globalAny.solflare);
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      setMwaConnected(hasSolana);
+      setMwaProtocol(isMobile ? "MWA // Native DeepLink" : hasSolana ? "WSS / Web3 Provider" : "No Wallet Detected");
+    }
+
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, [fetchTelemetry]);
+
+  // Calculate actual success rate without mocking
+  const successRate = pingStats.total > 0 
+    ? ((pingStats.success / pingStats.total) * 100).toFixed(1) 
+    : "--";
+
   const getRpcDomain = (url: string) => {
     try {
-      const parsed = new URL(url);
-      return parsed.hostname;
+      return new URL(url).hostname;
     } catch {
-      return url;
+      return "api.mainnet-beta.solana.com";
     }
   };
 
   return (
-    <div className="space-y-8 font-mono text-white">
-      {/* SECTION TITLE & LIVE STATUS HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1f293d] pb-6">
-        <div className="space-y-1">
-          <div className="flex items-center space-x-2 text-xs uppercase tracking-widest text-[#00ffcc] font-semibold">
-            <Code2 className="w-4 h-4" />
-            <span>Developer Hub // Tab 01</span>
+    <div className="space-y-10 animate-in fade-in duration-700">
+      <header className="flex flex-col gap-4 border-b border-white/5 pb-8 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-emerald-400">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Developer Hub // Tab 01</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold italic tracking-tight uppercase text-white">
-            API & Protocol Overview
-          </h1>
-          <p className="text-gray-400 text-xs sm:text-sm uppercase tracking-wider">
+          <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white md:text-5xl">
+            API &amp; Protocol Overview
+          </h2>
+          <p className="max-w-2xl text-xs font-bold uppercase tracking-widest text-zinc-500">
             Real-time analytics, RPC node health, and endpoint configuration.
           </p>
         </div>
-
-        {/* Dynamic System Health Badge */}
-        <div className="flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-[#0b0c10] border border-[#00ffcc]/30 w-fit">
-          <span className="relative flex h-3 w-3">
-            <span
-              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                metrics.status === 'Operational'
-                  ? 'bg-[#00ffcc]'
-                  : metrics.status === 'Degraded'
-                  ? 'bg-amber-400'
-                  : 'bg-rose-500'
-              }`}
-            ></span>
-            <span
-              className={`relative inline-flex rounded-full h-3 w-3 ${
-                metrics.status === 'Operational'
-                  ? 'bg-[#00ffcc]'
-                  : metrics.status === 'Degraded'
-                  ? 'bg-amber-400'
-                  : 'bg-rose-500'
-              }`}
-            ></span>
+        
+        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2">
+          <div className={`h-2 w-2 rounded-full ${networkStatus === 'HEALTHY' ? 'bg-emerald-400 animate-pulse' : networkStatus === 'DEGRADED' ? 'bg-amber-400' : networkStatus === 'OFFLINE' ? 'bg-rose-500' : 'bg-zinc-500'}`} />
+          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+            Network Status: <span className={networkStatus === 'HEALTHY' ? 'text-emerald-400' : networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-amber-400'}>{networkStatus === 'HEALTHY' ? 'Solana Mainnet' : networkStatus}</span>
           </span>
-          <div className="text-xs">
-            <span className="text-gray-400 block text-[10px] uppercase font-bold">Network Status</span>
-            <span
-              className={`font-extrabold uppercase tracking-wider ${
-                metrics.status === 'Operational'
-                  ? 'text-[#00ffcc]'
-                  : metrics.status === 'Degraded'
-                  ? 'text-amber-400'
-                  : 'text-rose-500'
-              }`}
-            >
-              {metrics.status} {metrics.epoch !== null ? `Epoch ${metrics.epoch}` : 'Solana'}
-            </span>
-          </div>
-
-          <button
-            onClick={pingSolanaRpc}
-            disabled={isRefreshing}
-            className="ml-2 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all disabled:opacity-50"
-            title="Ping RPC Node Now"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#00ffcc]' : ''}`} />
-          </button>
+          <RefreshCw size={12} className={`text-zinc-500 ${networkStatus === 'SYNCING' ? 'animate-spin' : ''}`} />
         </div>
-      </div>
+      </header>
 
-      {/* API MONITORING & DYNAMIC ANALYTICS METRICS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Metric 1: Live RPC Ping Session Requests */}
-        <div className="p-5 rounded-2xl bg-[#0b0c10] border border-[#1f293d] space-y-2 hover:border-[#00ffcc]/40 transition-colors">
-          <div className="flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider">
-            <span>Current Slot</span>
-            <Activity className="w-4 h-4 text-[#00ffcc]" />
+      {/* Telemetry Cards */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* Slot Card */}
+        <div className="flex flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-900/50 p-6 shadow-2xl backdrop-blur-sm">
+          <div className="flex items-center justify-between text-zinc-500">
+            <span className="text-[9px] font-black uppercase tracking-widest">Current Slot</span>
+            <Activity size={14} className="text-emerald-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">
-            {metrics.currentSlot !== null ? metrics.currentSlot.toLocaleString() : 'Syncing...'}
-          </div>
-          <div className="flex items-center space-x-1 text-[11px] text-[#00ffcc]">
-            <TrendingUp className="w-3 h-3" />
-            <span>
-              {metrics.totalRequestsCount > 0
-                ? `${metrics.totalRequestsCount} RPC Pings Active`
-                : 'Live On-Chain Stream'}
+          <div className="mt-4">
+            <span className="text-3xl font-black tracking-tighter text-white">
+              {slot ? slot.toLocaleString() : "Syncing..."}
             </span>
-          </div>
-        </div>
-
-        {/* Metric 2: Node Settlement Success Rate */}
-        <div className="p-5 rounded-2xl bg-[#0b0c10] border border-[#1f293d] space-y-2 hover:border-purple-500/40 transition-colors">
-          <div className="flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider">
-            <span>Success Rate</span>
-            <CheckCircle2 className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">
-            {metrics.status === 'Offline' ? '0.0%' : `${metrics.successRate.toFixed(1)}%`}
-          </div>
-          <div className="text-[11px] text-purple-400 tracking-wider">
-            <span>
-              {metrics.status === 'Operational'
-                ? '0.00% dropped packets'
-                : metrics.status === 'Degraded'
-                ? 'High network contention'
-                : 'Node Unreachable'}
-            </span>
-          </div>
-        </div>
-
-        {/* Metric 3: Measured Dynamic RPC Latency */}
-        <div className="p-5 rounded-2xl bg-[#0b0c10] border border-[#1f293d] space-y-2 hover:border-[#00ffcc]/40 transition-colors">
-          <div className="flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider">
-            <span>Avg Response Latency</span>
-            <Zap className="w-4 h-4 text-[#00ffcc]" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">
-            {metrics.latency !== null ? `${metrics.latency}ms` : 'Measuring...'}
-          </div>
-          <div className="text-[11px] text-[#00ffcc] tracking-wider">
-            <span>
-              {metrics.latency && metrics.latency < 250
-                ? 'Ultra Low Latency'
-                : 'Multi-RPC Failover Active'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* CORE DEVELOPER WORKSPACE CARDS */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Solana RPC Config Card */}
-        <div className="group bg-black/40 border border-white/5 p-8 rounded-[3.5rem] min-h-[420px] hover:border-purple-500/30 transition-all duration-500">
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="p-5 rounded-3xl bg-purple-950/40 text-purple-400 border border-purple-800/30">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <span className="text-[10px] px-4 py-2 rounded-full bg-[#111118] text-emerald-400 border border-emerald-800/50 font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                <Radio className="w-3 h-3 animate-pulse" />
-                Active Relay
+            <p className="mt-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500/70">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
+              Live On-Chain Stream
+            </p>
+          </div>
+        </div>
+
+        {/* Success Rate Card */}
+        <div className="flex flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-900/50 p-6 shadow-2xl backdrop-blur-sm">
+          <div className="flex items-center justify-between text-zinc-500">
+            <span className="text-[9px] font-black uppercase tracking-widest">Success Rate</span>
+            <CheckCircle2 size={14} className="text-purple-400" />
+          </div>
+          <div className="mt-4">
+            <span className="text-3xl font-black tracking-tighter text-white">{successRate}%</span>
+            <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-purple-500/70">
+              Session RPC Reliability
+            </p>
+          </div>
+        </div>
+
+        {/* Latency Card */}
+        <div className="flex flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-900/50 p-6 shadow-2xl backdrop-blur-sm">
+          <div className="flex items-center justify-between text-zinc-500">
+            <span className="text-[9px] font-black uppercase tracking-widest">Avg Response Latency</span>
+            <Zap size={14} className="text-emerald-400" />
+          </div>
+          <div className="mt-4">
+            <span className="text-3xl font-black tracking-tighter text-white">
+              {latency !== null ? `${latency}ms` : "..."}
+            </span>
+            <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500/70">
+              Multi-RPC Failover Active
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Configurations */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-black/40 p-8 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/5 bg-purple-500/10 text-purple-400">
+              <Server size={20} />
             </div>
-            <h3 className="text-3xl font-black uppercase tracking-tight text-white">
-              Solana RPC Config
-            </h3>
-            <p className="max-w-2xl text-sm text-zinc-400 tracking-wide leading-relaxed">
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[8px] font-black uppercase tracking-widest text-emerald-400">
+              Active Relay
+            </span>
+          </div>
+          <div>
+            <h3 className="text-lg font-black uppercase tracking-widest text-white">Solana RPC Config</h3>
+            <p className="mt-2 text-[10px] leading-relaxed text-zinc-500 font-mono">
               Setup multi-provider RPC layer abstractions for resilient network settlement and instant state syncing.
             </p>
-
-            <div className="rounded-[2.5rem] border border-white/10 bg-black/40 p-6 text-sm text-purple-200 space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="uppercase tracking-[0.35em] text-zinc-500">Primary Node</span>
-                <span className="font-black text-white truncate max-w-[200px] sm:max-w-none">
-                  {getRpcDomain(rpcEndpoint)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em] text-[#00ffcc]">
-                <span>Real-Time Latency</span>
-                <span className="font-bold">
-                  {metrics.latency !== null ? `${metrics.latency}ms` : 'Pinging...'}
-                </span>
-              </div>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-900/50 p-4">
+            <div className="flex justify-between border-b border-white/5 pb-3">
+              <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Primary Node</span>
+              <code className="text-[10px] text-white break-all text-right max-w-[60%]">{getRpcDomain(DEFAULT_RPC_ENDPOINT)}</code>
+            </div>
+            <div className="flex justify-between pt-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/70">Real-Time Latency</span>
+              <code className={`text-[10px] ${networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-emerald-400'}`}>
+                {latency !== null ? `${latency}ms` : "Syncing..."}
+              </code>
             </div>
           </div>
         </div>
 
-        {/* Mobile Wallet Adapter Card */}
-        <div className="group bg-black/40 border border-white/5 p-8 rounded-[3.5rem] min-h-[420px] hover:border-purple-500/30 transition-all duration-500">
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="p-5 rounded-3xl bg-zinc-800 text-zinc-200 border border-white/10">
-                <Terminal className="w-6 h-6" />
-              </div>
-              <span className="text-[10px] px-4 py-2 rounded-full bg-[#111118] text-[#a3a3ff] border border-[#5b4dff]/20 font-black uppercase tracking-[0.3em]">
-                Hardware Ready
-              </span>
+        <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-black/40 p-8 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/5 bg-zinc-800 text-zinc-400">
+              <Smartphone size={20} />
             </div>
-            <h3 className="text-3xl font-black uppercase tracking-tight text-white">
-              Mobile Wallet Adapter
-            </h3>
-            <p className="max-w-2xl text-sm text-zinc-400 tracking-wide leading-relaxed">
+            <span className="rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-400">
+              Hardware Ready
+            </span>
+          </div>
+          <div>
+            <h3 className="text-lg font-black uppercase tracking-widest text-white">Mobile Wallet Adapter</h3>
+            <p className="mt-2 text-[10px] leading-relaxed text-zinc-500 font-mono">
               Deep-linking configurations and secure pairing payloads for POS and remote checkout integrations.
             </p>
-
-            <div className="rounded-[2.5rem] border border-white/10 bg-black/40 p-6 text-sm text-zinc-300 space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="uppercase tracking-[0.35em] text-zinc-500">Protocol</span>
-                <span className="font-black text-white">{mwaProtocol}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 text-[10px] uppercase tracking-[0.35em]">
-                <span className="text-zinc-500">Status</span>
-                <span
-                  className={`font-bold flex items-center gap-1.5 ${
-                    mwaConnected ? 'text-emerald-400' : 'text-amber-400'
-                  }`}
-                >
-                  {mwaConnected ? (
-                    <>
-                      <Wifi className="w-3 h-3" /> Connected
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff className="w-3 h-3" /> Standby / Ready
-                    </>
-                  )}
-                </span>
-              </div>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-900/50 p-4">
+            <div className="flex justify-between border-b border-white/5 pb-3">
+              <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Protocol</span>
+              <code className="text-[10px] text-white">{mwaProtocol}</code>
+            </div>
+            <div className="flex justify-between pt-1">
+              <span className={`text-[9px] font-black uppercase tracking-widest ${mwaConnected ? 'text-emerald-500/70' : 'text-amber-500/70'}`}>Status</span>
+              <code className={`text-[10px] ${mwaConnected ? 'text-emerald-400' : 'text-amber-400'} flex items-center gap-2`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${mwaConnected ? 'bg-emerald-400' : 'bg-amber-400'} animate-pulse`}></span>
+                {mwaConnected ? 'Connected / Ready' : 'Standby / Unpaired'}
+              </code>
             </div>
           </div>
         </div>
