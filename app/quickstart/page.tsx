@@ -1,11 +1,56 @@
 "use client";
 
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2 } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Terminal, 
+  ShieldCheck, 
+  Sparkles, 
+  Code2, 
+  CheckCircle2, 
+  Copy, 
+  Check 
+} from "lucide-react";
+
+const REQUEST_SNIPPET = `const response = await fetch('https://opayque.com/api/v1/sessions', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer osk_live_9f87d6abcdef...'
+  },
+  body: JSON.stringify({
+    order_id: "ORD-8821",
+    amount_fiat: 15.00,
+    currency: "USD",
+    customer_email: "buyer@example.com"
+  })
+});
+
+const data = await response.json();`;
+
+const RESPONSE_SNIPPET = `{
+  "success": true,
+  "payment_intent_id": "pi_9938201a",
+  "merchant_wallet": "7xKXtg...3b9Y",
+  "amount_crypto": "0.075",
+  "token": "USDC",
+  "fee_split": {
+    "merchant_share": "99.5%",
+    "opayque_share": "0.5%"
+  }
+}`;
 
 export default function QuickstartPage() {
   const router = useRouter();
+  const [copiedBlock, setCopiedBlock] = useState<"request" | "response" | null>(null);
+
+  const handleCopy = (text: string, block: "request" | "response") => {
+    navigator.clipboard.writeText(text);
+    setCopiedBlock(block);
+    setTimeout(() => setCopiedBlock(null), 2000);
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -96,50 +141,58 @@ export default function QuickstartPage() {
                     <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
                       1. The Request Example (Node.js)
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(REQUEST_SNIPPET, "request")}
+                      className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-400 transition hover:text-white"
+                    >
+                      {copiedBlock === "request" ? (
+                        <>
+                          <Check size={12} className="text-emerald-400" />
+                          <span className="text-emerald-400 font-bold">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                   <pre className="text-[11px] font-mono leading-relaxed text-zinc-300">
-                    <code>
-{`const response = await fetch('https://opayque.com/api/v1/sessions', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer osk_live_9f87d6abcdef...'
-  },
-  body: JSON.stringify({
-    order_id: "ORD-8821",
-    amount_fiat: 15.00,
-    currency: "USD",
-    customer_email: "buyer@example.com"
-  })
-});
-
-const data = await response.json();`}
-                    </code>
+                    <code>{REQUEST_SNIPPET}</code>
                   </pre>
                 </div>
 
                 {/* JSON Response Snippet */}
                 <div className="rounded-[2rem] border border-white/10 bg-black/60 p-5 overflow-x-auto">
-                  <div className="mb-3 flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-green-400" />
-                    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
-                      2. Expected JSON Response
-                    </p>
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={14} className="text-green-400" />
+                      <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
+                        2. Expected JSON Response
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(RESPONSE_SNIPPET, "response")}
+                      className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-400 transition hover:text-white"
+                    >
+                      {copiedBlock === "response" ? (
+                        <>
+                          <Check size={12} className="text-emerald-400" />
+                          <span className="text-emerald-400 font-bold">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                   <pre className="text-[11px] font-mono leading-relaxed text-green-400/90">
-                    <code>
-{`{
-  "success": true,
-  "payment_intent_id": "pi_9938201a",
-  "merchant_wallet": "7xKXtg...3b9Y",
-  "amount_crypto": "0.075",
-  "token": "USDC",
-  "fee_split": {
-    "merchant_share": "99.5%",
-    "opayque_share": "0.5%"
-  }
-}`}
-                    </code>
+                    <code>{RESPONSE_SNIPPET}</code>
                   </pre>
                 </div>
 
