@@ -1,234 +1,320 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { 
-  LucideWebhook, 
-  LucideActivity, 
-  LucideRefreshCw, 
-  LucideCheckCircle2, 
-  LucideXCircle, 
-  LucideCopy, 
-  LucideCheck,
-  LucideShieldCheck,
-  LucideRadio
-} from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Activity, Check, CheckCircle2, Copy, Eye, EyeOff, Radio, RefreshCw, ShieldCheck, Webhook, XCircle } from "lucide-react";
 
-interface WebhookLog {
+interface DeliveryLog {
   id: string;
   event: string;
   status: number;
-  url: string;
-  timestamp: string;
-  duration: string;
+  endpoint: string;
+  time: string;
+  latency: string;
 }
 
-export default function WebhooksPage() {
-  const [endpointUrl, setEndpointUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
-  const [webhooks, setWebhooks] = useState<any[]>([]);
-  const [copied, setCopied] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+const eventTypes = [
+  "checkout.session.completed", 
+  "tx.shielded.settled", 
+  "terminal.node.paired", 
+  "transfer.failed"
+];
 
-  // Load webhooks
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/v1/webhooks');
-        if (!res.ok) throw new Error('Failed to load webhooks');
-        const data = await res.json();
-        if (!mounted) return;
-        setWebhooks(data.webhooks || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+export default function WebhooksDeliveryLogsPage() {
+  const [endpoint, setEndpoint] = useState("");
+  const [secret, setSecret] = useState<string>("whsec_loading...");
+  const [showSecret, setShowSecret] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
+  const [logs, setLogs] = useState<DeliveryLog[]>([]);
+  
+  const [isTesting, setIsTesting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 1. Fetch Initial Config & Logs
+  const fetchTelemetryData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch Logs
+      const logsRes = await fetch('/api/v1/webhooks/logs');
+      if (logsRes.ok) {
+        const logsData = await logsRes.json();
+        setLogs(logsData.logs || []);
       }
-    })();
-    return () => { mounted = false; };
+
+      // Fetch Config (Endpoint, Secret, Subscribed Events)
+      const configRes = await fetch('/api/v1/webhooks/config');
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        if (configData.endpoint) setEndpoint(configData.endpoint);
+        if (configData.secret) setSecret(configData.secret);
+        if (configData.events) setSelectedEvents(configData.events);
+      }
+    } catch (err) {
+      console.error("Failed to load telemetry data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleCopySecret = (secret: string) => {
-    navigator.clipboard.writeText(secret);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  useEffect(() => {
+    fetchTelemetryData();
+  }, [fetchTelemetryData]);
+
+  // 2. Save Configuration (Fires on Blur or Event Toggle)
+  const updateConfiguration = async (newEndpoint: string, newEvents: string[]) => {
+    setIsSaving(true);
+    try {
+      await fetch('/api/v1/webhooks/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: newEndpoint, events: newEvents })
+      });
+    } catch (err) {
+      console.error("Failed to save configuration:", err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSendTestWebhook = async (w: any) => {
+  const handleEndpointBlur = () => {
+    updateConfiguration(endpoint, selectedEvents);
+  };
+
+  const toggleEvent = (event: string) => {
+    const updatedEvents = selectedEvents.includes(event) 
+      ? selectedEvents.filter((item) => item !== event) 
+      : [...selectedEvents, event];
+    
+    setSelectedEvents(updatedEvents);
+    updateConfiguration(endpoint, updatedEvents);
+  };
+
+  const copySecret = async () => { 
+    if (!secret || secret.includes("loading")) return;
+    await navigator.clipboard.writeText(secret); 
+    setCopied(true); 
+    window.setTimeout(() => setCopied(false), 1600); 
+  };
+
+  // 3. Dispatch Live Test Webhook
+  const sendTest = async () => {
+    if (!endpoint) return;
     setIsTesting(true);
     try {
-      const res = await fetch('/api/v1/webhooks/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ webhookId: w.id }) });
+      const res = await fetch('/api/v1/webhooks/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint, events: selectedEvents })
+      });
+      
       if (!res.ok) throw new Error('Failed to dispatch test webhook');
-      setToast('Dispatched signed HMAC test.ping payload — delivery logged');
-      setTimeout(() => setToast(null), 3000);
+      
+      // Refresh logs to show the new test delivery attempt
+      await fetchTelemetryData();
     } catch (err) {
       console.error(err);
-      setToast('Failed to dispatch test webhook');
-      setTimeout(() => setToast(null), 3000);
     } finally {
       setIsTesting(false);
     }
   };
 
-  const handleCreateWebhook = async () => {
+  // 4. Retry Failed Delivery
+  const retry = async (id: string) => {
     try {
-      const res = await fetch('/api/v1/webhooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpointUrl: endpointUrl || '', environment: 'sandbox' }) });
-      if (!res.ok) throw new Error('Create failed');
-      const data = await res.json();
-      setWebhooks((cur) => [data, ...cur]);
-      setWebhookSecret(data.rawSecret || null);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+      // Optimistic UI update (optional, but makes it feel instant)
+      setLogs((current) => current.map((log) => 
+        log.id === id ? { ...log, status: 0, latency: "retrying..." } : log
+      ));
 
-  const handleDeleteWebhook = async (id: string) => {
-    try {
-      const res = await fetch(`/api/v1/webhooks?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
-      setWebhooks((cur) => cur.filter((w) => w.id !== id));
+      const res = await fetch(`/api/v1/webhooks/retry/${id}`, { 
+        method: 'POST' 
+      });
+      
+      if (!res.ok) throw new Error('Retry failed');
+      
+      // Pull fresh logs to get the definitive retry status
+      await fetchTelemetryData();
     } catch (err) {
-      console.error(err);
+      console.error("Webhook retry failed:", err);
+      await fetchTelemetryData(); // Revert optimistic update on fail
     }
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-6 md:p-12 font-sans relative overflow-hidden">
-      {/* Ambient Visuals */}
-      <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-purple-600/5 blur-[120px] rounded-full -z-10 pointer-events-none" />
+    <div className="space-y-10 animate-in fade-in duration-700">
+      <header className="space-y-2 border-b border-white/5 pb-8">
+        <div className="flex items-center gap-2 text-purple-500">
+          <Webhook size={16} />
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Realtime Telemetry</span>
+        </div>
+        <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white md:text-5xl">
+          Webhooks &amp; Delivery Logs
+        </h2>
+        <p className="max-w-2xl text-xs font-bold uppercase tracking-widest text-zinc-500">
+          Configure signed event delivery and inspect every attempt from one protected workspace.
+        </p>
+      </header>
 
-      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
-        
-        {/* Header */}
-        <header className="mb-10">
-          <div className="flex items-center gap-2 text-purple-500 mb-2">
-            <LucideWebhook size={16} />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Realtime Telemetry</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter text-white">
-            Webhook Event Stream
-          </h1>
-          <p className="text-zinc-500 text-xs mt-3 uppercase tracking-widest font-bold">
-            Configure automated event listeners, signing secrets, and delivery logs.
-          </p>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: Configuration Settings */}
-          <div className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <section className="space-y-6 lg:col-span-4">
+          <div className="space-y-6 rounded-[3rem] border border-white/5 bg-zinc-900/50 p-8 shadow-2xl backdrop-blur-sm relative">
+            {/* Optional Saving Indicator */}
+            {isSaving && (
+              <div className="absolute top-8 right-8 flex items-center gap-2 text-[9px] font-bold text-purple-400 uppercase tracking-widest">
+                <RefreshCw size={10} className="animate-spin" /> Saving
+              </div>
+            )}
             
-            {/* Endpoint Config Card */}
-            <div className="p-8 rounded-[3rem] bg-zinc-900/80 border border-white/5 backdrop-blur-md space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-black/40 rounded-2xl flex items-center justify-center border border-white/5 text-purple-500">
-                  <LucideRadio size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-widest text-white">Destination Endpoint</h3>
-                  <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">HTTP POST Target</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/5 bg-black/40 text-purple-500">
+                <Radio size={20} />
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 block mb-2">
-                    Target URL
-                  </label>
-                  <input 
-                    type="url" 
-                    value={endpointUrl} 
-                    onChange={(e) => setEndpointUrl(e.target.value)}
-                    className="w-full bg-black/60 border border-white/10 rounded-2xl p-4 text-xs font-mono text-zinc-200 focus:outline-none focus:border-purple-500/50 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 block mb-2">
-                    Signing Secret (HMAC-SHA256)
-                  </label>
-                  <div className="flex items-center justify-between bg-black/60 border border-white/10 rounded-2xl p-4">
-                    <code className="text-zinc-400 font-mono text-[11px] truncate mr-2">{webhookSecret ?? '—'}</code>
-                    <button 
-                      onClick={() => webhookSecret && handleCopySecret(webhookSecret)}
-                      className="text-purple-400 hover:text-purple-300 shrink-0 text-[10px] font-black uppercase"
-                    >
-                      {copied ? <LucideCheck size={14} /> : <LucideCopy size={14} />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreateWebhook}
-                disabled={isTesting}
-                className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <LucideRefreshCw size={14} className={isTesting ? "animate-spin" : ""} />
-                Create webhook
-              </button>
-            </div>
-
-            {/* Security Badge */}
-            <div className="p-6 rounded-[2.5rem] bg-purple-900/10 border border-purple-500/20 flex items-center gap-4">
-              <LucideShieldCheck size={28} className="text-purple-400 shrink-0" />
               <div>
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-purple-300">TEE Signature Verification</h4>
-                <p className="text-[9px] text-zinc-400 leading-relaxed mt-1">
-                  All webhook payloads are cryptographically signed using SGX/TDX enclave headers.
-                </p>
+                <h3 className="text-xs font-black uppercase tracking-widest">Webhook Endpoint</h3>
+                <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">HTTP POST target</p>
               </div>
             </div>
-
+            
+            <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-400">
+              Destination URL
+              <input 
+                type="url" 
+                value={endpoint} 
+                onChange={(event) => setEndpoint(event.target.value)} 
+                onBlur={handleEndpointBlur}
+                placeholder="https://your-domain.com/api/webhooks"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-black/60 p-4 text-xs font-mono text-zinc-200 outline-none transition focus:border-purple-500/50 placeholder:text-zinc-700" 
+              />
+            </label>
+            
+            <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-400">
+              Signing Secret
+              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 p-4">
+                <code className="min-w-0 flex-1 truncate text-[11px] font-mono text-zinc-400">
+                  {showSecret ? secret : "whsec_••••••••••••••••••••••••"}
+                </code>
+                <button type="button" onClick={() => setShowSecret((value) => !value)} className="text-zinc-500 hover:text-white transition-colors" aria-label="Toggle signing secret visibility">
+                  {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+                <button type="button" onClick={copySecret} className="text-purple-400 hover:text-purple-300 transition-colors" aria-label="Copy signing secret">
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+            </label>
+            
+            <button 
+              type="button" 
+              onClick={sendTest} 
+              disabled={isTesting || !endpoint} 
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] transition hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={14} className={isTesting ? "animate-spin" : ""} />
+              {isTesting ? "Dispatching..." : "Test Webhook"}
+            </button>
           </div>
 
-          {/* Right Column: Live Event Stream Logs */}
-            <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                <LucideActivity size={14} className="text-purple-400" /> Dispatch Audit Logs
-              </span>
-              <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest">
-                Showing {webhooks.length} configured endpoints
-              </span>
+          <div className="rounded-[2.5rem] border border-purple-500/20 bg-purple-900/10 p-6">
+            <div className="flex items-center gap-4">
+              <ShieldCheck size={28} className="shrink-0 text-purple-400" />
+              <div>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-purple-300">Subscribed Events</h4>
+                <p className="mt-1 text-[9px] leading-relaxed text-zinc-400">Choose which signed events reach your endpoint.</p>
+              </div>
             </div>
-
-            <div className="p-6 rounded-[3rem] bg-zinc-900/80 border border-white/5 backdrop-blur-md space-y-4">
-              {webhooks.length === 0 && (
-                <div className="p-6 rounded-2xl bg-black/50 text-zinc-400">No webhooks configured yet.</div>
-              )}
-              {webhooks.map((w) => (
-                <div key={w.id} className="p-4 bg-black/40 border border-white/5 rounded-[1.5rem] flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm font-mono text-white truncate">{w.endpoint_url}</code>
-                      <span className="text-[9px] text-zinc-400">{w.environment}</span>
-                    </div>
-                    <p className="text-[10px] text-zinc-500 mt-1">Created {new Date(w.created_at).toLocaleString()}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => handleSendTestWebhook(w)} className="px-3 py-2 rounded-lg bg-purple-600 text-white text-xs">Test</button>
-                    <button onClick={() => handleCopySecret(w.rawSecret || w.endpoint_url)} className="px-3 py-2 rounded-lg bg-white/5 text-xs">Copy Secret</button>
-                    <button onClick={() => handleDeleteWebhook(w.id)} className="px-3 py-2 rounded-lg bg-rose-700/10 text-rose-300 text-xs">Delete</button>
-                  </div>
-                </div>
+            <div className="mt-5 space-y-2">
+              {eventTypes.map((event) => (
+                <label key={event} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-3 text-[10px] font-mono text-zinc-300 cursor-pointer hover:bg-black/40 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedEvents.includes(event)} 
+                    onChange={() => toggleEvent(event)} 
+                    className="accent-purple-500 w-3 h-3" 
+                  />
+                  {event}
+                </label>
               ))}
             </div>
           </div>
+        </section>
 
-        </div>
-
-      </div>
-      {toast && (
-        <div role="status" className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest text-white shadow-2xl">
-            {toast}
+        <section className="lg:col-span-8">
+          <div className="mb-4 flex items-center justify-between px-2">
+            <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+              <Activity size={14} className="text-purple-400" /> Delivery history
+            </span>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-600">
+              {loading ? 'Syncing...' : `${logs.length} attempts`}
+            </span>
           </div>
-        </div>
-      )}
-    </main>
+          
+          <div className="overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-900/50 shadow-2xl backdrop-blur-sm">
+            <div className="hidden grid-cols-[1.4fr_0.6fr_1.2fr_0.7fr_auto] gap-4 border-b border-white/5 px-6 py-4 text-[9px] font-black uppercase tracking-widest text-zinc-600 md:grid">
+              <span>Event</span>
+              <span>Status</span>
+              <span>Endpoint</span>
+              <span>Time</span>
+              <span />
+            </div>
+            
+            {logs.length === 0 && !loading && (
+              <div className="p-10 text-center text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
+                No delivery logs found.
+              </div>
+            )}
+
+            {logs.map((log) => (
+              <div key={log.id} className="grid gap-4 border-b border-white/5 p-6 last:border-0 md:grid-cols-[1.4fr_0.6fr_1.2fr_0.7fr_auto] md:items-center">
+                <div>
+                  <div className="flex items-center gap-2">
+                    {log.status === 0 ? (
+                      <RefreshCw size={16} className="text-zinc-500 animate-spin" />
+                    ) : log.status >= 200 && log.status < 300 ? (
+                      <CheckCircle2 size={16} className="text-green-400" />
+                    ) : (
+                      <XCircle size={16} className="text-red-400" />
+                    )}
+                    <code className="text-xs font-bold text-white">{log.event}</code>
+                  </div>
+                  <p className="mt-2 text-[10px] font-mono text-zinc-600">
+                    {log.id} · {log.latency}
+                  </p>
+                </div>
+                
+                <span className={`w-fit rounded-full border px-2 py-1 text-[9px] font-black ${
+                  log.status === 0 ? "border-zinc-500/20 bg-zinc-500/10 text-zinc-400" :
+                  log.status >= 200 && log.status < 300 ? "border-green-500/20 bg-green-500/10 text-green-400" : 
+                  "border-red-500/20 bg-red-500/10 text-red-400"
+                }`}>
+                  {log.status === 0 ? 'PENDING' : log.status}
+                </span>
+                
+                <span className="truncate text-[10px] font-mono text-zinc-500">
+                  {log.endpoint}
+                </span>
+                
+                <span className="text-[10px] font-mono text-zinc-500">
+                  {log.time}
+                </span>
+                
+                {log.status >= 400 ? (
+                  <button 
+                    type="button" 
+                    onClick={() => retry(log.id)} 
+                    className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                  >
+                    <RefreshCw size={12} /> Retry
+                  </button>
+                ) : (
+                  <span className="text-[9px] uppercase tracking-widest text-zinc-700">
+                    {log.status === 0 ? 'Working' : 'Delivered'}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
