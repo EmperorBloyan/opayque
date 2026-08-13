@@ -1,11 +1,20 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { LucideBell, LucideHardDrive, LucidePlus, LucideRefreshCw, LucideTrash2 } from "lucide-react";
+import { 
+  LucideBell, 
+  LucideHardDrive, 
+  LucidePlus, 
+  LucideRefreshCw, 
+  LucideTrash2, 
+  LucideAlertTriangle, 
+  LucideHome 
+} from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
@@ -191,6 +200,7 @@ export default function TerminalManager({
   currency = "USDC",
   onSuccess,
 }: TerminalManagerProps) {
+  const router = useRouter();
   const safeTerminals = normalizeTerminals(terminals);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
   const [isLoadingTerminals, setIsLoadingTerminals] = useState(false);
@@ -202,6 +212,8 @@ export default function TerminalManager({
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
   const [toast, setToast] = useState<string | null>(null);
+  
+  // Balances and Checkout State
   const [solBalance, setSolBalance] = useState<bigint>(0n);
   const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
   const [selectedTokenMint, setSelectedTokenMint] = useState<string | null>(null);
@@ -210,21 +222,113 @@ export default function TerminalManager({
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
-  const pairingChannelRef = React.useRef<any | null>(null);
-  const fleetChannelRef = React.useRef<any | null>(null);
+  // Runtime Error Recovery State
+  const [errorState, setErrorState] = useState<{
+    message: string;
+    step?: string;
+  } | null>(null);
+
+  const pairingChannelRef = useRef<any | null>(null);
+  const fleetChannelRef = useRef<any | null>(null);
 
   const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
   const { connection } = useConnection();
-
-  const closePairingModal = () => {
-    setIsPairingOpen(false);
-    setPairingState('idle');
-  };
 
   const networkIsDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
   const usdcMintAddress = getAssetMintAddress("USDC" as any, networkIsDevnet);
   const solMintAddress = getAssetMintAddress("SOL" as any, networkIsDevnet);
   const isCheckoutMode = typeof amount === "number" && amount > 0 && Boolean(merchantWallet) && Boolean(sessionId);
+
+  // --- PERSIST / LOAD TERMINALS ---
+  const persistTerminals = useCallback(
+    async (updated: Terminal[]) => {
+      if (setTerminals) {
+        setTerminals(updated);
+      }
+    },
+    [setTerminals]
+  );
+
+  const loadFromSupabase = useCallback(async () => {
+    if (!resolvedMerchantId) return;
+    setIsLoadingTerminals(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("terminals")
+        .select("*")
+        .eq("merchant_id", resolvedMerchantId)
+        .order("last_active", { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const mapped: Terminal[] = data.map((row: any) => ({
+          id: row.id,
+          label: row.terminal_label || row.label || "Terminal Node",
+          status: row.status === "online" ? "online" : "offline",
+          lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+          accessCode: row.device_token || row.access_code || createAccessCode(),
+          isActive: row.status === "online" || Boolean(row.is_active),
+          lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+        }));
+        await persistTerminals(mapped);
+      }
+    } catch (err: any) {
+      console.error("Failed to load terminals from Supabase", err);
+    } finally {
+      setIsLoadingTerminals(false);
+    }
+  }, [persistTerminals, resolvedMerchantId]);
+
+  // --- PAIRING CODE GENERATION ---
+  const refreshAuthCode = useCallback(
+    async (labelOverride?: string) => {
+      setIsRefreshingCode(true);
+      setErrorState(null);
+      try {
+        const code = createAccessCode();
+        setAuthCode(code);
+        const expiresAt = Date.now() + 10 * 60 * 1000;
+        setPairingExpiresAt(expiresAt);
+        setPairingState("waiting");
+
+        if (resolvedMerchantId) {
+          const supabase = createSupabaseBrowserClient();
+          await supabase.from("pairing_codes").insert({
+            merchant_id: resolvedMerchantId,
+            code,
+            label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
+            expires_at: new Date(expiresAt).toISOString(),
+          });
+        }
+      } catch (err: any) {
+        console.error("Failed to generate pairing code:", err);
+      } finally {
+        setIsRefreshingCode(false);
+      }
+    },
+    [newTerminalLabel, resolvedMerchantId]
+  );
+
+  useEffect(() => {
+    if (!pairingExpiresAt || !isPairingOpen) return;
+    const interval = setInterval(() => {
+      const diff = pairingExpiresAt - Date.now();
+      if (diff <= 0) {
+        setTimeLeft("EXPIRED");
+        clearInterval(interval);
+      } else {
+        setTimeLeft(formatPairingCountdown(diff));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [pairingExpiresAt, isPairingOpen]);
+
+  const closePairingModal = () => {
+    setIsPairingOpen(false);
+    setPairingState("idle");
+  };
 
   const expectedUsdcBaseUnits = useMemo(() => {
     if (!amount || Number.isNaN(amount)) return 0n;
@@ -420,10 +524,8 @@ export default function TerminalManager({
     let serialized: Uint8Array;
 
     if (signAndSendTransaction) {
-      // signAndSendTransaction may return a signature or response; fall back to serializing if needed
       const res = await signAndSendTransaction(transaction as any);
       if (res && (res as any).signature) {
-        // We still want to return signature later; serialize from transaction if possible
         try {
           const signed = await (transaction as any).serialize?.() ?? null;
           serialized = signed || new Uint8Array();
@@ -431,7 +533,6 @@ export default function TerminalManager({
           serialized = new Uint8Array();
         }
       } else {
-        // If signAndSendTransaction did not provide signature, attempt to sign locally
         const signed = await signTransaction!(transaction as any);
         serialized = signed.serialize();
       }
@@ -454,7 +555,7 @@ export default function TerminalManager({
     const signature = await connection.sendRawTransaction(serialized, { skipPreflight: true, maxRetries: 5 });
     await connection.confirmTransaction(signature, "confirmed");
     return signature;
-  }, [buildSwapTransaction, connection, signTransaction]);
+  }, [buildSwapTransaction, connection, signTransaction, signAndSendTransaction]);
 
   const handleDirectUsdcPay = useCallback(async () => {
     if (!publicKey || !connection || !(signTransaction || signAndSendTransaction) || !merchantWallet) {
@@ -477,13 +578,14 @@ export default function TerminalManager({
     }
     await connection.confirmTransaction(signature, "confirmed");
     return signature;
-  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);
+  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, signAndSendTransaction, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
     if (!isCheckoutMode) return;
 
     setCheckoutLoading(true);
     setToast(null);
+    setErrorState(null);
 
     try {
       if (usdcBalanceSufficient) {
@@ -498,9 +600,12 @@ export default function TerminalManager({
       setToast("Payment completed successfully");
       onSuccess?.();
     } catch (error: any) {
-      console.error("Checkout payment failed", error);
+      console.error("[Terminal Payment Exception]:", error);
+      setErrorState({
+        message: error?.message || "The payment flow hit an unexpected runtime issue.",
+        step: "payment_execution",
+      });
       setToast(error?.message ?? "Payment failed");
-      throw error;
     } finally {
       setCheckoutLoading(false);
     }
@@ -515,6 +620,46 @@ export default function TerminalManager({
 
     return (
       <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-[#0c0d11] p-6 shadow-2xl shadow-black/40">
+        {/* RUNTIME ERROR RECOVERY BANNER */}
+        {errorState && (
+          <div className="bg-red-950/40 border border-red-500/30 p-6 rounded-3xl animate-in fade-in duration-300 shadow-2xl">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 bg-red-500/20 text-red-400 rounded-2xl">
+                <LucideAlertTriangle size={20} />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase text-red-400 tracking-wider">
+                  Terminal Error
+                </h4>
+                <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
+                  {errorState.message}
+                </p>
+                <p className="text-[10px] text-zinc-500 mt-1 uppercase font-mono">
+                  The terminal interface can recover automatically. Retry the step or return to the home screen.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-4 pt-2 border-t border-red-500/10">
+              <button
+                onClick={() => void handleCheckout()}
+                className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
+              >
+                <LucideRefreshCw size={14} className={checkoutLoading ? "animate-spin" : ""} /> Retry Flow
+              </button>
+              <button
+                onClick={() => {
+                  setErrorState(null);
+                  router.push("/vault/dashboard");
+                }}
+                className="py-3 px-4 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 border border-white/10 transition-all"
+              >
+                <LucideHome size={14} /> Home Screen
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Checkout Session</p>
@@ -594,13 +739,7 @@ export default function TerminalManager({
         <button
           type="button"
           disabled={!connected || checkoutLoading || (!usdcBalanceSufficient && (!selectedBalance || !quoteInputAmount))}
-          onClick={async () => {
-            try {
-              await handleCheckout();
-            } catch {
-              // error shown by toast
-            }
-          }}
+          onClick={() => void handleCheckout()}
           className="w-full rounded-3xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-xl shadow-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {checkoutLoading ? "Processing payment…" : usdcBalanceSufficient ? "Pay with USDC" : "Swap & Pay with Jito Bundle"}
@@ -614,8 +753,8 @@ export default function TerminalManager({
 
     const initMerchantId = async () => {
       const storedMerchantId = getStoredMerchantId();
-      if (storedMerchantId) {
-        if (!cancelled) setResolvedMerchantId(storedMerchantId);
+      if (storedMerchantId && !cancelled) {
+        setResolvedMerchantId(storedMerchantId);
       }
 
       const id = await resolveMerchantId();
@@ -631,9 +770,7 @@ export default function TerminalManager({
   }, []);
 
   useEffect(() => {
-    if (!resolvedMerchantId) {
-      return;
-    }
+    if (!resolvedMerchantId) return;
 
     void loadFromSupabase();
 
@@ -781,7 +918,7 @@ export default function TerminalManager({
         pairingState={pairingState}
       />
       {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase z-50">
           {toast}
         </div>
       )}
