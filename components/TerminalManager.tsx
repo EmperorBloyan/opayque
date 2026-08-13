@@ -18,7 +18,6 @@ import {
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
-import { formatPairingCountdown } from "@/lib/terminal/pairing";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
 import { sendJitoBundle } from "@/lib/solana/jito";
 import type { Terminal } from "@/lib/types";
@@ -284,26 +283,43 @@ export default function TerminalManager({
   // --- PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
+      if (!resolvedMerchantId) {
+        setToast("Merchant session is not ready. Please refresh.");
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+
       setIsRefreshingCode(true);
       setErrorState(null);
+      
       try {
         const code = createAccessCode();
-        setAuthCode(code);
         const expiresAt = Date.now() + 10 * 60 * 1000;
+        
+        const supabase = createSupabaseBrowserClient();
+        const { error } = await supabase.from("pairing_codes").insert({
+          merchant_id: resolvedMerchantId,
+          code,
+          label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
+          expires_at: new Date(expiresAt).toISOString(),
+        });
+
+        if (error) {
+          console.error("Supabase insert error:", error);
+          throw new Error("Failed to save pairing code in database.");
+        }
+
+        // Only update UI if the database insertion was successful
+        setAuthCode(code);
         setPairingExpiresAt(expiresAt);
         setPairingState("waiting");
 
-        if (resolvedMerchantId) {
-          const supabase = createSupabaseBrowserClient();
-          await supabase.from("pairing_codes").insert({
-            merchant_id: resolvedMerchantId,
-            code,
-            label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
-            expires_at: new Date(expiresAt).toISOString(),
-          });
-        }
       } catch (err: any) {
         console.error("Failed to generate pairing code:", err);
+        setToast(err.message || "Failed to create code. Try again.");
+        setTimeout(() => setToast(null), 3000);
+        setAuthCode("ERROR");
+        setTimeLeft("00M 00S");
       } finally {
         setIsRefreshingCode(false);
       }
@@ -311,17 +327,33 @@ export default function TerminalManager({
     [newTerminalLabel, resolvedMerchantId]
   );
 
+  // INLINE TIMER FIX
   useEffect(() => {
     if (!pairingExpiresAt || !isPairingOpen) return;
-    const interval = setInterval(() => {
+
+    const tick = () => {
       const diff = pairingExpiresAt - Date.now();
       if (diff <= 0) {
         setTimeLeft("EXPIRED");
+        return false;
+      }
+      
+      // Calculate minutes and seconds directly to avoid format mapping errors
+      const totalSeconds = Math.floor(diff / 1000);
+      const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+      const s = (totalSeconds % 60).toString().padStart(2, '0');
+      
+      setTimeLeft(`${m}M ${s}S`);
+      return true;
+    };
+
+    tick(); // Update immediately before interval kicks in
+    const interval = setInterval(() => {
+      if (!tick()) {
         clearInterval(interval);
-      } else {
-        setTimeLeft(formatPairingCountdown(diff));
       }
     }, 1000);
+
     return () => clearInterval(interval);
   }, [pairingExpiresAt, isPairingOpen]);
 
@@ -805,12 +837,18 @@ export default function TerminalManager({
   }, [loadFromSupabase, resolvedMerchantId]);
 
   const pairNewTerminal = async () => {
+    if (!resolvedMerchantId) {
+      setToast("Merchant session loading, please wait...");
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
     const defaultLabel = createDefaultTerminalLabel();
     setNewTerminalLabel(defaultLabel);
-    setAuthCode("");
+    setAuthCode("---");
     setPairingState("waiting");
     setPairingExpiresAt(null);
-    setTimeLeft("10M 00S");
+    setTimeLeft("GENERATING...");
     setIsPairingOpen(true);
     await refreshAuthCode(defaultLabel);
   };
@@ -918,7 +956,7 @@ export default function TerminalManager({
         pairingState={pairingState}
       />
       {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase z-50">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase z-50 shadow-lg transition-opacity duration-300">
           {toast}
         </div>
       )}
