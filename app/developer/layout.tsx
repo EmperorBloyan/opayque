@@ -26,17 +26,31 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // 1. Instantly read from local storage to prevent flicker
+    const localName = window.localStorage.getItem("merchant_name");
+    const localLogo = window.localStorage.getItem("merchant_logo");
+    if (localName) setMerchantName(localName);
+    if (localLogo) setMerchantLogo(localLogo);
+
     const storedEnv = window.localStorage.getItem("developer_environment");
     if (storedEnv === "production") setIsLiveMode(true);
 
+    // 2. Fetch ground-truth profile from database/API
     const fetchMerchantProfile = async () => {
       try {
         const res = await fetch('/api/v1/merchant');
         if (!res.ok) return;
         const payload = await res.json();
         const merchant = payload?.merchant;
-        if (merchant?.merchant_name) setMerchantName(merchant.merchant_name);
-        if (merchant?.merchant_logo) setMerchantLogo(merchant.merchant_logo);
+        if (merchant?.merchant_name) {
+          setMerchantName(merchant.merchant_name);
+          window.localStorage.setItem("merchant_name", merchant.merchant_name);
+        }
+        if (merchant?.merchant_logo) {
+          setMerchantLogo(merchant.merchant_logo);
+          window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+        }
       } catch (error) {
         console.warn('Failed to load merchant profile', error);
       }
