@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowRight, Lock, Mail } from "lucide-react";
+import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") return "Opayque Merchant";
@@ -61,8 +62,18 @@ export default function LoginPage() {
   const merchantInitial = merchantName.trim().charAt(0).toUpperCase() || "O";
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
-      <div className="w-full max-w-2xl">
+    <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
+      {/* Close Button in top right */}
+      <button
+        type="button"
+        onClick={() => router.push("/")}
+        className="absolute top-6 right-6 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-white/10 hover:text-white transition-all z-50"
+        aria-label="Return to home"
+      >
+        <X size={24} />
+      </button>
+
+      <div className="w-full max-w-2xl my-10">
         <div className="mb-10 space-y-4 text-center">
           <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Access Control Center</p>
           <h1 className="text-5xl font-black uppercase tracking-tighter text-white">Secure Hub Unlock</h1>
@@ -135,14 +146,27 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              {/* Action Buttons Row */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+                {/* Create Account Link (Bottom-Left) */}
+                <Link
+                  href="/developer/onboarding"
+                  className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>Create Account</span>
+                </Link>
+
+                {/* Unlock Hub Primary Action */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex flex-1 w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </form>
           </div>
         </div>
