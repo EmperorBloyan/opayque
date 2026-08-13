@@ -2,8 +2,6 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { getActiveSession } from '@/lib/crypto/session';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const formatUSDC = (val: number) => 
@@ -11,18 +9,10 @@ const formatUSDC = (val: number) =>
 
 export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
-  const router = useRouter();
-  const activeSession = getActiveSession();
   const [privateBalance, setPrivateBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [terminalLabels, setTerminalLabels] = useState<Record<string, string>>({});
   const [flushLoading, setFlushLoading] = useState(false);
-
-  useEffect(() => {
-    if (!activeSession) {
-      router.replace('/login');
-    }
-  }, [activeSession, router]);
 
   const persistTransactions = (nextTransactions: any[] | ((current: any[]) => any[])) => {
     setTransactions((current) => {
@@ -180,20 +170,6 @@ export default function VaultDashboard() {
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
-
-  if (!activeSession) {
-    return (
-      <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-8 text-center">
-          <p className="text-sm font-bold uppercase tracking-[0.3em] text-zinc-500">Session locked</p>
-          <h1 className="mt-4 text-3xl font-black text-white">Vault dashboard is locked</h1>
-          <p className="mt-4 text-sm leading-6 text-zinc-400">
-            You must unlock the developer hub before viewing the vault. Redirecting to login...
-          </p>
-        </div>
-      </main>
-    );
-  }
 
   const handleSettlement = () => {
     if (privateBalance <= 0) return;

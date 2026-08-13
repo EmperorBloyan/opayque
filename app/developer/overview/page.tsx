@@ -190,7 +190,7 @@ export default function DeveloperOverviewPage() {
                   : 'text-rose-500'
               }`}
             >
-              {metrics.status} // {metrics.epoch !== null ? `Epoch ${metrics.epoch}` : 'Solana'}
+              {metrics.status} {metrics.epoch !== null ? `Epoch ${metrics.epoch}` : 'Solana'}
             </span>
           </div>
 
