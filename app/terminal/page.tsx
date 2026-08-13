@@ -81,9 +81,9 @@ export default function TerminalPage() {
 
   useEffect(() => {
     if (!activeSession) {
-      router.replace("/login");
+      setToast("Ready to pair a terminal. Enter the fleet code to continue.");
     }
-  }, [activeSession, router]);
+  }, [activeSession]);
 
   function createDefaultTerminalLabelLocal() {
     try {
@@ -542,20 +542,6 @@ export default function TerminalPage() {
       console.error("Failed to unpair terminal", err);
     }
   };
-
-  if (!activeSession) {
-    return (
-      <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="rounded-3xl border border-white/10 bg-zinc-950/90 p-8 text-center">
-          <p className="text-sm font-bold uppercase tracking-[0.3em] text-zinc-500">Session locked</p>
-          <h1 className="mt-4 text-3xl font-black text-white">Terminal access is locked</h1>
-          <p className="mt-4 text-sm leading-6 text-zinc-400">
-            You must unlock the developer hub before using the terminal. Redirecting to login...
-          </p>
-        </div>
-      </main>
-    );
-  }
 
   if (!mounted) return null;
 

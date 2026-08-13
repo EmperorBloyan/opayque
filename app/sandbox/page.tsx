@@ -6,10 +6,16 @@ import { ArrowLeft, Zap, ShieldCheck, Sparkles, Terminal, Loader2, Copy, Check, 
 import { createClient } from '@supabase/supabase-js';
 import OpayqueCheckout from '@/components/OpayqueCheckout';
 
-// Initialize Supabase Client using public environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
 
 interface ConsoleLog {
   timestamp: string;
@@ -39,6 +45,14 @@ export default function SandboxPage() {
 
   const fetchLatestSandboxSession = async () => {
     setIsLoading(true);
+    const supabase = getSupabaseClient();
+
+    if (!supabase) {
+      addLog('Supabase is not configured for this environment. Sandbox data is unavailable.', 'warn');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       addLog('Fetching sandbox details from Supabase...', 'info');
 
@@ -263,7 +277,8 @@ export default function SandboxPage() {
             addLog(`Tx Confirmed on Solana! Hash: ${hash}`, 'success');
 
             // Optionally record signature directly into 'onchain_transactions'
-            if (orderId) {
+            const supabase = getSupabaseClient();
+            if (orderId && supabase) {
               await supabase.from('onchain_transactions').insert({
                 checkout_session_id: orderId,
                 signature: hash,
