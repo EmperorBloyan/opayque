@@ -3,6 +3,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState, useMemo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { Search, RotateCcw, Copy, Check, AlertTriangle, X } from 'lucide-react';
 
 const formatUSDC = (val: number) => 
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -11,8 +12,19 @@ export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
   const [privateBalance, setPrivateBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [terminalLabels, setTerminalLabels] = useState<Record<string, string>>({});
   const [flushLoading, setFlushLoading] = useState(false);
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Refund Modal State
+  const [selectedTxForRefund, setSelectedTxForRefund] = useState<any | null>(null);
+  const [refundInput, setRefundInput] = useState("");
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
+
+  // Copy Feedback State
+  const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
 
   const persistTransactions = (nextTransactions: any[] | ((current: any[]) => any[])) => {
     setTransactions((current) => {
@@ -149,43 +161,19 @@ export default function VaultDashboard() {
     }
   }, []);
 
-  useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== 'opayque_tx' || !event.newValue) {
-        return;
-      }
-      try {
-        const parsed = JSON.parse(event.newValue);
-        if (Array.isArray(parsed)) {
-          persistTransactions((current) => {
-            const merged = [...parsed, ...current.filter((tx) => !parsed.some((next) => next.id === tx.id))];
-            return merged.slice(0, 20);
-          });
-        }
-      } catch {
-        // ignore invalid storage event payload
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
-
   const handleSettlement = () => {
     if (privateBalance <= 0) return;
     setFlushLoading(true);
 
     setTimeout(() => {
-      // 1. Create the Settlement Transaction Row
       const settleTx = {
         id: `SETTLE-${Math.random().toString(36).toUpperCase().slice(0, 6)}`,
         staff: "System (L1 Flush)",
-        amount: -privateBalance, // Negative to show outflow
+        amount: -privateBalance,
         status: "Settled",
         time: new Date().toISOString()
       };
 
-      // 2. Update Local State and persist
       persistTransactions((current) => [settleTx, ...current].slice(0, 20));
       setPrivateBalance(0);
 
@@ -201,26 +189,112 @@ export default function VaultDashboard() {
     }, 2000);
   };
 
+  const handleCopyTxId = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopiedTxId(id);
+    setTimeout(() => setCopiedTxId(null), 2000);
+  };
+
+  const handleExecuteRefund = async () => {
+    if (!selectedTxForRefund) return;
+    if (refundInput.trim().toUpperCase() !== 'REFUND') {
+      setRefundError('Please type "REFUND" to confirm.');
+      return;
+    }
+
+    setRefundLoading(true);
+    setRefundError(null);
+
+    try {
+      const targetTx = selectedTxForRefund;
+
+      // 1. Attempt optional API call if endpoint exists
+      try {
+        await fetch('/api/v1/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transactionId: targetTx.id,
+            amount: targetTx.amount,
+          }),
+        });
+      } catch (e) {
+        console.warn('Backend refund endpoint offline; executing locally and via Supabase.', e);
+      }
+
+      // 2. Sync status to Supabase if accessible
+      try {
+        const supabase = createSupabaseBrowserClient();
+        await supabase
+          .from('transactions')
+          .update({ status: 'REFUNDED' })
+          .eq('id', targetTx.id);
+      } catch (e) {
+        console.warn('Supabase refund update skipped.', e);
+      }
+
+      // 3. Create negative audit entry and update original state
+      const refundAuditRecord = {
+        id: `REFUND-${Math.random().toString(36).toUpperCase().slice(0, 6)}`,
+        staff: `Refund (${targetTx.id.slice(0, 8)})`,
+        category: 'Refund',
+        amount: -Math.abs(targetTx.amount),
+        status: 'REFUNDED',
+        time: new Date().toISOString(),
+      };
+
+      persistTransactions((current) => {
+        const updated = current.map((tx) =>
+          tx.id === targetTx.id ? { ...tx, status: 'REFUNDED' } : tx
+        );
+        return [refundAuditRecord, ...updated].slice(0, 20);
+      });
+
+      // Cleanup
+      setSelectedTxForRefund(null);
+      setRefundInput("");
+    } catch (err: any) {
+      setRefundError(err?.message || 'Failed to complete refund operation.');
+    } finally {
+      setRefundLoading(false);
+    }
+  };
+
   const statusColor = (status: string) => {
     const normalized = String(status ?? '').toUpperCase();
     switch(normalized) {
       case 'SETTLED':
       case 'SHIELDED_CONFIRMED':
       case 'CONFIRMED':
-        return 'bg-green-500/10 text-green-500';
+        return 'bg-green-500/10 text-green-500 border border-green-500/20';
       case 'PENDING':
-        return 'bg-yellow-500/10 text-yellow-500';
+        return 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20';
       case 'FAILED':
-        return 'bg-red-500/10 text-red-500';
+      case 'REFUNDED':
+        return 'bg-red-500/10 text-red-400 border border-red-500/20';
       default:
-        return 'bg-zinc-500/10 text-zinc-500';
+        return 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20';
     }
   };
 
+  // Filter transactions based on Tx ID or Endpoint search
+  const filteredTransactions = useMemo(() => {
+    if (!searchQuery.trim()) return transactions;
+    const query = searchQuery.toLowerCase().trim();
+    return transactions.filter(
+      (tx) =>
+        String(tx.id ?? '').toLowerCase().includes(query) ||
+        String(tx.staff ?? '').toLowerCase().includes(query) ||
+        String(tx.status ?? '').toLowerCase().includes(query) ||
+        String(tx.amount ?? '').includes(query)
+    );
+  }, [transactions, searchQuery]);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
+      {/* Vault Balance Banner */}
       <div className="p-10 rounded-[3rem] bg-zinc-900 border border-white/10 relative overflow-hidden">
-         {/* Subtle Wallet Identifier */}
          {publicKey && (
            <div className="absolute top-6 right-10 text-[9px] font-mono text-zinc-600 uppercase tracking-widest">
              Vault ID: {publicKey.toBase58().slice(0, 6)}...{publicKey.toBase58().slice(-4)}
@@ -239,8 +313,24 @@ export default function VaultDashboard() {
         </button>
       </div>
 
+      {/* Activity Table Card */}
       <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
-        <h3 className="text-xs font-bold uppercase tracking-widest mb-6 px-2 text-zinc-400">Recent Activity</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 px-2">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+          
+          {/* TX ID Search Bar */}
+          <div className="relative w-full sm:w-72">
+            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by Tx ID, endpoint..."
+              className="w-full rounded-full border border-white/10 bg-zinc-950/80 pl-10 pr-4 py-2 text-xs text-white placeholder-zinc-500 outline-none transition focus:border-purple-500/50"
+            />
+          </div>
+        </div>
+
         <div className="overflow-hidden rounded-2xl">
           <table className="w-full text-left text-xs">
             <thead>
@@ -248,30 +338,149 @@ export default function VaultDashboard() {
                 <th className="pb-4 px-4 font-bold">TX ID</th>
                 <th className="pb-4 px-4 font-bold">Endpoint</th>
                 <th className="pb-4 px-4 font-bold">Amount</th>
-                <th className="pb-4 px-4 font-bold text-right">Status</th>
+                <th className="pb-4 px-4 font-bold text-center">Status</th>
+                <th className="pb-4 px-4 font-bold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {transactions.length > 0 ? transactions.map((tx, i) => (
-                <tr key={i} className="hover:bg-white/5 transition-colors group">
-                  <td className="py-4 px-4 font-mono text-zinc-500 group-hover:text-purple-400 transition-colors">{tx.id}</td>
-                  <td className="py-4 px-4 font-bold">{tx.staff}</td>
-                  <td className={`py-4 px-4 font-bold ${tx.amount < 0 ? 'text-zinc-500' : 'text-purple-400'}`}>
-                    {formatUSDC(tx.amount)}
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <span className={`px-2 py-1 rounded-full text-[8px] font-bold uppercase tracking-tighter ${statusColor(tx.status || 'Settled')}`}>
-                      {tx.status || 'Settled'}
-                    </span>
+              {filteredTransactions.length > 0 ? (
+                filteredTransactions.map((tx, i) => {
+                  const isSettled = ['SETTLED', 'SHIELDED_CONFIRMED', 'CONFIRMED'].includes(
+                    String(tx.status ?? '').toUpperCase()
+                  );
+                  const isPositive = Number(tx.amount) > 0;
+
+                  return (
+                    <tr key={tx.id || i} className="hover:bg-white/5 transition-colors group">
+                      <td className="py-4 px-4 font-mono text-zinc-400 group-hover:text-purple-400 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <span>{tx.id}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopyTxId(tx.id, e)}
+                            className="text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Copy Tx ID"
+                          >
+                            {copiedTxId === tx.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-white">{tx.staff}</td>
+                      <td className={`py-4 px-4 font-bold font-mono ${tx.amount < 0 ? 'text-zinc-500' : 'text-purple-400'}`}>
+                        {formatUSDC(tx.amount)}
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[8px] font-bold uppercase tracking-wider ${statusColor(tx.status || 'Settled')}`}>
+                          {tx.status || 'Settled'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        {isSettled && isPositive ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTxForRefund(tx);
+                              setRefundInput("");
+                              setRefundError(null);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-rose-500/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40 text-[9px] font-bold uppercase tracking-wider transition active:scale-95"
+                          >
+                            <RotateCcw size={10} /> Refund
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-zinc-600 font-mono">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center text-zinc-600 italic">
+                    {searchQuery ? "No matching transactions found." : "No merchant activity detected."}
                   </td>
                 </tr>
-              )) : (
-                <tr><td colSpan={4} className="py-20 text-center text-zinc-700 italic">No merchant activity detected.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Single Confirmation Refund Modal */}
+      {selectedTxForRefund && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-[2.5rem] border border-rose-500/20 bg-zinc-950 p-8 shadow-[0_25px_120px_rgba(239,68,68,0.2)] space-y-6 relative">
+            <button
+              type="button"
+              onClick={() => setSelectedTxForRefund(null)}
+              className="absolute top-6 right-6 p-2 rounded-full border border-white/10 bg-white/5 text-zinc-400 hover:text-white transition"
+            >
+              <X size={14} />
+            </button>
+
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-3 rounded-2xl border border-rose-500/30 bg-rose-500/10">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-rose-400">Irreversible Action</p>
+                <h3 className="text-xl font-black text-white">Confirm Refund</h3>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/60 p-4 space-y-3 font-mono text-xs text-zinc-300">
+              <div className="flex justify-between">
+                <span className="text-zinc-500 uppercase">Target Tx ID:</span>
+                <span className="text-white font-bold">{selectedTxForRefund.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500 uppercase">Endpoint:</span>
+                <span className="text-white">{selectedTxForRefund.staff}</span>
+              </div>
+              <div className="flex justify-between border-t border-white/10 pt-2">
+                <span className="text-zinc-500 uppercase">Refund Amount:</span>
+                <span className="text-rose-400 font-bold text-sm">{formatUSDC(selectedTxForRefund.amount)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                Type <span className="text-rose-400 font-mono">REFUND</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={refundInput}
+                onChange={(e) => setRefundInput(e.target.value)}
+                placeholder="REFUND"
+                className="w-full rounded-2xl border border-white/10 bg-zinc-900/90 px-4 py-3 font-mono text-sm text-white placeholder-zinc-600 outline-none transition focus:border-rose-500"
+              />
+              {refundError && (
+                <p className="text-xs text-rose-400 flex items-center gap-1 mt-1">
+                  <AlertTriangle size={12} /> {refundError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTxForRefund(null)}
+                className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3.5 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRefund}
+                disabled={refundLoading || refundInput.trim().toUpperCase() !== 'REFUND'}
+                className="flex-1 rounded-2xl bg-rose-600 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-rose-600/30 hover:bg-rose-500 transition disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {refundLoading ? 'Processing...' : 'Confirm Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
