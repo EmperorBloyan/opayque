@@ -2,9 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Zap, ShieldCheck, Sparkles, Terminal, Loader2, Copy, Check, RefreshCw } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Zap, 
+  ShieldCheck, 
+  Sparkles, 
+  Terminal, 
+  Loader2, 
+  Copy, 
+  Check, 
+  RefreshCw,
+  Globe
+} from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import OpayqueCheckout from '@/components/OpayqueCheckout';
+import { useEnvironment } from '@/lib/context/EnvironmentContext';
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -25,6 +37,8 @@ interface ConsoleLog {
 
 export default function SandboxPage() {
   const router = useRouter();
+  const { isSandbox, network, toggleEnvironment, rpcEndpoint } = useEnvironment();
+
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [copiedKey, setCopiedKey] = useState(false);
@@ -43,23 +57,28 @@ export default function SandboxPage() {
     setLogs((prev) => [{ timestamp: time, type, message }, ...prev]);
   };
 
+  // Fetch Latest Sandbox Session & Ping RPC
   const fetchLatestSandboxSession = async () => {
     setIsLoading(true);
     const supabase = getSupabaseClient();
 
+    addLog(`Network Target Changed: Switched to [${network.toUpperCase()}]`, 'info');
+    addLog(`RPC Node Endpoint: ${rpcEndpoint}`, 'info');
+
     if (!supabase) {
-      addLog('Supabase is not configured for this environment. Sandbox data is unavailable.', 'warn');
+      addLog('Supabase is not configured. Falling back to local state mock.', 'warn');
       setIsLoading(false);
       return;
     }
 
     try {
-      addLog('Fetching sandbox details from Supabase...', 'info');
+      addLog('Fetching active checkout session details from database...', 'info');
 
-      // 1. Fetch latest active checkout session in test/sandbox environment
+      // 1. Fetch latest active checkout session matching the active environment
       const { data: session, error: sessionErr } = await supabase
         .from('checkout_sessions')
         .select('id, amount, merchant_id, environment, status')
+        .eq('environment', isSandbox ? 'test' : 'production')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -71,7 +90,7 @@ export default function SandboxPage() {
         setAmount(Number(session.amount));
         addLog(`Found checkout session: ${session.id}`, 'info');
 
-        // 2. Fetch Merchant Wallet from 'merchants' table
+        // 2. Fetch Merchant Settlement Wallet
         if (session.merchant_id) {
           const { data: merchant } = await supabase
             .from('merchants')
@@ -85,7 +104,7 @@ export default function SandboxPage() {
           }
         }
       } else {
-        addLog('No active checkout session found in DB. Ready to create one.', 'warn');
+        addLog(`No active ${network} checkout session found. Ready for new payload.`, 'warn');
       }
 
       // 3. Fetch API key from 'developer_projects'
@@ -98,7 +117,7 @@ export default function SandboxPage() {
 
       if (devProject?.public_api_key) {
         setApiKey(devProject.public_api_key);
-        addLog('Loaded public API key.', 'info');
+        addLog('Loaded active public API key.', 'info');
       }
 
     } catch (err: any) {
@@ -110,14 +129,14 @@ export default function SandboxPage() {
 
   useEffect(() => {
     fetchLatestSandboxSession();
-  }, []);
+  }, [network]);
 
   const handleCopyKey = () => {
     if (apiKey) {
       navigator.clipboard.writeText(apiKey);
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 2000);
-      addLog('Copied Sandbox API Key to clipboard.', 'info');
+      addLog('Copied API Key to clipboard.', 'info');
     }
   };
 
@@ -130,7 +149,7 @@ export default function SandboxPage() {
           
           <button
             type="button"
-            onClick={() => router.push('/developer/overview')}
+            onClick={() => router.push('/developer')}
             className="absolute right-6 top-6 z-10 rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-[10px] uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white"
           >
             <ArrowLeft size={14} className="mr-2 inline-block" /> Close
@@ -140,8 +159,23 @@ export default function SandboxPage() {
             
             {/* LEFT PANEL */}
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-purple-300">
-                <Sparkles size={14} /> Devnet Simulation
+              <div className="flex items-center gap-3">
+                <div className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] ${
+                  isSandbox 
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' 
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                }`}>
+                  <Sparkles size={14} /> {isSandbox ? 'Devnet Sandbox' : 'Mainnet Production'}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleEnvironment}
+                  className="flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-900 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-zinc-300 hover:border-purple-500/50 hover:text-white transition-all"
+                >
+                  <Globe size={12} className="text-purple-400" />
+                  <span>Switch to {network === 'devnet' ? 'Mainnet' : 'Devnet'}</span>
+                </button>
               </div>
 
               <div>
@@ -149,7 +183,7 @@ export default function SandboxPage() {
                   Sandbox Checkout
                 </h1>
                 <p className="mt-2 text-xs leading-relaxed text-zinc-400 font-sans">
-                  Connected live to Supabase. Validate transactions using real merchant addresses and session records.
+                  Target Cluster: <span className="font-mono text-purple-400">{rpcEndpoint}</span>. Validate atomic settlement payloads before production release.
                 </p>
               </div>
 
@@ -166,7 +200,7 @@ export default function SandboxPage() {
                         <button 
                           onClick={fetchLatestSandboxSession} 
                           className="text-zinc-500 hover:text-purple-400 transition-colors"
-                          title="Refresh DB Session"
+                          title="Refresh Session"
                         >
                           <RefreshCw size={12} />
                         </button>
@@ -219,7 +253,7 @@ export default function SandboxPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => router.push('/developer/overview')}
+                  onClick={() => router.push('/developer')}
                   className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10"
                 >
                   <ShieldCheck size={16} /> Dashboard
@@ -235,7 +269,7 @@ export default function SandboxPage() {
                     <Terminal size={18} />
                     <span className="text-[10px] font-black uppercase tracking-[0.25em]">Live Event Log</span>
                   </div>
-                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className={`flex h-2 w-2 rounded-full ${isSandbox ? 'bg-emerald-400' : 'bg-amber-400'} animate-pulse`} />
                 </div>
 
                 <div className="mt-4 space-y-2.5 max-h-[280px] overflow-y-auto pr-2 text-[11px] font-mono leading-relaxed">
@@ -258,8 +292,8 @@ export default function SandboxPage() {
               </div>
 
               <div className="mt-6 rounded-2xl border border-white/5 bg-zinc-950 p-3 text-[10px] text-zinc-500 flex justify-between items-center">
-                <span>Database: <strong className="text-purple-400">Supabase Connected</strong></span>
-                <span>Status: <strong className="text-emerald-400">Live</strong></span>
+                <span>Cluster: <strong className="text-purple-400">{network.toUpperCase()}</strong></span>
+                <span>Status: <strong className="text-emerald-400">Connected</strong></span>
               </div>
             </div>
 
@@ -274,9 +308,8 @@ export default function SandboxPage() {
           amountUsdc={amount}
           merchantWallet={merchantWallet}
           onSuccess={async (hash: string) => {
-            addLog(`Tx Confirmed on Solana! Hash: ${hash}`, 'success');
+            addLog(`Tx Confirmed on Solana [${network}]! Hash: ${hash}`, 'success');
 
-            // Optionally record signature directly into 'onchain_transactions'
             const supabase = getSupabaseClient();
             if (orderId && supabase) {
               await supabase.from('onchain_transactions').insert({
@@ -285,7 +318,7 @@ export default function SandboxPage() {
                 amount: amount,
                 status: 'COMPLETED'
               });
-              addLog('Saved transaction to onchain_transactions table.', 'success');
+              addLog('Saved transaction signature to onchain_transactions table.', 'success');
             }
 
             setIsCheckoutOpen(false);
