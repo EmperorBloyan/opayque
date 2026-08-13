@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import EndpointRegistry from "@/components/EndpointRegistry";
 import TerminalManager from "@/components/TerminalManager";
-import ReportingHub from "@/components/ReportingHub"; // We'll assume this is in your components
+import ReportingHub from "@/components/ReportingHub";
 import { Endpoint, Terminal } from "@/lib/types";
 import { 
   LucideLock, 
@@ -13,8 +13,7 @@ import {
   LucideQrCode,
   LucideShieldCheck,
   LucideX,
-  LucidePrinter,
-  LucideDollarSign
+  LucidePrinter
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -32,9 +31,7 @@ export default function RegistryPage() {
     setIsMounted(true);
 
     const loadEndpointData = () => {
-      if (typeof window === "undefined") {
-        return;
-      }
+      if (typeof window === "undefined") return;
 
       const storedEndpoints = window.localStorage.getItem("opayque_endpoints");
       if (storedEndpoints) {
@@ -52,6 +49,7 @@ export default function RegistryPage() {
         const merchantId = getActiveMerchantId();
         if (!merchantId) {
           console.warn("Registry page skipped terminal load because merchant ID is unavailable.");
+          setTerminals([]); // Fallback to safe state
           return;
         }
 
@@ -62,20 +60,21 @@ export default function RegistryPage() {
           .eq("merchant_id", merchantId)
           .order("last_active", { ascending: false });
 
-        if (!error) {
-          const mapped = (data ?? []).map((row: any) => ({
-            id: row.id,
-            label: row.terminal_label ?? "Fleet Terminal",
-            status: row.status === "online" ? "online" : "offline",
-            lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
-            accessCode: row.device_token ?? "",
-            isActive: row.status === "online",
-            lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-          }));
-          setTerminals(mapped);
-        }
+        if (error) throw error;
+
+        const mapped = (data ?? []).map((row: any) => ({
+          id: row.id,
+          label: row.terminal_label ?? "Fleet Terminal",
+          status: row.status === "online" ? "online" : "offline",
+          lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+          accessCode: row.device_token ?? "",
+          isActive: row.status === "online",
+          lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+        }));
+        setTerminals(mapped);
       } catch (error) {
         console.error("Failed to hydrate registry terminals", error);
+        setTerminals([]); // Prevent unhandled undefined state
       }
     };
 
@@ -103,7 +102,6 @@ export default function RegistryPage() {
 
   return (
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
-      
       {/* TOP ACTION BAR */}
       <div className="flex justify-between items-center mb-12 px-4">
         <div className="flex items-center gap-4">
@@ -207,7 +205,9 @@ export default function RegistryPage() {
       {selectedEndpoint && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-zinc-900 border border-white/10 p-12 rounded-[4rem] max-w-sm w-full text-center relative shadow-2xl">
-            <button onClick={() => setSelectedEndpoint(null)} className="absolute top-8 right-8 text-zinc-500 hover:text-white"><LucideX size={24} /></button>
+            <button onClick={() => setSelectedEndpoint(null)} className="absolute top-8 right-8 text-zinc-500 hover:text-white">
+              <LucideX size={24} />
+            </button>
             <h3 className="text-2xl font-black italic uppercase mb-2 text-white">{selectedEndpoint.name}</h3>
             <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-10">Opayque Protected Endpoint</p>
             
@@ -230,9 +230,7 @@ export default function RegistryPage() {
               )}
             </div>
 
-            <div className="space-y-4">
-          </div>
-          <button 
+            <button 
               onClick={() => window.print()}
               className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors"
             >
