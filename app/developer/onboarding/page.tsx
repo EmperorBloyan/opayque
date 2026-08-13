@@ -12,6 +12,7 @@ import {
   Lock, 
   ArrowRight 
 } from "lucide-react";
+import { createClient } from '@/lib/supabase/client';
 
 export default function DeveloperOnboardingPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function DeveloperOnboardingPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,21 +40,48 @@ export default function DeveloperOnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMessage(null); // Clear any previous errors
 
-    // Simulate API call / Account creation
-    setTimeout(() => {
-      // Save to localStorage so the login page can pick up the branding
+    try {
+      const supabase = createClient();
+      
+      // 1. Sign up the user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      // 2. Insert their merchant details into your database
+      if (authData.user) {
+        const { error: dbError } = await supabase.from('merchants').insert({
+          id: authData.user.id, // Link merchant to the auth user
+          email: email,
+          merchant_name: companyName,
+          settlement_wallet_address: walletAddress,
+          webhook_url: webhookUrl,
+          onboarding_status: 'COMPLETED'
+        });
+
+        if (dbError) throw dbError;
+      }
+
+      // 3. Save local branding for immediate UI updates
       if (typeof window !== "undefined") {
         window.localStorage.setItem("merchant_name", companyName);
-        if (logoPreview) {
-          window.localStorage.setItem("merchant_logo", logoPreview);
-        }
+        if (logoPreview) window.localStorage.setItem("merchant_logo", logoPreview);
       }
       
-      setIsLoading(false);
-      // Redirect to the login page as requested
+      // 4. Redirect to the login page so they can sign in with their new credentials
       router.push("/login");
-    }, 1500);
+
+    } catch (error: any) {
+      console.error("Signup failed:", error.message);
+      setErrorMessage(error.message || "Failed to create account. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -74,7 +103,6 @@ export default function DeveloperOnboardingPage() {
         <div className="rounded-[2.5rem] border border-white/10 bg-[#0a0a0c]/80 p-8 shadow-[0_0_40px_rgba(168,85,247,0.1)] backdrop-blur-xl">
           
           <div className="flex flex-col items-center text-center mb-8">
-            {/* Image Upload Slot replacing the checkmark */}
             <div className="relative group mb-6">
               <label className="flex h-20 w-20 cursor-pointer items-center justify-center rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10 transition-all hover:bg-purple-500/20 hover:border-purple-400 overflow-hidden">
                 {logoPreview ? (
@@ -184,10 +212,17 @@ export default function DeveloperOnboardingPage() {
                     placeholder="••••••••••••"
                     className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-600"
                     required
+                    minLength={6}
                   />
                 </div>
               </div>
             </label>
+
+            {errorMessage && (
+              <div className="rounded-xl bg-rose-500/10 p-3 text-center border border-rose-500/20">
+                <p className="text-xs text-rose-400 font-medium">{errorMessage}</p>
+              </div>
+            )}
 
             <div className="pt-4 text-center">
               <button
