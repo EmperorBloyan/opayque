@@ -69,9 +69,12 @@ export default function DeveloperOnboardingPage() {
         if (dbError) throw dbError;
       }
 
-      // 3. Save local branding for immediate UI updates
+      // 3. Save local branding & config for immediate zero-latency UI hydration
       if (typeof window !== "undefined") {
         window.localStorage.setItem("merchant_name", companyName);
+        window.localStorage.setItem("merchant_email", email);
+        window.localStorage.setItem("settlement_wallet_address", walletAddress);
+        if (webhookUrl) window.localStorage.setItem("webhook_url", webhookUrl);
         if (logoPreview) window.localStorage.setItem("merchant_logo", logoPreview);
       }
       
