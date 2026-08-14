@@ -3,30 +3,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import { Activity, CheckCircle2, Server, Smartphone, Zap, RefreshCw } from "lucide-react";
-import { useEnvironment } from "@/lib/context/EnvironmentContext";
+
+// Production Readiness: Fallback to standard mainnet if no custom environment variable is provided
+const DEFAULT_RPC_ENDPOINT =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
 
 export default function OverviewPage() {
-  const { isSandbox, network } = useEnvironment();
-
-  // Dynamic RPC URL calculation based on active environment context
-  const targetRpcEndpoint = isSandbox
-    ? process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL || clusterApiUrl("devnet")
-    : process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl("mainnet-beta");
-
   const [slot, setSlot] = useState<number | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
   const [networkStatus, setNetworkStatus] = useState<"SYNCING" | "HEALTHY" | "DEGRADED" | "OFFLINE">("SYNCING");
   
-  // Real RPC session metrics
+  // Zero Mock: Track actual RPC session requests and successes
   const [pingStats, setPingStats] = useState({ total: 0, success: 0 });
   
-  // Real MWA / Web3 Provider Detection
+  // Real MWA Detection
   const [mwaConnected, setMwaConnected] = useState<boolean>(false);
   const [mwaProtocol, setMwaProtocol] = useState<string>("Checking...");
 
   const fetchTelemetry = useCallback(async (connection: Connection) => {
     const startTime = performance.now();
     try {
+      // Fetching the slot acts as a lightweight ping and returns necessary live data
       const currentSlot = await connection.getSlot();
       const endTime = performance.now();
       const ping = Math.round(endTime - startTime);
@@ -43,14 +40,7 @@ export default function OverviewPage() {
 
   useEffect(() => {
     let mounted = true;
-    
-    // Reset stats when environment toggles
-    setSlot(null);
-    setLatency(null);
-    setNetworkStatus("SYNCING");
-    setPingStats({ total: 0, success: 0 });
-
-    const connection = new Connection(targetRpcEndpoint, "confirmed");
+    const connection = new Connection(DEFAULT_RPC_ENDPOINT, "confirmed");
     let intervalId: NodeJS.Timeout;
 
     const initTelemetry = async () => {
@@ -77,9 +67,9 @@ export default function OverviewPage() {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [fetchTelemetry, targetRpcEndpoint]);
+  }, [fetchTelemetry]);
 
-  // Calculate actual session success rate
+  // Calculate actual success rate without mocking
   const successRate = pingStats.total > 0 
     ? ((pingStats.success / pingStats.total) * 100).toFixed(1) 
     : "--";
@@ -88,7 +78,7 @@ export default function OverviewPage() {
     try {
       return new URL(url).hostname;
     } catch {
-      return isSandbox ? "api.devnet.solana.com" : "api.mainnet-beta.solana.com";
+      return "api.mainnet-beta.solana.com";
     }
   };
 
@@ -108,16 +98,9 @@ export default function OverviewPage() {
         </div>
         
         <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2">
-          <div className={`h-2 w-2 rounded-full ${
-            networkStatus === 'HEALTHY' ? 'bg-emerald-400 animate-pulse' : 
-            networkStatus === 'DEGRADED' ? 'bg-amber-400' : 
-            networkStatus === 'OFFLINE' ? 'bg-rose-500' : 'bg-zinc-500'
-          }`} />
+          <div className={`h-2 w-2 rounded-full ${networkStatus === 'HEALTHY' ? 'bg-emerald-400 animate-pulse' : networkStatus === 'DEGRADED' ? 'bg-amber-400' : networkStatus === 'OFFLINE' ? 'bg-rose-500' : 'bg-zinc-500'}`} />
           <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
-            Network Status:{" "}
-            <span className={networkStatus === 'HEALTHY' ? 'text-emerald-400' : networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-amber-400'}>
-              {networkStatus === 'HEALTHY' ? `Solana ${isSandbox ? 'Devnet' : 'Mainnet'}` : networkStatus}
-            </span>
+            Network Status: <span className={networkStatus === 'HEALTHY' ? 'text-emerald-400' : networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-amber-400'}>{networkStatus === 'HEALTHY' ? 'Solana Mainnet' : networkStatus}</span>
           </span>
           <RefreshCw size={12} className={`text-zinc-500 ${networkStatus === 'SYNCING' ? 'animate-spin' : ''}`} />
         </div>
@@ -140,7 +123,7 @@ export default function OverviewPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
-              Live {isSandbox ? "Devnet" : "Mainnet"} Stream
+              Live On-Chain Stream
             </p>
           </div>
         </div>
@@ -183,12 +166,8 @@ export default function OverviewPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/5 bg-purple-500/10 text-purple-400">
               <Server size={20} />
             </div>
-            <span className={`rounded-full border px-3 py-1 text-[8px] font-black uppercase tracking-widest ${
-              isSandbox 
-                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-            }`}>
-              Active {isSandbox ? "Sandbox" : "Mainnet"} Relay
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[8px] font-black uppercase tracking-widest text-emerald-400">
+              Active Relay
             </span>
           </div>
           <div>
@@ -200,7 +179,7 @@ export default function OverviewPage() {
           <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-900/50 p-4">
             <div className="flex justify-between border-b border-white/5 pb-3">
               <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Primary Node</span>
-              <code className="text-[10px] text-white break-all text-right max-w-[60%]">{getRpcDomain(targetRpcEndpoint)}</code>
+              <code className="text-[10px] text-white break-all text-right max-w-[60%]">{getRpcDomain(DEFAULT_RPC_ENDPOINT)}</code>
             </div>
             <div className="flex justify-between pt-1">
               <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/70">Real-Time Latency</span>
