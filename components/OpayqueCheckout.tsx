@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Terminal, Shield, ArrowRight, CheckCircle2, Loader2, AlertTriangle, Lock } from 'lucide-react';
+import { useCurrency } from '@/lib/context/CurrencyContext';
 
 interface OpayqueCheckoutProps {
   apiKey: string;
@@ -23,6 +24,10 @@ export default function OpayqueCheckout({
   const [step, setStep] = useState<'idle' | 'initializing' | 'compiling' | 'signing' | 'success' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   const [txHash, setTxHash] = useState('');
+  
+  // Hook into Currency Conversion Context
+  const { currency, convert } = useCurrency();
+  const fiatEquivalent = convert(amountUsdc);
 
   const addLog = (message: string) => {
     setLogs(prev => [...prev, `[${new Date().toISOString().split('T')[1].substring(0, 8)}] ${message}`]);
@@ -44,7 +49,7 @@ export default function OpayqueCheckout({
         body: JSON.stringify({
           order_id: orderId,
           amount_fiat: amountUsdc,
-          currency: 'USD'
+          currency: currency
         })
       });
 
@@ -122,7 +127,12 @@ export default function OpayqueCheckout({
             </div>
             <div className="flex justify-between items-center pt-1">
               <span className="text-[10px] text-gray-500 tracking-widest">AMOUNT_DUE</span>
-              <span className="text-lg text-[#00ffcc] font-light">{amountUsdc.toFixed(2)} USDC</span>
+              <div className="text-right">
+                <span className="text-lg text-[#00ffcc] font-light block">{amountUsdc.toFixed(2)} USDC</span>
+                {currency !== 'USD' && (
+                  <span className="text-[10px] text-gray-400 tracking-wider">≈ {fiatEquivalent.formatted}</span>
+                )}
+              </div>
             </div>
           </div>
 
