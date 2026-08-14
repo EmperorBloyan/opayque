@@ -63,9 +63,20 @@ export default function QuickstartPage() {
     setError(null);
 
     try {
-      // TODO: Replace with your actual API key from Supabase/localStorage
-      const apiKey = "osk_live_9f87d6abcdef...";
+      // 1. Fetch the merchant's secret key from Supabase via our internal API
+      const merchantRes = await fetch('/api/v1/merchant', {
+        method: 'GET',
+        credentials: 'include' // important for cookies/auth
+      });
 
+      if (!merchantRes.ok) throw new Error("Could not fetch merchant profile. Are you logged in?");
+      
+      const merchantData = await merchantRes.json();
+      const apiKey = merchantData.api_key; // This comes from keys/page.tsx and is saved to Supabase
+
+      if (!apiKey) throw new Error("No API Key found. Please generate one in Keys page first.");
+
+      // 2. Call the sessions endpoint with the real key
       const response = await fetch('https://opayque-three.vercel.app/api/v1/sessions', {
         method: 'POST',
         headers: {
@@ -82,7 +93,10 @@ export default function QuickstartPage() {
         })
       });
 
-      if (!response.ok) throw new Error("Failed to create session");
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to create session");
+      }
 
       const data = await response.json();
 
@@ -122,7 +136,7 @@ export default function QuickstartPage() {
               onClick={() => setActiveMode("no-code")}
               className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition ${
                 activeMode === "no-code"
-                 ? "bg-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
+                ? "bg-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
                   : "border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
@@ -132,7 +146,7 @@ export default function QuickstartPage() {
               onClick={() => setActiveMode("api")}
               className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition ${
                 activeMode === "api"
-                 ? "bg-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
+                ? "bg-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]"
                   : "border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
@@ -169,7 +183,7 @@ export default function QuickstartPage() {
               )}
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-purple-500/30 bg-purple-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500">
+                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border-purple-500/30 bg-purple-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500">
                   <Terminal size={16} /> Full API Ref
                 </Link>
                 <Link href="/developer/overview" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10">
