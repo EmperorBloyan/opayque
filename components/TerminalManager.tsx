@@ -227,7 +227,6 @@ export default function TerminalManager({
     step?: string;
   } | null>(null);
 
-  const pairingChannelRef = useRef<any | null>(null);
   const fleetChannelRef = useRef<any | null>(null);
 
   const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
@@ -280,7 +279,7 @@ export default function TerminalManager({
     }
   }, [persistTerminals, resolvedMerchantId]);
 
-  // --- PAIRING CODE GENERATION ---
+  // --- REFACTORED PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
       if (!resolvedMerchantId) {
@@ -293,15 +292,24 @@ export default function TerminalManager({
       setErrorState(null);
       
       try {
-        const code = createAccessCode();
-        const expiresAt = Date.now() + 10 * 60 * 1000;
-        
         const supabase = createSupabaseBrowserClient();
+
+        // 1. CLEAR OLD CODES FOR THIS MERCHANT TO PREVENT RACE CONDITIONS
+        await supabase
+          .from("pairing_codes")
+          .delete()
+          .eq("merchant_id", resolvedMerchantId);
+
+        // 2. GENERATE NEW CODE & SET UTC EXPIRATION (10 MINS)
+        const code = createAccessCode();
+        const expiresAtMs = Date.now() + 10 * 60 * 1000;
+        const isoExpiresAt = new Date(expiresAtMs).toISOString();
+
         const { error } = await supabase.from("pairing_codes").insert({
           merchant_id: resolvedMerchantId,
           code,
           label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
-          expires_at: new Date(expiresAt).toISOString(),
+          expires_at: isoExpiresAt,
         });
 
         if (error) {
@@ -309,9 +317,9 @@ export default function TerminalManager({
           throw new Error("Failed to save pairing code in database.");
         }
 
-        // Only update UI if the database insertion was successful
+        // 3. UPDATE STATE
         setAuthCode(code);
-        setPairingExpiresAt(expiresAt);
+        setPairingExpiresAt(expiresAtMs);
         setPairingState("waiting");
 
       } catch (err: any) {
@@ -327,7 +335,7 @@ export default function TerminalManager({
     [newTerminalLabel, resolvedMerchantId]
   );
 
-  // INLINE TIMER FIX
+  // TIMER HANDLER
   useEffect(() => {
     if (!pairingExpiresAt || !isPairingOpen) return;
 
@@ -338,7 +346,6 @@ export default function TerminalManager({
         return false;
       }
       
-      // Calculate minutes and seconds directly to avoid format mapping errors
       const totalSeconds = Math.floor(diff / 1000);
       const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
       const s = (totalSeconds % 60).toString().padStart(2, '0');
@@ -347,7 +354,7 @@ export default function TerminalManager({
       return true;
     };
 
-    tick(); // Update immediately before interval kicks in
+    tick();
     const interval = setInterval(() => {
       if (!tick()) {
         clearInterval(interval);
@@ -652,7 +659,6 @@ export default function TerminalManager({
 
     return (
       <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-[#0c0d11] p-6 shadow-2xl shadow-black/40">
-        {/* RUNTIME ERROR RECOVERY BANNER */}
         {errorState && (
           <div className="bg-red-950/40 border border-red-500/30 p-6 rounded-3xl animate-in fade-in duration-300 shadow-2xl">
             <div className="flex items-start gap-4 mb-4">
