@@ -20,56 +20,38 @@ import { useEnvironment } from "@/lib/context/EnvironmentContext";
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  
-  // FIX: Hide layout chrome on both Keys and Onboarding pages
+
+  // Hide layout chrome only on keys and onboarding pages
   const isHiddenPage = pathname === "/developer/keys" || pathname.includes("onboarding");
-  
+
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
-  
-  // Dynamic Merchant Profile State
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
 
-  // Setup completion state to gate header/nav rendering
-  const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
-
   // Global Environment Context
-  const { isSandbox, network, toggleEnvironment } = useEnvironment();
+  const { isSandbox, toggleEnvironment } = useEnvironment();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // 1. Read instantly from local storage to prevent UI flicker
+    // 1. Instantly populate from local storage to eliminate UI flicker
     const localName = window.localStorage.getItem("merchant_name") || window.localStorage.getItem("business_name");
     const localLogo = window.localStorage.getItem("merchant_logo") || window.localStorage.getItem("merchant_avatar");
-    const isCompleted = window.localStorage.getItem("merchant_setup_completed") === "true";
 
-    if (localName) {
-      setMerchantName(localName);
-      setIsSetupComplete(true);
-    } else if (isCompleted) {
-      setIsSetupComplete(true);
-    } else {
-      setIsSetupComplete(false);
-    }
-
+    if (localName) setMerchantName(localName);
     if (localLogo) setMerchantLogo(localLogo);
 
-    // 2. Fetch ground-truth profile from database / API
+    // 2. Fetch fresh profile in background
     const fetchMerchantProfile = async () => {
       try {
-        const res = await fetch('/api/v1/merchant');
+        const res = await fetch("/api/v1/merchant");
         if (!res.ok) return;
         const payload = await res.json();
         const merchant = payload?.merchant;
-        
+
         if (merchant?.merchant_name) {
           setMerchantName(merchant.merchant_name);
           window.localStorage.setItem("merchant_name", merchant.merchant_name);
-          window.localStorage.setItem("merchant_setup_completed", "true");
-          setIsSetupComplete(true);
-        } else if (!localName) {
-          setIsSetupComplete(false);
         }
 
         if (merchant?.merchant_logo) {
@@ -77,21 +59,18 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
         }
       } catch (error) {
-        console.warn('Failed to load merchant profile', error);
+        console.warn("Failed to load merchant profile", error);
       }
     };
 
     void fetchMerchantProfile();
   }, []);
 
-  // Sync state instantly when merchant profile is updated from modal/forms
+  // Sync state when profile is updated from modal/forms
   useEffect(() => {
     const handleProfileUpdate = () => {
       const localName = window.localStorage.getItem("merchant_name");
-      if (localName) {
-        setMerchantName(localName);
-        setIsSetupComplete(true);
-      }
+      if (localName) setMerchantName(localName);
     };
 
     window.addEventListener("storage", handleProfileUpdate);
@@ -107,100 +86,105 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     router.push("/login");
   };
 
-  // Only render layout chrome (Header, Nav, Footer, Speed Dial) if not on a hidden page AND setup is complete
-  const showChrome = !isHiddenPage && isSetupComplete === true;
-
   return (
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
-        {showChrome && (
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
-            <div className="flex items-center gap-5">
-              <div className="relative group">
-                <div className="h-16 w-16 rounded-2xl bg-zinc-900 border border-purple-500/30 flex items-center justify-center overflow-hidden shadow-inner">
-                  {merchantLogo ? (
-                    <img src={merchantLogo} alt={merchantName} className="h-full w-full object-cover" />
-                  ) : (
-                    <Building2 size={28} className="text-purple-400" />
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-4">
-                  <div>
-                    <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
-                      {merchantName}
-                    </h1>
-                    <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                      Developer session active
-                    </p>
+        {!isHiddenPage && (
+          <>
+            {/* HEADER */}
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
+              <div className="flex items-center gap-5">
+                <div className="relative group">
+                  <div className="h-16 w-16 rounded-2xl bg-zinc-900 border border-purple-500/30 flex items-center justify-center overflow-hidden shadow-inner">
+                    {merchantLogo ? (
+                      <img src={merchantLogo} alt={merchantName} className="h-full w-full object-cover" />
+                    ) : (
+                      <Building2 size={28} className="text-purple-400" />
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/developer/keys")}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
-                  >
-                    <Key size={14} /> API Keys &amp; Merchant Details
-                  </button>
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div>
+                      <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
+                        {merchantName}
+                      </h1>
+                      <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                        Developer session active
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/developer/keys")}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                    >
+                      <Key size={14} /> API Keys &amp; Merchant Details
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* UNIFIED ENVIRONMENT SELECTOR */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
-                isSandbox 
-                  ? "bg-emerald-600/10 border-emerald-500/30 text-emerald-300" 
-                  : "bg-amber-600/10 border-amber-500/30 text-amber-300"
-              }`}>
-                {isSandbox ? "Sandbox Mode (Devnet)" : "Production Mode (Mainnet)"}
+              {/* UNIFIED ENVIRONMENT SELECTOR */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
+                    isSandbox
+                      ? "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
+                      : "bg-amber-600/10 border-amber-500/30 text-amber-300"
+                  }`}
+                >
+                  {isSandbox ? "Sandbox Mode (Devnet)" : "Production Mode (Mainnet)"}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleEnvironment}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
+                >
+                  <Globe size={14} className="text-purple-400" />
+                  <span>Switch to {isSandbox ? "Mainnet" : "Devnet"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={lockDeveloperHub}
+                  className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
+                >
+                  <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
+                </button>
               </div>
-              
-              <button
-                type="button"
-                onClick={toggleEnvironment}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
-              >
-                <Globe size={14} className="text-purple-400" />
-                <span>Switch to {isSandbox ? "Mainnet" : "Devnet"}</span>
-              </button>
+            </header>
 
-              <button
-                type="button"
-                onClick={lockDeveloperHub}
-                className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
+            {/* NAVIGATION BAR */}
+            <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
+              <Link
+                href="/developer/overview"
+                className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  pathname.startsWith("/developer/overview")
+                    ? "bg-white text-black shadow-xl shadow-white/5"
+                    : "text-zinc-500 hover:bg-white/5 hover:text-white"
+                }`}
               >
-                <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
-              </button>
-            </div>
-          </header>
-        )}
-
-        {showChrome && (
-          <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
-            <Link
-              href="/developer/overview"
-              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                pathname.startsWith("/developer/overview") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <LayoutDashboard size={14} /> Overview
-            </Link>
-            <Link
-              href="/developer/webhooks-delivery-logs"
-              className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                pathname.startsWith("/developer/webhooks-delivery-logs") ? "bg-white text-black shadow-xl shadow-white/5" : "text-zinc-500 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <Webhook size={14} /> Webhooks &amp; Delivery Logs
-            </Link>
-          </nav>
+                <LayoutDashboard size={14} /> Overview
+              </Link>
+              <Link
+                href="/developer/webhooks-delivery-logs"
+                className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  pathname.startsWith("/developer/webhooks-delivery-logs")
+                    ? "bg-white text-black shadow-xl shadow-white/5"
+                    : "text-zinc-500 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Webhook size={14} /> Webhooks &amp; Delivery Logs
+              </Link>
+            </nav>
+          </>
         )}
 
         <main>{children}</main>
 
-        {showChrome && (
+        {!isHiddenPage && (
           <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
             <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
               Powered by Solana TEE Infrastructure
@@ -213,9 +197,13 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         )}
       </div>
 
-      {showChrome && (
+      {!isHiddenPage && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-          <div className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${isSpeedDialOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div
+            className={`flex flex-col items-end gap-3 overflow-hidden transition-[max-height,opacity] duration-300 ${
+              isSpeedDialOpen ? "max-h-72 opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
             <Link
               href="/sandbox"
               onClick={() => setIsSpeedDialOpen(false)}
