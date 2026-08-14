@@ -13,14 +13,16 @@ const EnvironmentContext = createContext<EnvironmentContextType | undefined>(und
 
 export function EnvironmentProvider({ children }: { children: React.ReactNode }) {
   const [isSandbox, setIsSandbox] = useState<boolean>(true);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
 
-  // Load saved environment on startup
+  // Load saved environment on client startup safely
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedEnv = localStorage.getItem("opayque_env");
       if (savedEnv) {
         setIsSandbox(savedEnv === "sandbox");
       }
+      setIsInitialized(true);
     }
   }, []);
 
@@ -29,7 +31,6 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
       const nextState = !prev;
       if (typeof window !== "undefined") {
         localStorage.setItem("opayque_env", nextState ? "sandbox" : "production");
-        // Dispatch custom event so non-react listeners update instantly
         window.dispatchEvent(new Event("environment_changed"));
       }
       return nextState;
@@ -38,8 +39,8 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 
   const network = isSandbox ? "devnet" : "mainnet-beta";
   const rpcEndpoint = isSandbox
-    ? "https://api.devnet.solana.com"
-    : "https://api.mainnet-beta.solana.com";
+    ? process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL || "https://api.devnet.solana.com"
+    : process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
 
   return (
     <EnvironmentContext.Provider
