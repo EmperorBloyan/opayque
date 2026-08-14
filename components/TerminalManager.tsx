@@ -294,21 +294,21 @@ export default function TerminalManager({
       try {
         const supabase = createSupabaseBrowserClient();
 
-        // 1. CLEAR OLD CODES FOR THIS MERCHANT TO PREVENT RACE CONDITIONS
+        // Keep vault-generated codes on the same table the terminal verification checks.
         await supabase
-          .from("pairing_codes")
+          .from("terminal_pairing_codes")
           .delete()
           .eq("merchant_id", resolvedMerchantId);
 
-        // 2. GENERATE NEW CODE & SET UTC EXPIRATION (10 MINS)
         const code = createAccessCode();
         const expiresAtMs = Date.now() + 10 * 60 * 1000;
         const isoExpiresAt = new Date(expiresAtMs).toISOString();
 
-        const { error } = await supabase.from("pairing_codes").insert({
+        const { error } = await supabase.from("terminal_pairing_codes").insert({
           merchant_id: resolvedMerchantId,
           code,
-          label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
+          status: "PENDING",
+          terminal_label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
           expires_at: isoExpiresAt,
         });
 

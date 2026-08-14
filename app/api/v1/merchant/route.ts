@@ -33,8 +33,8 @@ export async function GET() {
 
     const { data: merchant, error } = await supabase
       .from('merchants')
-      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, settlement_wallet_address, tee_enforcement_enabled')
-      .eq('id', user.id)
+      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, settlement_wallet_address, tee_enforcement_enabled, api_key')
+      .eq('auth_user_id', user.id)
       .maybeSingle();
 
     if (error) {
@@ -90,7 +90,7 @@ export async function PATCH(request: Request) {
     const { data: merchant, error } = await supabase
       .from('merchants')
       .update(updates)
-      .eq('id', user.id)
+      .eq('auth_user_id', user.id)
       .select()
       .maybeSingle();
 

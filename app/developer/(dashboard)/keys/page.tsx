@@ -119,7 +119,7 @@ export default function ApiKeysPage() {
           const { data: merchantData } = await supabase
           .from("merchants")
           .select("api_key")
-          .eq("user_id", user.id)
+          .eq("auth_user_id", user.id)
           .single();
 
           if (merchantData?.api_key) {
@@ -259,10 +259,10 @@ export default function ApiKeysPage() {
         await supabase
         .from("merchants")
         .upsert({
-            user_id: user.id,
+            auth_user_id: user.id,
             api_key: newKey.secret,
             updated_at: new Date().toISOString()
-          }, { onConflict: "user_id" });
+          }, { onConflict: "auth_user_id" });
       }
 
     } catch (error) {

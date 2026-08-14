@@ -71,8 +71,8 @@ export default function QuickstartPage() {
 
       if (!merchantRes.ok) throw new Error("Could not fetch merchant profile. Are you logged in?");
       
-      const merchantData = await merchantRes.json();
-      const apiKey = merchantData.api_key; // This comes from keys/page.tsx and is saved to Supabase
+      const merchantPayload = await merchantRes.json();
+      const apiKey = merchantPayload?.merchant?.api_key; // This comes from keys/page.tsx and is saved to Supabase
 
       if (!apiKey) throw new Error("No API Key found. Please generate one in Keys page first.");
 

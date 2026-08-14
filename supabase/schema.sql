@@ -10,7 +10,7 @@ $$ language plpgsql;
 
 create table if not exists merchants (
   id uuid primary key default gen_random_uuid(),
-  auth_user_id uuid references auth.users(id) on delete cascade,
+  auth_user_id uuid unique references auth.users(id) on delete cascade,
   email text not null unique,
   password_hash text,
   onboarding_status text not null default 'pending' check (onboarding_status in ('pending', 'completed')),
@@ -18,6 +18,7 @@ create table if not exists merchants (
   merchant_name text not null,
   merchant_logo text,
   secondary_email text,
+  api_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -68,6 +69,7 @@ create table if not exists terminal_pairing_codes (
   code text primary key,
   merchant_id uuid,
   terminal_id uuid,
+  terminal_label text,
   status text not null default 'PENDING' check (status in ('PENDING', 'USED', 'EXPIRED')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null
@@ -120,7 +122,8 @@ create policy "Merchant owners can manage webhooks"
     merchant_id in (
       select id from merchants where auth_user_id = auth.uid()
     )
-  )
+  );
+
 create table if not exists terminals (
   id uuid primary key default gen_random_uuid(),
   merchant_id uuid not null references merchants(id) on delete cascade,
@@ -146,6 +149,7 @@ create table if not exists terminal_pairing_codes (
   code text primary key,
   merchant_id uuid,
   terminal_id uuid,
+  terminal_label text,
   status text not null default 'PENDING' check (status in ('PENDING', 'USED', 'EXPIRED')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null

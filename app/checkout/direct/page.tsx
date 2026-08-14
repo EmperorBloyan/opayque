@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useCurrency, CurrencyProvider } from "@/lib/context/CurrencyContext";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 
 function DirectCheckoutContent() {
   const searchParams = useSearchParams();
@@ -117,10 +117,8 @@ function DirectCheckoutContent() {
 
 export default function DirectCheckoutPage() {
   return (
-    <CurrencyProvider>
-      <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex items-center justify-center">Loading checkout...</div>}>
-        <DirectCheckoutContent />
-      </Suspense>
-    </CurrencyProvider>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex items-center justify-center">Loading checkout...</div>}>
+      <DirectCheckoutContent />
+    </Suspense>
   );
 }

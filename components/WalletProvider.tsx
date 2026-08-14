@@ -16,6 +16,8 @@ import {
   createDefaultWalletNotFoundHandler,
   registerMwa,
 } from "@solana-mobile/wallet-standard-mobile";
+import { EnvironmentProvider } from "@/lib/context/EnvironmentContext";
+import { CurrencyProvider } from "@/lib/context/CurrencyContext";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
@@ -95,7 +97,13 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
   return (
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect onError={onError}>
-        <WalletModalProvider>{children}</WalletModalProvider>
+        <WalletModalProvider>
+          <EnvironmentProvider>
+            <CurrencyProvider>
+              {children}
+            </CurrencyProvider>
+          </EnvironmentProvider>
+        </WalletModalProvider>
       </WalletProvider>
 
       {toast && (
