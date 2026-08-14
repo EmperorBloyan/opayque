@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
-import { createClient } from "@/lib/supabase/client"; // <-- ADDED
+import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft,
   Copy,
@@ -37,7 +37,7 @@ interface ApiKeyPair {
 export default function ApiKeysPage() {
   const router = useRouter();
   const { isSandbox } = useEnvironment();
-  const supabase = createClient(); // <-- ADDED
+  const supabase = createClient();
 
   // API Keys State
   const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
@@ -46,7 +46,7 @@ export default function ApiKeysPage() {
   const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
-  // Merchant Profile State (Onboarding Fields)
+  // Merchant Profile State
   const [merchantEmail, setMerchantEmail] = useState("");
   const [merchantName, setMerchantName] = useState("");
   const [merchantLogo, setMerchantLogo] = useState("");
@@ -66,13 +66,28 @@ export default function ApiKeysPage() {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
-  // Hydrate from LocalStorage first, then fetch latest API state
+  const currentEnv = isSandbox? "devnet" : "mainnet";
+  const envPrefix = isSandbox? "osk_test_" : "osk_live_";
+
+  // Hydrate from LocalStorage + DB + API
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const loadData = async () => {
-      // 1. Zero-Latency LocalStorage Hydration
-      const localEmail = window.localStorage.getItem("merchant_email") || window.localStorage.getItem("email") || "";
+      setLoadingKeys(true);
+
+      // 1. Zero-Latency LocalStorage Hydration per env
+      const cachedKeys = window.localStorage.getItem(`opayque_api_keys_${currentEnv}`);
+      if (cachedKeys) {
+        try {
+          setKeyPairs(JSON.parse(cachedKeys));
+        } catch (e) {
+          console.warn("Failed to parse cached keys", e);
+        }
+      }
+
+      // 2. Load profile fields from local
+      const localEmail = window.localStorage.getItem("merchant_email") || "";
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
       const localSecondary = window.localStorage.getItem("secondary_email") || "";
@@ -88,44 +103,39 @@ export default function ApiKeysPage() {
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
 
-      // Load cached API keys if present
-      const cachedKeys = window.localStorage.getItem("opayque_api_keys");
-      if (cachedKeys) {
-        try {
-          setKeyPairs(JSON.parse(cachedKeys));
-        } catch (e) {
-          console.warn("Failed to parse cached keys", e);
-        }
-      }
-
-      // 2. Fetch Sync from Backend API
+      // 3. Fetch Sync from Backend + DB
       try {
-        const { data: { user } } = await supabase.auth.getUser(); // <-- ADDED
+        const { data: { user } = await supabase.auth.getUser();
 
         const [merchantRes, keysRes] = await Promise.all([
           fetch('/api/v1/merchant').catch(() => null),
-          fetch('/api/v1/keys').catch(() => null),
+          fetch(`/api/v1/keys?env=${currentEnv}`).catch(() => null),
         ]);
 
         // Load secret key from merchants table so it persists
         if (user) {
           const { data: merchantData } = await supabase
-           .from("merchants")
-           .select("api_key")
-           .eq("user_id", user.id)
-           .single();
+          .from("merchants")
+          .select("api_key")
+          .eq("user_id", user.id)
+          .single();
 
           if (merchantData?.api_key) {
-            const envPrefix = merchantData.api_key.startsWith("osk_test_")? "osk_test_" : "osk_live_";
+            const dbEnv = merchantData.api_key.startsWith("osk_test_")? "devnet" : "mainnet";
             const dbKey: ApiKeyPair = {
               id: "db-key-1",
-              publishable: `${envPrefix}pub_saved`,
+              publishable: `${merchantData.api_key.startsWith("osk_test_")? "osk_test_" : "osk_live_"}pub_saved`,
               secret: merchantData.api_key,
               createdAt: new Date().toISOString(),
               lastUsed: 'never',
-              environment: envPrefix.includes("test")? "devnet" : "mainnet"
+              environment: dbEnv
             };
-            setKeyPairs([dbKey]);
+            setKeyPairs((prev) => {
+              const withoutDb = prev.filter(k => k.id!== "db-key-1");
+              const updated = [dbKey,...withoutDb];
+              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(updated));
+              return updated;
+            });
           }
         }
 
@@ -152,16 +162,21 @@ export default function ApiKeysPage() {
         if (keysRes && keysRes.ok) {
           const data = await keysRes.json();
           if (data.keys && Array.isArray(data.keys)) {
-            const transformed: ApiKeyPair[] = data.keys.map((k: any) => ({
-              id: k.id,
-              publishable: k.prefix? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`,
-              secret: k.rawSecretKey || undefined,
-              createdAt: k.created_at?? new Date().toISOString(),
-              lastUsed: k.last_used_at? 'recent' : 'never',
-              environment: k.environment || 'mainnet',
-            }));
-            setKeyPairs(transformed);
-            window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
+            setKeyPairs((prev) => {
+              const transformed: ApiKeyPair[] = data.keys.map((k: any) => {
+                const localMatch = prev.find((p) => p.id === k.id);
+                return {
+                  id: k.id,
+                  publishable: k.publishable_key || k.prefix? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`,
+                  secret: k.rawSecretKey || localMatch?.secret,
+                  createdAt: k.created_at?? new Date().toISOString(),
+                  lastUsed: k.last_used_at? 'recent' : 'never',
+                  environment: k.environment || currentEnv,
+                };
+              });
+              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(transformed));
+              return transformed;
+            });
           }
         }
       } catch (error) {
@@ -172,11 +187,10 @@ export default function ApiKeysPage() {
     };
 
     void loadData();
-  }, [supabase]); // <-- ADDED supabase
+  }, [isSandbox, supabase, currentEnv]);
 
   const primaryEmailAvailable = Boolean(merchantEmail.trim());
 
-  // Handle local image file upload -> Base64
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -207,47 +221,46 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    const targetEnv = isSandbox? "devnet" : "mainnet";
-    const envPrefix = isSandbox? "osk_test_" : "osk_live_";
     let newKey: ApiKeyPair | null = null;
 
     try {
-      const { data: { user } = await supabase.auth.getUser(); // <-- ADDED
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
       const res = await fetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: targetEnv }),
+        body: JSON.stringify({ environment: currentEnv }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        newKey = {
-          id: data.id || Math.random().toString(36).substring(2, 9),
-          publishable: (data.prefix || envPrefix) + 'pub_' + (data.id? data.id.slice(0, 8) : '8f921a'),
-          secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
-          createdAt: data.createdAt || new Date().toISOString(),
-          lastUsed: 'never',
-          environment: targetEnv,
-        };
+      if (!res.ok) throw new Error("Key creation failed");
 
-        // Save to merchants table so it persists
-        if (newKey.secret) {
-          await supabase
-           .from("merchants")
-           .upsert({
-              user_id: user.id,
-              api_key: newKey.secret,
-              updated_at: new Date().toISOString()
-            }, { onConflict: "user_id" });
-        }
+      const data = await res.json();
+      newKey = {
+        id: data.key?.id || data.id || Math.random().toString(36).substring(2, 9),
+        publishable: data.key?.publishable || (data.prefix || envPrefix) + 'pub_' + (data.id? data.id.slice(0, 8) : '8f921a'),
+        secret: data.key?.rawSecretKey || data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
+        createdAt: data.key?.created_at || data.createdAt || new Date().toISOString(),
+        lastUsed: 'never',
+        environment: currentEnv,
+      };
+
+      // Save to merchants table so it persists
+      if (newKey.secret) {
+        await supabase
+        .from("merchants")
+        .upsert({
+            user_id: user.id,
+            api_key: newKey.secret,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" });
       }
+
     } catch (error) {
       console.warn('API endpoint offline, generating key locally', error);
     }
 
-    // Local fallback key pair generation
+    // Local fallback
     if (!newKey) {
       const randomId = Math.random().toString(36).substring(2, 10);
       newKey = {
@@ -256,20 +269,18 @@ export default function ApiKeysPage() {
         secret: `${envPrefix}sec_${Math.random().toString(36).substring(2, 15)}`,
         createdAt: new Date().toISOString(),
         lastUsed: 'never',
-        environment: targetEnv,
+        environment: currentEnv,
       };
     }
 
     setKeyPairs((current) => {
-      const updated = [newKey!,...current];
-      if (typeof window!== "undefined") {
-        window.localStorage.setItem("opayque_api_keys", JSON.stringify(updated));
-      }
+      const updated = [newKey!,...current.filter(k => k.environment === currentEnv)];
+      window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(updated));
       return updated;
     });
 
     setVisibleSecretId(newKey.id);
-    setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated and saved.`); // <-- CHANGED TEXT
+    setProfileMessage(`New ${currentEnv.toUpperCase()} API key pair generated and saved.`);
     setCreatingKey(false);
   };
 
@@ -278,7 +289,6 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    // Save locally first for zero delay
     if (typeof window!== "undefined") {
       window.localStorage.setItem("merchant_email", merchantEmail.trim());
       window.localStorage.setItem("merchant_name", merchantName.trim());
@@ -290,14 +300,14 @@ export default function ApiKeysPage() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser(); // <-- ADDED
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
       const res = await fetch('/api/v1/merchant', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: user.id, // <-- ADDED
+          user_id: user.id,
           email: merchantEmail.trim() || null,
           merchantName: merchantName.trim() || null,
           merchantLogo: merchantLogo.trim() || null,
@@ -356,7 +366,7 @@ export default function ApiKeysPage() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut(); // <-- CHANGED
+      await supabase.auth.signOut();
     } catch (error) {
       console.error('Sign-out failed', error);
     }
@@ -366,7 +376,7 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem('merchant_logo');
       window.localStorage.removeItem('merchant_email');
       window.localStorage.removeItem('developer_environment');
-      window.localStorage.removeItem('opayque_api_keys'); // <-- ADDED
+      window.localStorage.removeItem(`opayque_api_keys_${currentEnv}`);
     }
     router.push('/login');
   };
@@ -376,9 +386,9 @@ export default function ApiKeysPage() {
       <div className="absolute inset-x-0 top-0 h-[400px] bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.16),transparent_40%)] pointer-events-none -z-10" />
       <div className="absolute inset-x-0 bottom-0 h-[420px] bg-[radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_45%)] pointer-events-none -z-10" />
 
+      {/* PASTE YOUR ENTIRE RETURN() JSX HERE. IT'S EXACTLY THE SAME AS YOURS */}
       <div className="max-w-7xl mx-auto space-y-10">
-        {/*... REST OF YOUR JSX IS EXACTLY THE SAME... */}
-        {/* COPY EVERYTHING FROM YOUR ORIGINAL RETURN() HERE */}
+        {/*... your JSX from previous message... */}
       </div>
     </main>
   );
