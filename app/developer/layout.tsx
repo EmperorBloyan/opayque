@@ -20,7 +20,10 @@ import { useEnvironment } from "@/lib/context/EnvironmentContext";
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isKeysPage = pathname === "/developer/keys";
+  
+  // FIX: Hide layout chrome on both Keys and Onboarding pages
+  const isHiddenPage = pathname === "/developer/keys" || pathname.includes("onboarding");
+  
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   
   // Dynamic Merchant Profile State
@@ -104,8 +107,8 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     router.push("/login");
   };
 
-  // Only render layout chrome (Header, Nav, Footer, Speed Dial) if not on keys page AND setup is complete
-  const showChrome = !isKeysPage && isSetupComplete === true;
+  // Only render layout chrome (Header, Nav, Footer, Speed Dial) if not on a hidden page AND setup is complete
+  const showChrome = !isHiddenPage && isSetupComplete === true;
 
   return (
     <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
