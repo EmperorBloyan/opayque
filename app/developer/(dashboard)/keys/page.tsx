@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -105,7 +106,8 @@ export default function ApiKeysPage() {
 
       // 3. Fetch Sync from Backend + DB
       try {
-        const { data: { user } = await supabase.auth.getUser();
+        const userRes = await supabase.auth.getUser();
+        const user = userRes.data?.user;
 
         const [merchantRes, keysRes] = await Promise.all([
           fetch('/api/v1/merchant').catch(() => null),
@@ -160,22 +162,29 @@ export default function ApiKeysPage() {
         }
 
         if (keysRes && keysRes.ok) {
-          const data = await keysRes.json();
-          if (data.keys && Array.isArray(data.keys)) {
+          const payload = await keysRes.json();
+          if (payload.keys && Array.isArray(payload.keys)) {
             setKeyPairs((prev) => {
-              const transformed: ApiKeyPair[] = data.keys.map((k: any) => {
+              // Transform backend keys, preserve secret when local match exists
+              const transformed: ApiKeyPair[] = payload.keys.map((k: any) => {
                 const localMatch = prev.find((p) => p.id === k.id);
                 return {
                   id: k.id,
-                  publishable: k.publishable_key || k.prefix? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`,
-                  secret: k.rawSecretKey || localMatch?.secret,
-                  createdAt: k.created_at?? new Date().toISOString(),
-                  lastUsed: k.last_used_at? 'recent' : 'never',
+                  publishable: k.publishable_key ?? (k.prefix ? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`),
+                  secret: k.rawSecretKey ?? localMatch?.secret,
+                  createdAt: k.created_at ?? new Date().toISOString(),
+                  lastUsed: k.last_used_at ? 'recent' : 'never',
                   environment: k.environment || currentEnv,
-                };
+                } as ApiKeyPair;
               });
-              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(transformed));
-              return transformed;
+
+              // Keep any local-only keys that backend didn't return
+              const backendIds = new Set(payload.keys.map((k: any) => k.id));
+              const localOnly = prev.filter(p => !backendIds.has(p.id));
+
+              const merged = [...transformed, ...localOnly];
+              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(merged));
+              return merged;
             });
           }
         }
@@ -262,7 +271,7 @@ export default function ApiKeysPage() {
 
     // Local fallback
     if (!newKey) {
-      const randomId = Math.random().toString(36).substring(2, 10);
+      const randomId = 'local_' + Math.random().toString(36).substring(2, 10);
       newKey = {
         id: randomId,
         publishable: `${envPrefix}pub_${randomId}`,
