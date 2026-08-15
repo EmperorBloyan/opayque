@@ -37,6 +37,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +50,12 @@ export default function LoginPage() {
     () => "Enter your company password to unlock the developer hub and continue managing your merchant session.",
     []
   );
+
+  const goToDestination = (path: string) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    router.push(path);
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -102,8 +109,9 @@ export default function LoginPage() {
       {/* Close Button in top right */}
       <button
         type="button"
-        onClick={() => router.push("/")}
-        className="absolute top-6 right-6 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-white/10 hover:text-white transition-all z-50"
+        onClick={() => goToDestination("/")}
+        disabled={isNavigating}
+        className="absolute top-6 right-6 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-zinc-900/50 text-zinc-400 hover:bg-white/10 hover:text-white transition-all z-50 disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Return to home"
       >
         <X size={24} />
@@ -185,18 +193,20 @@ export default function LoginPage() {
               {/* Action Buttons Row */}
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
                 {/* Create Account Link (Bottom-Left) */}
-                <Link
-                  href={`/developer/onboarding?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`}
-                  className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto"
+                <button
+                  type="button"
+                  onClick={() => goToDestination(`/developer/onboarding?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`)}
+                  disabled={isNavigating}
+                  className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <UserPlus className="h-4 w-4" />
                   <span>Create Account</span>
-                </Link>
+                </button>
 
                 {/* Unlock Hub Primary Action */}
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || isNavigating}
                   className="flex flex-1 w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>

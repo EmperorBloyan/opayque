@@ -133,10 +133,12 @@ export default function RegistryPage() {
         <div className="flex items-center gap-4">
           <button 
             onClick={() => {
-              clearActiveSession();
-              router.push("/");
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("opayque_next_route", "/vault/registry");
+              }
+              router.push("/login?next=%2Fvault%2Fregistry");
             }}
-            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-red-500 transition-all"
+            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-purple-400 transition-all"
           >
             <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault
           </button>

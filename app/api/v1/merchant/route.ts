@@ -114,14 +114,21 @@ export async function PATCH(request: Request) {
       .from('merchants')
       .update(updates)
       .eq('auth_user_id', user.id)
-      .select()
+      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key')
       .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ merchant });
+    const normalizedMerchant = merchant
+      ? {
+          ...merchant,
+          api_access_status: resolveMerchantAccessStatus(merchant.api_access_status, merchant.api_key),
+        }
+      : null;
+
+    return NextResponse.json({ merchant: normalizedMerchant });
   } catch (err: any) {
     console.error('PATCH /api/v1/merchant error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });

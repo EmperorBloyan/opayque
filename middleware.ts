@@ -39,11 +39,20 @@ export async function middleware(request: NextRequest) {
   const isLoginRoute = pathname === '/login';
 
   if (!user && (isDeveloperRoute || isVaultRoute || isOnboardingRoute)) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const nextTarget = request.nextUrl.pathname === '/' ? '/vault' : request.nextUrl.pathname;
+    const redirectUrl = new URL('/login', request.url);
+    redirectUrl.searchParams.set('next', nextTarget);
+    return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && (isLoginRoute || isOnboardingRoute)) {
-    return NextResponse.redirect(new URL('/developer/overview', request.url));
+  if (user && isLoginRoute) {
+    const nextTarget = request.nextUrl.searchParams.get('next') || '/developer/overview';
+    return NextResponse.redirect(new URL(nextTarget, request.url));
+  }
+
+  if (user && isOnboardingRoute) {
+    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault';
+    return NextResponse.redirect(new URL(nextTarget, request.url));
   }
 
   return response;

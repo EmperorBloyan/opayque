@@ -43,6 +43,7 @@ function getRedirectTarget(defaultTarget: string) {
 export default function OnboardingPage() {
   const router = useRouter();
   const { connected, publicKey, signMessage } = useWallet();
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState("");
@@ -70,6 +71,12 @@ export default function OnboardingPage() {
       setLogoPreview(typeof reader.result === "string" ? reader.result : null);
     };
     reader.readAsDataURL(file);
+  };
+
+  const goToDestination = (path: string) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    router.push(path);
   };
 
   const handleWalletSign = async () => {
@@ -202,8 +209,9 @@ export default function OnboardingPage() {
 
       <button
         type="button"
-        onClick={() => router.push("/")}
-        className="absolute top-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-zinc-900/50 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+        onClick={() => goToDestination("/")}
+        disabled={isNavigating}
+        className="absolute top-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-zinc-900/50 text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Return to home"
       >
         <X size={24} />
@@ -345,17 +353,19 @@ export default function OnboardingPage() {
 
             <div className="pt-4 text-center">
               <div className="flex flex-col items-center gap-4 sm:flex-row">
-                <Link
-                  href={`/login?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`}
-                  className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white sm:w-auto"
+                <button
+                  type="button"
+                  onClick={() => goToDestination(`/login?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`)}
+                  disabled={isNavigating}
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <LogIn className="h-4 w-4" />
                   <span>Already have an account? Sign In</span>
-                </Link>
+                </button>
 
                 <button
                   type="submit"
-                  disabled={isLoading || !walletSigned}
+                  disabled={isLoading || isNavigating || !walletSigned}
                   className="flex w-full flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   <span>{isLoading ? "Setting up..." : "Create Account"}</span>

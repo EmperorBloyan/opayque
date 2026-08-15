@@ -35,6 +35,28 @@ interface ApiKeyPair {
   environment?: "mainnet" | "devnet";
 }
 
+function computeEffectiveMerchantStatus(merchant: any) {
+  const hasSavedMerchantProfile = Boolean(
+    merchant?.email ||
+    merchant?.merchant_name ||
+    merchant?.merchant_logo ||
+    merchant?.secondary_email ||
+    merchant?.settlement_wallet_address ||
+    merchant?.website_url ||
+    merchant?.webhook_url ||
+    merchant?.api_key
+  );
+
+  const nextStatus = resolveMerchantAccessStatus(merchant?.api_access_status, merchant?.api_key);
+  const hasUsableKey = Boolean(merchant?.api_key && String(merchant.api_key).trim());
+
+  if (nextStatus === "approved") return "active";
+  if (nextStatus === "pending" && hasSavedMerchantProfile && hasUsableKey) return "active";
+  if (nextStatus === "active" || nextStatus === "revoked") return nextStatus;
+
+  return "pending";
+}
+
 export default function ApiKeysPage() {
   const router = useRouter();
   const { isSandbox } = useEnvironment();
@@ -68,6 +90,11 @@ export default function ApiKeysPage() {
     if (typeof window === "undefined") return;
 
     const loadData = async () => {
+      const localStatus = window.localStorage.getItem("merchant_api_access_status");
+      if (localStatus === "active") {
+        setMerchantApiAccessStatus("active");
+      }
+
       const localEmail = window.localStorage.getItem("merchant_email") || window.localStorage.getItem("email") || "";
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
@@ -125,22 +152,13 @@ export default function ApiKeysPage() {
           }
 
           if (merchantData) {
-            const hasSavedMerchantProfile = Boolean(
-              merchantData.email ||
-              merchantData.merchant_name ||
-              merchantData.merchant_logo ||
-              merchantData.secondary_email ||
-              merchantData.settlement_wallet_address ||
-              merchantData.website_url ||
-              merchantData.webhook_url ||
-              merchantData.api_key
-            );
-            const nextStatus = resolveMerchantAccessStatus(merchantData.api_access_status, merchantData.api_key);
-            const effectiveStatus = nextStatus === "approved" || (nextStatus === "pending" && hasSavedMerchantProfile && Boolean(merchantData.api_key))
-              ? "active"
-              : nextStatus;
-
-            setMerchantApiAccessStatus(effectiveStatus as "pending" | "active" | "revoked");
+            const effectiveStatus = computeEffectiveMerchantStatus(merchantData) as "pending" | "active" | "revoked";
+            setMerchantApiAccessStatus(effectiveStatus);
+            if (effectiveStatus === "active") {
+              window.localStorage.setItem("merchant_api_access_status", "active");
+            } else {
+              window.localStorage.setItem("merchant_api_access_status", "pending");
+            }
             if (merchantData.email) setMerchantEmail(merchantData.email);
             if (merchantData.merchant_name) {
               setMerchantName(merchantData.merchant_name);
@@ -161,6 +179,9 @@ export default function ApiKeysPage() {
           const payload = await merchantRes.json();
           const merchant = payload?.merchant;
           if (merchant) {
+            const effectiveStatus = computeEffectiveMerchantStatus(merchant) as "pending" | "active" | "revoked";
+            setMerchantApiAccessStatus(effectiveStatus);
+            window.localStorage.setItem("merchant_api_access_status", effectiveStatus === "active" ? "active" : "pending");
             if (merchant.email) setMerchantEmail(merchant.email);
             if (merchant.merchant_name) {
               setMerchantName(merchant.merchant_name);
@@ -357,6 +378,10 @@ export default function ApiKeysPage() {
         })
         .eq("auth_user_id", user.id);
 
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_api_access_status", "active");
+      }
+
       if (supabaseError) {
         throw new Error(supabaseError.message || "Supabase merchant update failed");
       }
@@ -376,8 +401,23 @@ export default function ApiKeysPage() {
       }
 
       const data = await res.json();
+      const normalizedStatus = computeEffectiveMerchantStatus(data?.merchant ?? {
+        api_access_status: "active",
+        api_key: data?.merchant?.api_key || null,
+        email: payload.email,
+        merchant_name: payload.merchantName,
+        merchant_logo: payload.merchantLogo,
+        secondary_email: payload.secondaryEmail,
+        settlement_wallet_address: payload.settlementWalletAddress,
+        website_url: payload.websiteUrl,
+        webhook_url: payload.webhookUrl,
+      }) as "pending" | "active" | "revoked";
+
       setProfileMessage("Merchant details saved to Supabase.");
-      setMerchantApiAccessStatus("active");
+      setMerchantApiAccessStatus(normalizedStatus);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_api_access_status", normalizedStatus === "active" ? "active" : "pending");
+      }
 
       const updated = data?.merchant;
       if (updated) {
