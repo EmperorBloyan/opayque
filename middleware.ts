@@ -33,16 +33,34 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  
+  // 1. Define ALL protected routes here
   const isDeveloperRoute = pathname.startsWith('/developer');
   const isVaultRoute = pathname.startsWith('/vault');
+  const isBotRoute = pathname.startsWith('/bot');           // <-- ADDED THIS
+  const isRegistryRoute = pathname.startsWith('/registry'); // <-- ADDED THIS
   const isOnboardingRoute = pathname === '/onboarding' || pathname === '/developer/onboarding';
   const isLoginRoute = pathname === '/login';
 
-  if (!user && (isDeveloperRoute || isVaultRoute || isOnboardingRoute)) {
-    const nextTarget = request.nextUrl.pathname === '/' ? '/vault' : request.nextUrl.pathname;
+  // 2. Protect unauthenticated users and track their intended destination
+  const isProtectedRoute = isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute || isOnboardingRoute;
+
+  if (!user && isProtectedRoute) {
+    // Capture exactly where they were trying to go
+    const nextTarget = request.nextUrl.pathname;
+    
     const redirectUrl = new URL('/login', request.url);
+    // Attach it to the URL (e.g., /login?next=/bot/unlock)
     redirectUrl.searchParams.set('next', nextTarget);
+    
     return NextResponse.redirect(redirectUrl);
+  }
+
+  // 3. Prevent logged-in users from getting stuck on the login page
+  if (user && isLoginRoute) {
+    // If they have a 'next' parameter, send them there. Otherwise, default to vault.
+    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault';
+    return NextResponse.redirect(new URL(nextTarget, request.url));
   }
 
   return response;
@@ -50,12 +68,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
