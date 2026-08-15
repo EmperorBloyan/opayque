@@ -16,10 +16,11 @@ export async function POST() {
   const { data: merchant, error } = await supabase
     .from('merchants')
     .select('email, secondary_email, merchant_name')
-    .eq('id', user.id)
-    .single();
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
 
-  if (error || !merchant) return NextResponse.json({ error: error?.message || 'Merchant not found' }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!merchant) return NextResponse.json({ error: 'Merchant profile not found' }, { status: 404 });
 
   const recipients = [merchant.email, merchant.secondary_email]
     .filter((value): value is string => Boolean(value))
