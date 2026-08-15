@@ -17,7 +17,7 @@ export default async function CheckoutPage({ params }: Props) {
 
   const { data, error } = await supabase
     .from("checkout_sessions")
-    .select("id, amount, currency, customer_email, solana_pay_url, status")
+    .select("id, amount, amount_fiat, amount_token, settlement_token, currency, customer_email, solana_pay_url, status")
     .eq("id", id)
     .single();
 
@@ -32,10 +32,17 @@ export default async function CheckoutPage({ params }: Props) {
     );
   }
 
+  const amountFiat = Number(data.amount_fiat ?? data.amount ?? 0);
+  const settlementToken = (data.settlement_token || data.currency || "USDC").toUpperCase();
+  const amountToken = Number(data.amount_token ?? data.amount ?? 0);
+
   const session = {
     id: data.id,
-    amount: data.amount,
-    currency: data.currency,
+    amount: amountFiat,
+    amount_fiat: amountFiat,
+    amount_token: amountToken,
+    settlement_token: settlementToken,
+    currency: settlementToken,
     customer_email: data.customer_email,
     solana_pay_url: data.solana_pay_url,
     status: data.status,

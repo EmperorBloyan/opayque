@@ -16,12 +16,15 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 interface Props {
   id: string;
   amount: number;
+  amount_fiat?: number;
+  amount_token?: number;
+  settlement_token?: string;
   currency: string;
   customer_email?: string | null;
   solana_pay_url?: string | null;
 }
 
-export default function CheckoutClient({ id, amount, currency, customer_email, solana_pay_url }: Props) {
+export default function CheckoutClient({ id, amount, amount_fiat, amount_token, settlement_token, currency, customer_email, solana_pay_url }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
@@ -34,6 +37,11 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
   const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl((process.env.NEXT_PUBLIC_SOLANA_NETWORK as any) || "devnet");
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new CoinbaseWalletAdapter()], []);
 
+  const normalizedFiatAmount = Number(amount_fiat ?? amount ?? 0);
+  const normalizedUsdcEquivalent = Number(amount_token ?? amount ?? 0);
+  const displayCurrency = (settlement_token || currency || "USDC").toUpperCase();
+  const displayFiatCurrency = (currency || "USD").toUpperCase();
+
   useEffect(() => {
     let mounted = true;
     const poll = async () => {
@@ -42,9 +50,10 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
         if (!res.ok) return;
         const data = await res.json();
         if (!mounted) return;
-        setStatus(data.status || null);
+        const currentStatus = String(data.status || "pending").toLowerCase();
+        setStatus(currentStatus);
         if (data.transaction?.signature) setTransactionSignature(data.transaction.signature);
-        if (data.status === "completed") {
+        if (currentStatus === "completed" || currentStatus === "paid") {
           setSuccess(true);
           if (intervalRef.current) {
             window.clearInterval(intervalRef.current);
@@ -83,7 +92,12 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
       <div className="min-h-[60vh] max-w-xl mx-auto p-6 rounded-2xl bg-[#0b0c10] border border-white/5 shadow-lg">
         {!success ? (
           <div className="space-y-6 text-center">
-            <h2 className="text-2xl font-extrabold text-white">Pay {currency} {Number(amount) / 100}</h2>
+            <h2 className="text-2xl font-extrabold text-white">
+              {normalizedFiatAmount > 0 ? `Pay ${displayFiatCurrency} ${normalizedFiatAmount.toFixed(2)}` : `Pay ${displayCurrency} ${normalizedUsdcEquivalent.toFixed(2)}`}
+            </h2>
+            {normalizedUsdcEquivalent > 0 && (
+              <p className="text-sm text-zinc-400">USDC equivalent: {normalizedUsdcEquivalent.toFixed(2)} {displayCurrency}</p>
+            )}
             {customer_email && <p className="text-sm text-zinc-400">Buyer&apos;s email: {customer_email}</p>}
 
             <div className="flex flex-col items-center gap-4">
@@ -103,6 +117,8 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
                   currency={currency}
                   merchantWallet={typeof (window as any) !== 'undefined' ? '' : ''}
                   disabled={payLoading}
+                  status={status}
+                  success={success}
                   setToast={setToast}
                   setTransactionSignature={setTransactionSignature}
                   setSuccess={setSuccess}
@@ -110,6 +126,9 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
               </div>
 
               <div className="text-xs text-zinc-500">Status: <span className="text-white">{status ?? 'pending'}</span></div>
+              {status && ['completed', 'paid'].includes(status.toLowerCase()) && (
+                <div className="text-xs text-emerald-400">Payment already completed</div>
+              )}
             </div>
           </div>
         ) : (
@@ -137,12 +156,18 @@ export default function CheckoutClient({ id, amount, currency, customer_email, s
   );
 }
 
-function PayButton({ id, amount, currency, merchantWallet, disabled, setToast, setTransactionSignature, setSuccess }: any) {
+function PayButton({ id, amount, currency, merchantWallet, disabled, status, success, setToast, setTransactionSignature, setSuccess }: any) {
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
 
   const handlePay = async () => {
+    if (success || (status && ['completed', 'paid'].includes(status.toLowerCase()))) {
+      setToast('Payment already completed');
+      setSuccess(true);
+      return;
+    }
+
     if (!publicKey) {
       setToast('Connect your wallet first');
       return;

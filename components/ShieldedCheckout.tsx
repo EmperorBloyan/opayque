@@ -59,6 +59,7 @@ export default function ShieldedCheckout({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [successSignature, setSuccessSignature] = useState<string | null>(null);
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   const [draftAmount, setDraftAmount] = useState(() => (Number.isFinite(amount) && amount > 0 ? amount : 10));
 
   useEffect(() => {
@@ -70,7 +71,30 @@ export default function ShieldedCheckout({
   const safeMerchantPubkey = useMemo(() => merchantPubkey?.trim() || '', [merchantPubkey]);
   const effectiveAmount = allowCustomAmount ? draftAmount : amount;
   const isAmountValid = Number.isFinite(effectiveAmount) && effectiveAmount > 0;
-  const isReadyToPay = connected && !!safeMerchantPubkey && (Boolean(signTransaction) || Boolean(signAndSendTransaction)) && isAmountValid && !loading;
+  const isReadyToPay = connected && !!safeMerchantPubkey && (Boolean(signTransaction) || Boolean(signAndSendTransaction)) && isAmountValid && !loading && !alreadyCompleted;
+
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get('session_id') || new URLSearchParams(window.location.search).get('id') || new URLSearchParams(window.location.search).get('tx_id');
+    if (!sessionId) return;
+
+    const checkCompleted = async () => {
+      try {
+        const res = await fetch(`/api/v1/checkout/${sessionId}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const currentStatus = String(data.status || '').toLowerCase();
+        if (currentStatus === 'completed' || currentStatus === 'paid') {
+          setAlreadyCompleted(true);
+          setStatus('complete');
+          setSuccessMessage('Payment already completed');
+        }
+      } catch (err) {
+        console.warn('Failed to check checkout status on load', err);
+      }
+    };
+
+    void checkCompleted();
+  }, []);
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -130,12 +154,14 @@ export default function ShieldedCheckout({
       if (signAndSendTransaction) {
         const res = await signAndSendTransaction(tx as any);
         signature = (res && (res as any).signature) || String(res);
-      } else {
+      } else if (signTransaction) {
         const signedTx = await signTransaction(tx as any);
         if (!signedTx) throw new Error('Transaction signing failed.');
         setStatus('sending');
         signature = await teeConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
         if (!signature) throw new Error('Transaction submission failed.');
+      } else {
+        throw new Error('Your connected wallet cannot sign transactions.');
       }
 
       const initialTx = {
@@ -209,9 +235,15 @@ export default function ShieldedCheckout({
           ) : null}
 
           <div>
-            <button disabled={!isReadyToPay} onClick={handlePayment} className="w-full rounded-2xl bg-purple-600 py-3 font-black text-white disabled:opacity-40">
-              {statusLabel}
-            </button>
+            {alreadyCompleted ? (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-center text-sm font-bold text-emerald-400">
+                Payment already completed
+              </div>
+            ) : (
+              <button disabled={!isReadyToPay} onClick={handlePayment} className="w-full rounded-2xl bg-purple-600 py-3 font-black text-white disabled:opacity-40">
+                {statusLabel}
+              </button>
+            )}
           </div>
 
           {errorMessage ? <p className="text-sm text-red-500">{errorMessage}</p> : null}
