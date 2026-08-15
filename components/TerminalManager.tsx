@@ -311,6 +311,7 @@ export default function TerminalManager({
     async (labelOverride?: string) => {
       const merchantWalletRecord = await ensureActiveMerchantWalletRecord();
       const merchantIdForPairing = resolvedMerchantId ?? merchantWalletRecord.merchantId;
+      const walletAddressForPairing = merchantWalletRecord.walletAddress;
 
       if (!merchantIdForPairing || merchantIdForPairing === "merchant-vault") {
         setToast("Merchant wallet not linked. Complete vault authorization first.");
@@ -329,33 +330,29 @@ export default function TerminalManager({
       setErrorState(null);
 
       try {
-        const supabase = createSupabaseBrowserClient();
-        const code = createAccessCode();
-        const expiresAtMs = Date.now() + 10 * 60 * 1000;
-        const isoExpiresAt = new Date(expiresAtMs).toISOString();
         const terminalLabel = labelOverride || newTerminalLabel || createDefaultTerminalLabel();
 
-        // Persist the code before exposing it to the user. The terminal validator reads the same table.
-        const { error: upsertError } = await supabase
-          .from("terminal_pairing_codes")
-          .upsert(
-            {
-              code,
-              merchant_id: merchantIdForPairing,
-              status: "PENDING",
-              terminal_label: terminalLabel,
-              expires_at: isoExpiresAt,
-            },
-            { onConflict: "code" }
-          );
+        // Call API to create pairing code - this validates merchant and patches wallet_address
+        const response = await fetch("/api/terminal/pairing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create",
+            merchant_id: merchantIdForPairing,
+            wallet_address: walletAddressForPairing,
+            terminal_label: terminalLabel,
+          }),
+        });
 
-        if (upsertError) {
-          console.error("Supabase pairing code save error:", upsertError);
-          throw new Error("Failed to save pairing code in database.");
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Failed to create pairing code");
         }
 
-        // Only reveal the code after the Supabase row is successfully written.
-        setAuthCode(code);
+        // Only reveal the code after server validation succeeds
+        setAuthCode(result.code);
+        const expiresAtMs = new Date(result.expiresAt).getTime();
         setPairingExpiresAt(expiresAtMs);
         setPairingState("waiting");
       } catch (err: any) {

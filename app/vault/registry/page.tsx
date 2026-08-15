@@ -80,7 +80,7 @@ export default function RegistryPage() {
         const mapped = (data ?? []).map((row: any) => ({
           id: row.id,
           label: row.terminal_label ?? "Fleet Terminal",
-          status: row.status === "online" ? "online" : "offline",
+          status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
           lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
           accessCode: row.device_token ?? "",
           isActive: row.status === "online",

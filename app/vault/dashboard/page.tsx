@@ -11,7 +11,7 @@ const formatUSDC = (val: number) =>
 
 export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
-  const { currency, setCurrency, rates } = useCurrency();
+  const { currency, setCurrency, rates, convert } = useCurrency();
   const [privateBalance, setPrivateBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [flushLoading, setFlushLoading] = useState(false);
@@ -306,7 +306,7 @@ export default function VaultDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-6">
           <div>
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Private Shielded Volume</p>
-            <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{formatUSDC(privateBalance)}</h2>
+            <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(privateBalance).formatted}</h2>
           </div>
           <div>
             <label className="block text-[9px] text-zinc-400 mb-2 font-medium uppercase tracking-widest">Display Currency</label>
@@ -391,7 +391,7 @@ export default function VaultDashboard() {
                       </td>
                       <td className="py-4 px-4 font-bold text-white">{tx.staff}</td>
                       <td className={`py-4 px-4 font-bold font-mono ${tx.amount < 0 ? 'text-zinc-500' : 'text-purple-400'}`}>
-                        {formatUSDC(tx.amount)}
+                        {convert(tx.amount).formatted}
                       </td>
                       <td className="py-4 px-4 text-center">
                         <span className={`px-2.5 py-1 rounded-full text-[8px] font-bold uppercase tracking-wider ${statusColor(tx.status || 'Settled')}`}>
@@ -463,7 +463,7 @@ export default function VaultDashboard() {
               </div>
               <div className="flex justify-between border-t border-white/10 pt-2">
                 <span className="text-zinc-500 uppercase">Refund Amount:</span>
-                <span className="text-rose-400 font-bold text-sm">{formatUSDC(selectedTxForRefund.amount)}</span>
+                <span className="text-rose-400 font-bold text-sm">{convert(selectedTxForRefund.amount).formatted}</span>
               </div>
             </div>
 

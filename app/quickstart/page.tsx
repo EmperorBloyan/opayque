@@ -111,7 +111,7 @@ export default function QuickstartPage() {
 
       if (!apiKey) throw new Error("No API Key found. Please generate one in the Keys page first, or log back in.");
 
-      const response = await fetch('https://opayque-three.vercel.app/api/v1/sessions', {
+      const response = await fetch('/api/v1/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
