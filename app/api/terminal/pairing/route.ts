@@ -74,22 +74,15 @@ export async function POST(request: Request) {
 
       const requestedMerchantId = isValidMerchantId(merchantId) ? merchantId : null;
       const storedMerchantId = isValidMerchantId(data.merchant_id) ? data.merchant_id : null;
-      let resolvedMerchantId = requestedMerchantId ?? storedMerchantId;
 
-      if (!resolvedMerchantId && walletAddress) {
-        const { data: merchantByWallet, error: walletFetchError } = await supabase
-          .from("merchants")
-          .select("id")
-          .eq("wallet_address", walletAddress)
-          .single();
-
-        if (!walletFetchError && merchantByWallet?.id && isValidMerchantId(merchantByWallet.id)) {
-          resolvedMerchantId = merchantByWallet.id;
-        }
+      if (requestedMerchantId && storedMerchantId && requestedMerchantId !== storedMerchantId) {
+        return NextResponse.json({ success: false, error: "This pairing code belongs to a different vault merchant." }, { status: 409 });
       }
 
+      const resolvedMerchantId = storedMerchantId ?? requestedMerchantId;
+
       if (!resolvedMerchantId) {
-        return NextResponse.json({ success: false, error: "Merchant ID is required" }, { status: 400 });
+        return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
       }
 
       const { error: updateError } = await supabase
@@ -103,19 +96,24 @@ export async function POST(request: Request) {
 
       const { data: merchantData, error: merchantError } = await supabase
         .from("merchants")
-        .select("wallet_address, merchant_name, merchant_logo")
+        .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
         .single();
 
-      if (merchantError || !merchantData?.wallet_address) {
-        return NextResponse.json({ success: false, error: "Merchant wallet address not found" }, { status: 404 });
+      const merchantWalletAddress = (merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "").trim();
+
+      if (merchantError || !merchantWalletAddress) {
+        return NextResponse.json({
+          success: false,
+          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
+        }, { status: 404 });
       }
 
       return NextResponse.json({
         success: true,
         code,
         merchantId: resolvedMerchantId,
-        walletAddress: merchantData.wallet_address,
+        walletAddress: merchantWalletAddress,
         merchantName: merchantData.merchant_name ?? null,
         merchantLogo: merchantData.merchant_logo ?? null,
         terminalLabel: data.terminal_label ?? null,

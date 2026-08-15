@@ -187,7 +187,7 @@ export default function TerminalPage() {
       }
 
       if (!pairedWalletAddress) {
-        throw new Error("Merchant wallet address unavailable");
+        throw new Error("This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.");
       }
 
       const challenge = createSessionChallenge();

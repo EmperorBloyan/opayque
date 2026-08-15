@@ -1,4 +1,3 @@
-```tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -7,23 +6,23 @@ import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
 import {
+  AlertCircle,
   ArrowLeft,
+  Building2,
+  Check,
   Copy,
   Eye,
   EyeOff,
+  Image as ImageIcon,
   Key,
+  Lock,
   LogOut,
   Plus,
   Send,
   ShieldCheck,
-  Wallet,
-  Check,
-  AlertCircle,
-  Upload,
-  Building2,
-  Lock,
   Unlock,
-  Image as ImageIcon
+  Upload,
+  Wallet,
 } from "lucide-react";
 
 interface ApiKeyPair {
@@ -40,14 +39,12 @@ export default function ApiKeysPage() {
   const { isSandbox } = useEnvironment();
   const supabase = createClient();
 
-  // API Keys State
   const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [creatingKey, setCreatingKey] = useState(false);
   const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
-  // Merchant Profile State
   const [merchantEmail, setMerchantEmail] = useState("");
   const [merchantName, setMerchantName] = useState("");
   const [merchantLogo, setMerchantLogo] = useState("");
@@ -56,10 +53,6 @@ export default function ApiKeysPage() {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
 
-  // UI Control States
-  const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
-
-  // Status States
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -67,28 +60,13 @@ export default function ApiKeysPage() {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
-  const currentEnv = isSandbox? "devnet" : "mainnet";
-  const envPrefix = isSandbox? "osk_test_" : "osk_live_";
+  const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
 
-  // Hydrate from LocalStorage + DB + API
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const loadData = async () => {
-      setLoadingKeys(true);
-
-      // 1. Zero-Latency LocalStorage Hydration per env
-      const cachedKeys = window.localStorage.getItem(`opayque_api_keys_${currentEnv}`);
-      if (cachedKeys) {
-        try {
-          setKeyPairs(JSON.parse(cachedKeys));
-        } catch (e) {
-          console.warn("Failed to parse cached keys", e);
-        }
-      }
-
-      // 2. Load profile fields from local
-      const localEmail = window.localStorage.getItem("merchant_email") || "";
+      const localEmail = window.localStorage.getItem("merchant_email") || window.localStorage.getItem("email") || "";
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
       const localSecondary = window.localStorage.getItem("secondary_email") || "";
@@ -104,39 +82,43 @@ export default function ApiKeysPage() {
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
 
-      // 3. Fetch Sync from Backend + DB
+      const cachedKeys = window.localStorage.getItem("opayque_api_keys");
+      if (cachedKeys) {
+        try {
+          const parsed = JSON.parse(cachedKeys);
+          if (Array.isArray(parsed)) setKeyPairs(parsed);
+        } catch (error) {
+          console.warn("Failed to parse cached keys", error);
+        }
+      }
+
       try {
-        const userRes = await supabase.auth.getUser();
-        const user = userRes.data?.user;
+        const { data: { user } } = await supabase.auth.getUser();
 
         const [merchantRes, keysRes] = await Promise.all([
-          fetch('/api/v1/merchant').catch(() => null),
-          fetch(`/api/v1/keys?env=${currentEnv}`).catch(() => null),
+          fetch("/api/v1/merchant").catch(() => null),
+          fetch("/api/v1/keys").catch(() => null),
         ]);
 
-        // Load secret key from merchants table so it persists
         if (user) {
           const { data: merchantData } = await supabase
-          .from("merchants")
-          .select("api_key")
-          .eq("auth_user_id", user.id)
-          .single();
+            .from("merchants")
+            .select("api_key")
+            .eq("user_id", user.id)
+            .maybeSingle();
 
           if (merchantData?.api_key) {
-            const dbEnv = merchantData.api_key.startsWith("osk_test_")? "devnet" : "mainnet";
-            const dbKey: ApiKeyPair = {
-              id: "db-key-1",
-              publishable: `${merchantData.api_key.startsWith("osk_test_")? "osk_test_" : "osk_live_"}pub_saved`,
-              secret: merchantData.api_key,
-              createdAt: new Date().toISOString(),
-              lastUsed: 'never',
-              environment: dbEnv
-            };
             setKeyPairs((prev) => {
-              const withoutDb = prev.filter(k => k.id!== "db-key-1");
-              const updated = [dbKey,...withoutDb];
-              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(updated));
-              return updated;
+              if (prev.length > 0) return prev;
+              const prefix = merchantData.api_key.startsWith("osk_test_") ? "osk_test_" : "osk_live_";
+              return [{
+                id: "db-key-1",
+                publishable: `${prefix}pub_saved`,
+                secret: merchantData.api_key,
+                createdAt: new Date().toISOString(),
+                lastUsed: "never",
+                environment: prefix.includes("test") ? "devnet" : "mainnet",
+              }];
             });
           }
         }
@@ -162,67 +144,64 @@ export default function ApiKeysPage() {
         }
 
         if (keysRes && keysRes.ok) {
-          const payload = await keysRes.json();
-          if (payload.keys && Array.isArray(payload.keys)) {
-            setKeyPairs((prev) => {
-              // Transform backend keys, preserve secret when local match exists
-              const transformed: ApiKeyPair[] = payload.keys.map((k: any) => {
-                const localMatch = prev.find((p) => p.id === k.id);
-                return {
-                  id: k.id,
-                  publishable: k.publishable_key ?? (k.prefix ? `${k.prefix}pub_${k.id.slice(0, 8)}` : `osk_pub_${k.id.slice(0, 8)}`),
-                  secret: k.rawSecretKey ?? localMatch?.secret,
-                  createdAt: k.created_at ?? new Date().toISOString(),
-                  lastUsed: k.last_used_at ? 'recent' : 'never',
-                  environment: k.environment || currentEnv,
-                } as ApiKeyPair;
-              });
+          const data = await keysRes.json();
+          if (Array.isArray(data?.keys)) {
+            const transformed: ApiKeyPair[] = data.keys.map((k: any) => ({
+              id: String(k.id || ""),
+              publishable: k.prefix ? `${k.prefix}pub_${String(k.id || "").slice(0, 8)}` : `osk_pub_${String(k.id || "").slice(0, 8)}`,
+              secret: k.rawSecretKey || undefined,
+              createdAt: k.created_at || new Date().toISOString(),
+              lastUsed: k.last_used_at ? "recent" : "never",
+              environment: (k.environment === "devnet" ? "devnet" : "mainnet") as "mainnet" | "devnet",
+            }));
 
-              // Keep any local-only keys that backend didn't return
-              const backendIds = new Set(payload.keys.map((k: any) => k.id));
-              const localOnly = prev.filter(p => !backendIds.has(p.id));
-
-              const merged = [...transformed, ...localOnly];
-              window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(merged));
-              return merged;
-            });
+            if (transformed.length > 0) {
+              setKeyPairs(transformed);
+              window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
+            }
           }
         }
       } catch (error) {
-        console.warn('Backend API offline or unauthenticated. Using local cache.', error);
+        console.warn("Backend API offline or unauthenticated. Using local cache.", error);
       } finally {
         setLoadingKeys(false);
       }
     };
 
     void loadData();
-  }, [isSandbox, supabase, currentEnv]);
+  }, [supabase]);
 
-  const primaryEmailAvailable = Boolean(merchantEmail.trim());
+  const primaryEmailAvailable = Boolean((merchantEmail || "").trim());
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setMerchantLogo(result);
-        if (typeof window!== "undefined") {
-          window.localStorage.setItem("merchant_logo", result);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      setMerchantLogo(result);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_logo", result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleToggleVisibility = (id: string) => {
-    setVisibleSecretId((current) => (current === id? null : id));
+    setVisibleSecretId((current) => (current === id ? null : id));
   };
 
-  const handleCopyKey = (id: string, value: string) => {
-    navigator.clipboard.writeText(value);
-    setCopiedKeyId(id);
-    window.setTimeout(() => setCopiedKeyId(null), 2000);
+  const handleCopyKey = async (id: string, value: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(value);
+      }
+      setCopiedKeyId(id);
+      window.setTimeout(() => setCopiedKeyId(null), 2000);
+    } catch (error) {
+      console.warn("Copy failed", error);
+    }
   };
 
   const handleCreateKey = async () => {
@@ -230,66 +209,72 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
+    const targetEnv = isSandbox ? "devnet" : "mainnet";
+    const envPrefix = isSandbox ? "osk_test_" : "osk_live_";
     let newKey: ApiKeyPair | null = null;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
-      const res = await fetch('/api/v1/keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: currentEnv }),
+      const res = await fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ environment: targetEnv }),
       });
 
-      if (!res.ok) throw new Error("Key creation failed");
-
-      const data = await res.json();
-      newKey = {
-        id: data.key?.id || data.id || Math.random().toString(36).substring(2, 9),
-        publishable: data.key?.publishable || (data.prefix || envPrefix) + 'pub_' + (data.id? data.id.slice(0, 8) : '8f921a'),
-        secret: data.key?.rawSecretKey || data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
-        createdAt: data.key?.created_at || data.createdAt || new Date().toISOString(),
-        lastUsed: 'never',
-        environment: currentEnv,
-      };
-
-      // Save to merchants table so it persists
-      if (newKey.secret) {
-        await supabase
-        .from("merchants")
-        .upsert({
-            auth_user_id: user.id,
-            api_key: newKey.secret,
-            updated_at: new Date().toISOString()
-          }, { onConflict: "auth_user_id" });
+      if (res.ok) {
+        const data = await res.json();
+        newKey = {
+          id: data.id || Math.random().toString(36).substring(2, 9),
+          publishable: (data.prefix || envPrefix) + "pub_" + (data.id ? String(data.id).slice(0, 8) : "8f921a"),
+          secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
+          createdAt: data.createdAt || new Date().toISOString(),
+          lastUsed: "never",
+          environment: targetEnv,
+        };
       }
 
+      if (newKey?.secret) {
+        const { error: dbError } = await supabase
+          .from("merchants")
+          .upsert(
+            {
+              user_id: user.id,
+              api_key: newKey.secret,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" }
+          );
+
+        if (dbError) throw dbError;
+      }
     } catch (error) {
-      console.warn('API endpoint offline, generating key locally', error);
+      console.warn("API endpoint offline, generating key locally", error);
     }
 
-    // Local fallback
     if (!newKey) {
-      const randomId = 'local_' + Math.random().toString(36).substring(2, 10);
+      const randomId = Math.random().toString(36).substring(2, 10);
       newKey = {
         id: randomId,
         publishable: `${envPrefix}pub_${randomId}`,
         secret: `${envPrefix}sec_${Math.random().toString(36).substring(2, 15)}`,
         createdAt: new Date().toISOString(),
-        lastUsed: 'never',
-        environment: currentEnv,
+        lastUsed: "never",
+        environment: targetEnv,
       };
     }
 
     setKeyPairs((current) => {
-      const updated = [newKey!,...current.filter(k => k.environment === currentEnv)];
-      window.localStorage.setItem(`opayque_api_keys_${currentEnv}`, JSON.stringify(updated));
+      const updated = [newKey!, ...current];
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("opayque_api_keys", JSON.stringify(updated));
+      }
       return updated;
     });
 
     setVisibleSecretId(newKey.id);
-    setProfileMessage(`New ${currentEnv.toUpperCase()} API key pair generated and saved.`);
+    setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated and saved.`);
     setCreatingKey(false);
   };
 
@@ -298,7 +283,7 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    if (typeof window!== "undefined") {
+    if (typeof window !== "undefined") {
       window.localStorage.setItem("merchant_email", merchantEmail.trim());
       window.localStorage.setItem("merchant_name", merchantName.trim());
       window.localStorage.setItem("merchant_logo", merchantLogo.trim());
@@ -312,9 +297,9 @@ export default function ApiKeysPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
-      const res = await fetch('/api/v1/merchant', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/v1/merchant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.id,
           email: merchantEmail.trim() || null,
@@ -329,11 +314,11 @@ export default function ApiKeysPage() {
 
       if (!res.ok) {
         const body = await res.json();
-        throw new Error(body?.error || 'Unable to save merchant details');
+        throw new Error(body?.error || "Unable to save merchant details");
       }
 
       const data = await res.json();
-      setProfileMessage('Merchant details updated successfully.');
+      setProfileMessage("Merchant details updated successfully.");
 
       const updated = data?.merchant;
       if (updated) {
@@ -346,8 +331,8 @@ export default function ApiKeysPage() {
         if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
       }
     } catch (error: any) {
-      console.warn('API update failed; saved to local cache', error);
-      setProfileMessage('Merchant details saved locally.');
+      console.warn("API update failed; saved to local cache", error);
+      setProfileMessage("Merchant details saved locally.");
     } finally {
       setProfileSaving(false);
     }
@@ -357,17 +342,18 @@ export default function ApiKeysPage() {
     setSendingNotification(true);
     setNotificationMessage(null);
     setNotificationError(null);
+
     try {
-      const res = await fetch('/api/v1/merchant/notify', { method: 'POST' });
+      const res = await fetch("/api/v1/merchant/notify", { method: "POST" });
       if (!res.ok) {
         const body = await res.json();
-        throw new Error(body?.error || 'Failed to send notification');
+        throw new Error(body?.error || "Failed to send notification");
       }
       const body = await res.json();
-      setNotificationMessage(body?.message || 'Access notification sent.');
+      setNotificationMessage(body?.message || "Access notification sent.");
     } catch (error: any) {
       console.error(error);
-      setNotificationError(error?.message || 'Unable to send access notification.');
+      setNotificationError(error?.message || "Unable to send access notification.");
     } finally {
       setSendingNotification(false);
     }
@@ -377,17 +363,18 @@ export default function ApiKeysPage() {
     try {
       await supabase.auth.signOut();
     } catch (error) {
-      console.error('Sign-out failed', error);
+      console.error("Sign-out failed", error);
     }
+
     clearActiveSession();
-    if (typeof window!== 'undefined') {
-      window.localStorage.removeItem('merchant_name');
-      window.localStorage.removeItem('merchant_logo');
-      window.localStorage.removeItem('merchant_email');
-      window.localStorage.removeItem('developer_environment');
-      window.localStorage.removeItem(`opayque_api_keys_${currentEnv}`);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("merchant_name");
+      window.localStorage.removeItem("merchant_logo");
+      window.localStorage.removeItem("merchant_email");
+      window.localStorage.removeItem("developer_environment");
+      window.localStorage.removeItem("opayque_api_keys");
     }
-    router.push('/login');
+    router.push("/login");
   };
 
   return (
@@ -395,9 +382,297 @@ export default function ApiKeysPage() {
       <div className="absolute inset-x-0 top-0 h-[400px] bg-[radial-gradient(circle_at_top_right,rgba(129,140,248,0.16),transparent_40%)] pointer-events-none -z-10" />
       <div className="absolute inset-x-0 bottom-0 h-[420px] bg-[radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_45%)] pointer-events-none -z-10" />
 
-      {/* PASTE YOUR ENTIRE RETURN() JSX HERE. IT'S EXACTLY THE SAME AS YOURS */}
       <div className="max-w-7xl mx-auto space-y-10">
-        {/*... your JSX from previous message... */}
+        <header className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-400">
+                <Key size={12} className="text-purple-300" />
+                Access Control
+              </span>
+              <h1 className="mt-4 text-4xl md:text-5xl font-black uppercase tracking-tighter text-white">
+                API Keys &amp; Merchant Details
+              </h1>
+              <p className="max-w-2xl text-sm text-zinc-400 leading-7 mt-3">
+                A single control panel for your merchant onboarding fields, payout configuration, and API key governance.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push("/developer/overview")}
+              className="inline-flex items-center gap-2 rounded-full border-white/10 bg-zinc-900/80 px-4 py-3 text-xs font-black uppercase tracking-[0.28em] text-white transition hover:border-purple-400/40 hover:bg-white/5"
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+          </div>
+        </header>
+
+        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
+                  <h2 className="mt-2 text-2xl font-bold text-white">Business details</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEmailReadOnly((prev) => !prev)}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.22em] text-zinc-300"
+                >
+                  {isEmailReadOnly ? "Edit" : "Lock"}
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Primary email</span>
+                  <input
+                    value={merchantEmail}
+                    readOnly={isEmailReadOnly}
+                    onChange={(event) => setMerchantEmail(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="merchant@company.com"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Merchant name</span>
+                  <input
+                    value={merchantName}
+                    onChange={(event) => setMerchantName(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="Acme Payments"
+                  />
+                </label>
+
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Website URL</span>
+                  <input
+                    value={websiteUrl}
+                    onChange={(event) => setWebsiteUrl(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="https://acme.com"
+                  />
+                </label>
+
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Webhook URL</span>
+                  <input
+                    value={webhookUrl}
+                    onChange={(event) => setWebhookUrl(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="https://api.acme.com/webhooks/opayque"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Secondary email</span>
+                  <input
+                    value={secondaryEmail}
+                    onChange={(event) => setSecondaryEmail(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="ops@company.com"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Settlement wallet</span>
+                  <input
+                    value={settlementWalletAddress}
+                    onChange={(event) => setSettlementWalletAddress(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
+                    placeholder="Solana wallet address"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving}
+                  className="inline-flex items-center gap-2 rounded-full bg-purple-500 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <ShieldCheck size={14} />
+                  {profileSaving ? "Saving..." : "Save profile"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSendAccessNotification}
+                  disabled={sendingNotification}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Send size={14} />
+                  {sendingNotification ? "Sending..." : "Send access"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20"
+                >
+                  <LogOut size={14} /> Sign out
+                </button>
+              </div>
+
+              {(profileMessage || profileError || notificationMessage || notificationError) && (
+                <div className="mt-5 space-y-2 text-sm">
+                  {profileMessage && <p className="text-emerald-300">{profileMessage}</p>}
+                  {profileError && <p className="text-red-300">{profileError}</p>}
+                  {notificationMessage && <p className="text-emerald-300">{notificationMessage}</p>}
+                  {notificationError && <p className="text-red-300">{notificationError}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Branding</p>
+                  <h2 className="mt-2 text-xl font-bold text-white">Merchant logo</h2>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/5 p-2 text-purple-300">
+                  <ImageIcon size={18} />
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/10 bg-black/20 p-4">
+                {merchantLogo ? (
+                  <img src={merchantLogo} alt="Merchant logo" className="h-24 w-24 rounded-2xl object-cover" />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
+                    <Building2 size={30} />
+                  </div>
+                )}
+
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-zinc-200">
+                  <Upload size={14} /> Upload logo
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Environment</p>
+                  <h2 className="mt-2 text-xl font-bold text-white">{isSandbox ? "Sandbox" : "Production"}</h2>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${isSandbox ? "bg-amber-500/20 text-amber-200" : "bg-emerald-500/20 text-emerald-200"}`}>
+                  {isSandbox ? "Devnet" : "Mainnet"}
+                </span>
+              </div>
+
+              <div className="space-y-3 text-sm text-zinc-300">
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <span>API access</span>
+                  <span className="text-emerald-300">{primaryEmailAvailable ? "Available" : "Pending"}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <span>Wallet attached</span>
+                  <span className="text-purple-300">{settlementWalletAddress ? "Ready" : "Not set"}</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">API governance</p>
+              <h2 className="mt-2 text-2xl font-bold text-white">Keys</h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreateKey}
+              disabled={creatingKey}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus size={14} />
+              {creatingKey ? "Creating..." : "Create key"}
+            </button>
+          </div>
+
+          {loadingKeys ? (
+            <div className="flex items-center gap-2 text-sm text-zinc-400">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-purple-400" />
+              Loading API keys...
+            </div>
+          ) : keyPairs.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-zinc-400">
+              No API keys yet. Create your first key to start managing merchant access.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {keyPairs.map((keyPair) => {
+                const isSecretVisible = visibleSecretId === keyPair.id;
+                const isCopied = copiedKeyId === keyPair.id;
+
+                return (
+                  <div key={keyPair.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-2 text-emerald-300">
+                          <Key size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">{keyPair.environment || "mainnet"}</p>
+                          <p className="mt-1 font-mono text-sm text-white">{keyPair.publishable}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleVisibility(keyPair.id)}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-zinc-200"
+                        >
+                          {isSecretVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+                          {isSecretVisible ? "Hide" : "Reveal"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyKey(keyPair.id, keyPair.secret || keyPair.publishable)}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-zinc-200"
+                        >
+                          {isCopied ? <Check size={12} /> : <Copy size={12} />}
+                          {isCopied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Publishable key</p>
+                        <p className="mt-2 truncate font-mono text-xs text-zinc-200">{keyPair.publishable}</p>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Secret key</p>
+                        <p className="mt-2 font-mono text-xs text-zinc-200 break-all">
+                          {isSecretVisible ? keyPair.secret || "Hidden" : "••••••••••••••••"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Metadata</p>
+                        <p className="mt-2 text-xs text-zinc-300">Created {new Date(keyPair.createdAt).toLocaleDateString()}</p>
+                        <p className="mt-1 text-xs text-zinc-300">Last used {keyPair.lastUsed}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
