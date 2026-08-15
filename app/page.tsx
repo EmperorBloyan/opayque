@@ -224,18 +224,13 @@ export default function UnifiedLanding() {
                 </p>
               </div>
 
-              {connected ? (
-                <button
-                  onClick={() => void handleVaultEntrance()}
-                  className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
-                >
-                  Enter Secured Vault
-                </button>
-              ) : (
-                <div className="p-1 bg-gradient-to-b from-white/10 to-transparent rounded-2xl">
-                  <WalletMultiButtonNoSSR className="!bg-white !text-black !rounded-xl !font-black !text-[10px] !uppercase !tracking-widest !h-14 !w-full flex justify-center hover:!bg-zinc-200" />
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => router.push("/onboarding")}
+                className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
+              >
+                Select Wallet
+              </button>
               {authError ? <p className="mt-4 text-sm text-amber-400">{authError}</p> : null}
             </div>
 

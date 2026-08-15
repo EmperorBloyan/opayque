@@ -34,16 +34,15 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isDeveloperRoute = pathname.startsWith('/developer');
-  const isOnboarding = pathname === '/developer/onboarding';
-  const isLogin = pathname === '/login';
+  const isVaultRoute = pathname.startsWith('/vault');
+  const isOnboardingRoute = pathname === '/onboarding' || pathname === '/developer/onboarding';
+  const isLoginRoute = pathname === '/login';
 
-  // 1. If user is NOT logged in and trying to access protected developer routes (excluding onboarding), send to login
-  if (!user && isDeveloperRoute && !isOnboarding) {
+  if (!user && (isDeveloperRoute || isVaultRoute || isOnboardingRoute)) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // 2. If user IS logged in and trying to hit login or onboarding, bounce them straight to the developer overview hub
-  if (user && (isLogin || isOnboarding)) {
+  if (user && (isLoginRoute || isOnboardingRoute)) {
     return NextResponse.redirect(new URL('/developer/overview', request.url));
   }
 

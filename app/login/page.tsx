@@ -47,7 +47,26 @@ export default function LoginPage() {
       const supabase = createClient();
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
+
       if (data?.user) {
+        try {
+          const merchantRes = await fetch("/api/v1/merchant");
+          if (merchantRes.ok) {
+            const payload = await merchantRes.json();
+            const merchant = payload?.merchant;
+            if (merchant) {
+              if (typeof window !== "undefined") {
+                if (merchant.merchant_name) window.localStorage.setItem("merchant_name", merchant.merchant_name);
+                if (merchant.merchant_logo) window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+                if (merchant.email) window.localStorage.setItem("merchant_email", merchant.email);
+                if (merchant.settlement_wallet_address) window.localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+              }
+            }
+          }
+        } catch (merchantError) {
+          console.warn("Failed to hydrate merchant profile after login", merchantError);
+        }
+
         router.push("/developer/overview");
       } else {
         setMessage("Signed in successfully. Redirecting…");

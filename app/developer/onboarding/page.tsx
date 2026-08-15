@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -16,6 +16,17 @@ import {
 } from "lucide-react";
 import { createClient } from '@/lib/supabase/client';
 
+export default function DeveloperOnboardingPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/onboarding");
+  }, [router]);
+
+  return null;
+}
+
+/*
 export default function DeveloperOnboardingPage() {
   const router = useRouter();
   

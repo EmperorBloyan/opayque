@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { createClient } from "@/lib/supabase/client";
+import { clearActiveSession } from "@/lib/crypto/session";
 import { 
   LucideLayoutDashboard, 
   LucideSettings2, 
@@ -15,6 +17,7 @@ import {
 
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { connected, publicKey } = useWallet();
   const isStandaloneCheckout = pathname === '/vault/checkout';
   
@@ -36,6 +39,34 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       setMerchantName(savedName);
       setDraftName(savedName);
     }
+
+    const hydrateMerchantProfile = async () => {
+      try {
+        const res = await fetch("/api/v1/merchant");
+        if (!res.ok) return;
+        const payload = await res.json();
+        const merchant = payload?.merchant;
+        if (!merchant) return;
+
+        if (merchant.merchant_name) {
+          const name = merchant.merchant_name;
+          setMerchantName(name);
+          setDraftName(name);
+          localStorage.setItem("merchant_name", name);
+        }
+
+        if (merchant.merchant_logo) {
+          const logoUrl = merchant.merchant_logo;
+          setLogo(logoUrl);
+          setDraftLogo(logoUrl);
+          localStorage.setItem("merchant_logo", logoUrl);
+        }
+      } catch (error) {
+        console.warn("Failed to hydrate vault merchant profile", error);
+      }
+    };
+
+    void hydrateMerchantProfile();
   }, []);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,6 +130,24 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}` 
     : "Not Connected";
 
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Supabase sign-out failed during vault sign-out", error);
+    }
+
+    clearActiveSession();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("merchant_name");
+      window.localStorage.removeItem("merchant_logo");
+      window.localStorage.removeItem("merchant_email");
+      window.localStorage.removeItem("settlement_wallet_address");
+    }
+    router.push("/login");
+  };
+
   if (isStandaloneCheckout) {
     return <>{children}</>;
   }
@@ -151,7 +200,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
           </div>
 
           {/* NAV */}
-          <nav className="flex bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+          <nav className="flex flex-wrap items-center gap-3 bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
             <Link 
               href="/vault/dashboard" 
               className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
@@ -172,6 +221,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             >
               <LucideSettings2 size={14} /> Registry
             </Link>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-red-500/40 hover:text-red-300"
+            >
+              Sign Out
+            </button>
           </nav>
         </header>
 
