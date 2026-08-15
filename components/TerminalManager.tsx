@@ -178,6 +178,33 @@ async function resolveMerchantId(): Promise<string | null> {
   return insertedMerchant.id;
 }
 
+async function ensureActiveMerchantWalletRecord(): Promise<{ merchantId: string | null; walletAddress: string | null }> {
+  const session = getActiveSession();
+  const walletAddress = session?.walletAddress?.trim() || null;
+
+  if (!walletAddress) {
+    return { merchantId: null, walletAddress: null };
+  }
+
+  const supabase = createSupabaseBrowserClient();
+  const merchantName = typeof window !== "undefined"
+    ? window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant"
+    : "Opayque Merchant";
+
+  const { data, error } = await supabase
+    .from("merchants")
+    .upsert({ wallet_address: walletAddress, merchant_name: merchantName }, { onConflict: "wallet_address" })
+    .select("id, wallet_address")
+    .single();
+
+  if (error || !data?.id) {
+    console.error("Failed to persist active merchant wallet record", error);
+    return { merchantId: null, walletAddress: walletAddress };
+  }
+
+  return { merchantId: data.id, walletAddress: data.wallet_address ?? walletAddress };
+}
+
 function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   return items.map((terminal) => ({
     ...terminal,
@@ -282,46 +309,49 @@ export default function TerminalManager({
   // --- REFACTORED PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
-      if (!resolvedMerchantId) {
+      const merchantWalletRecord = await ensureActiveMerchantWalletRecord();
+      const merchantIdForPairing = resolvedMerchantId ?? merchantWalletRecord.merchantId;
+
+      if (!merchantIdForPairing) {
         setToast("Merchant session is not ready. Please refresh.");
         setTimeout(() => setToast(null), 3000);
         return;
       }
 
+      setResolvedMerchantId(merchantIdForPairing);
       setIsRefreshingCode(true);
       setErrorState(null);
-      
+
       try {
         const supabase = createSupabaseBrowserClient();
-
-        // Keep vault-generated codes on the same table the terminal verification checks.
-        await supabase
-          .from("terminal_pairing_codes")
-          .delete()
-          .eq("merchant_id", resolvedMerchantId);
-
         const code = createAccessCode();
         const expiresAtMs = Date.now() + 10 * 60 * 1000;
         const isoExpiresAt = new Date(expiresAtMs).toISOString();
+        const terminalLabel = labelOverride || newTerminalLabel || createDefaultTerminalLabel();
 
-        const { error } = await supabase.from("terminal_pairing_codes").insert({
-          merchant_id: resolvedMerchantId,
-          code,
-          status: "PENDING",
-          terminal_label: labelOverride || newTerminalLabel || createDefaultTerminalLabel(),
-          expires_at: isoExpiresAt,
-        });
+        // Persist the code before exposing it to the user. The terminal validator reads the same table.
+        const { error: upsertError } = await supabase
+          .from("terminal_pairing_codes")
+          .upsert(
+            {
+              code,
+              merchant_id: merchantIdForPairing,
+              status: "PENDING",
+              terminal_label: terminalLabel,
+              expires_at: isoExpiresAt,
+            },
+            { onConflict: "code" }
+          );
 
-        if (error) {
-          console.error("Supabase insert error:", error);
+        if (upsertError) {
+          console.error("Supabase pairing code save error:", upsertError);
           throw new Error("Failed to save pairing code in database.");
         }
 
-        // 3. UPDATE STATE
+        // Only reveal the code after the Supabase row is successfully written.
         setAuthCode(code);
         setPairingExpiresAt(expiresAtMs);
         setPairingState("waiting");
-
       } catch (err: any) {
         console.error("Failed to generate pairing code:", err);
         setToast(err.message || "Failed to create code. Try again.");
