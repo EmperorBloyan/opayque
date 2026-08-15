@@ -215,7 +215,7 @@ export default function ApiKeysPage() {
               secret: k.rawSecretKey || undefined,
               createdAt: k.created_at || new Date().toISOString(),
               lastUsed: k.last_used_at ? "recent" : "never",
-              environment: (k.environment === "devnet" ? "devnet" : "mainnet") as "mainnet" | "devnet",
+              environment: (k.environment === "mainnet" || k.environment === "live") ? "mainnet" : "devnet",
             }));
 
             if (transformed.length > 0) {
@@ -272,7 +272,7 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    const targetEnv = isSandbox ? "devnet" : "mainnet";
+    const targetEnv = isSandbox ? "sandbox" : "mainnet";
     const envPrefix = isSandbox ? "osk_test_" : "osk_live_";
     let newKey: ApiKeyPair | null = null;
 
@@ -286,19 +286,25 @@ export default function ApiKeysPage() {
         body: JSON.stringify({ environment: targetEnv }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        newKey = {
-          id: data.id || Math.random().toString(36).substring(2, 9),
-          publishable: (data.prefix || envPrefix) + "pub_" + (data.id ? String(data.id).slice(0, 8) : "8f921a"),
-          secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
-          createdAt: data.createdAt || new Date().toISOString(),
-          lastUsed: "never",
-          environment: targetEnv,
-        };
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to create key: ${res.status}`);
       }
 
-      if (newKey?.secret) {
+      const data = await res.json();
+      const isTemporary = data.isTemporary === true;
+
+      newKey = {
+        id: data.id || Math.random().toString(36).substring(2, 9),
+        publishable: (data.prefix || envPrefix) + "pub_" + (data.id ? String(data.id).slice(0, 8) : "8f921a"),
+        secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
+        createdAt: data.createdAt || new Date().toISOString(),
+        lastUsed: "never",
+        environment: data.environment === 'mainnet' ? 'mainnet' : 'devnet',
+      };
+
+      // If this is a persistent key, update the merchant profile
+      if (newKey?.secret && !isTemporary) {
         const { error: dbError } = await supabase
           .from("merchants")
           .update({
@@ -312,20 +318,20 @@ export default function ApiKeysPage() {
         if (dbError) throw dbError;
         setMerchantApiAccessStatus("active");
       }
-    } catch (error) {
-      console.warn("API endpoint offline, generating key locally", error);
-    }
 
-    if (!newKey) {
-      const randomId = Math.random().toString(36).substring(2, 10);
-      newKey = {
-        id: randomId,
-        publishable: `${envPrefix}pub_${randomId}`,
-        secret: `${envPrefix}sec_${Math.random().toString(36).substring(2, 15)}`,
-        createdAt: new Date().toISOString(),
-        lastUsed: "never",
-        environment: targetEnv,
-      };
+      // Show appropriate message
+      if (isTemporary) {
+        setProfileMessage(
+          `Temporary ${targetEnv.toUpperCase()} key generated. Save your merchant profile to create a persistent key.`
+        );
+      } else {
+        setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated and saved.`);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to create API key";
+      setProfileError(errorMsg);
+      setCreatingKey(false);
+      return;
     }
 
     setKeyPairs((current) => {

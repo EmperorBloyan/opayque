@@ -89,8 +89,10 @@ export async function POST(request: Request) {
     // If request body is empty or invalid JSON, fall back to default
   }
 
-  const environment = body.environment === 'mainnet' ? 'mainnet' : 'sandbox';
-  const prefix = environment === 'mainnet' ? 'opq_live_' : 'opq_test_';
+  // Normalize environment: accept "devnet", "mainnet", "sandbox", "live"
+  const rawEnv = body.environment || 'sandbox';
+  const environment = (rawEnv === 'mainnet' || rawEnv === 'live') ? 'mainnet' : 'sandbox';
+  const prefix = environment === 'mainnet' ? 'osk_live_' : 'osk_test_';
 
   // Generate 256 bits of secure entropy
   const randomEntropy = crypto.randomBytes(32).toString('hex');
@@ -112,8 +114,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: merchantError.message }, { status: 500 });
   }
 
+  // If merchant profile doesn't exist, create a temporary key for testing
   if (!merchant?.id) {
-    return NextResponse.json({ error: 'Merchant profile not found for authenticated user.' }, { status: 404 });
+    return NextResponse.json(
+      {
+        id: `temp_${Date.now()}`,
+        environment,
+        prefix,
+        createdAt: new Date().toISOString(),
+        rawSecretKey,
+        isTemporary: true,
+        warning: 'This is a temporary test key. Create a merchant profile and generate a persistent key to go live.',
+      },
+      { status: 201 }
+    );
   }
 
   const { data, error } = await supabase
@@ -147,6 +161,7 @@ export async function POST(request: Request) {
       prefix: data.prefix,
       createdAt: data.created_at,
       rawSecretKey, // Returned once upon creation
+      isTemporary: false,
     },
     { status: 201 }
   );

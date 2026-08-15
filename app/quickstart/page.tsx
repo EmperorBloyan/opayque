@@ -13,7 +13,7 @@ const REQUEST_SNIPPET = `const response = await fetch('https://opayque-three.ver
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer osk_live_9f87d6abcdef...'
+    'Authorization': 'Bearer osk_test_9f87d6abcdef...'
   },
   body: JSON.stringify({
     order_id: "ORD-8821",
@@ -118,7 +118,7 @@ export default function QuickstartPage() {
         }
       }
 
-      if (!apiKey) throw new Error("No API Key found. Please generate one in the Keys page first, or log back in.");
+      if (!apiKey) throw new Error("Unable to generate API key. Please create one in the Keys page first.");
 
       const response = await fetch('/api/v1/sessions', {
         method: 'POST',
