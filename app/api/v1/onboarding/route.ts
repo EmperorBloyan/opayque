@@ -19,12 +19,12 @@ export async function POST(request: Request) {
   const { data: merchant, error } = await supabase
     .from('merchants')
     .upsert({
-      id: user.id,
+      auth_user_id: user.id,
       email: user.email!,
       onboarding_status: 'completed',
       settlement_wallet_address: settlementWalletAddress || null,
       updated_at: new Date().toISOString(),
-    })
+    }, { onConflict: 'auth_user_id' })
     .select()
     .single();
 

@@ -55,16 +55,20 @@ export default function DeveloperOnboardingPage() {
 
       if (authError) throw authError;
 
-      // 2. Insert their merchant details into your database
+      // 2. Link the merchant record to the authenticated Supabase user.
+      // The API profile fetch looks up merchants by auth_user_id, not by id.
       if (authData.user) {
-        const { error: dbError } = await supabase.from('merchants').insert({
-          id: authData.user.id, // Link merchant to the auth user
-          email: email,
-          merchant_name: companyName,
-          settlement_wallet_address: walletAddress,
-          webhook_url: webhookUrl,
-          onboarding_status: 'COMPLETED'
-        });
+        const { error: dbError } = await supabase
+          .from('merchants')
+          .upsert({
+            auth_user_id: authData.user.id,
+            email,
+            merchant_name: companyName,
+            settlement_wallet_address: walletAddress,
+            webhook_url: webhookUrl,
+            onboarding_status: 'completed'
+          }, { onConflict: 'auth_user_id' })
+          .select();
 
         if (dbError) throw dbError;
       }
