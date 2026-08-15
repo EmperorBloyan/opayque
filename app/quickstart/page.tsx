@@ -92,6 +92,23 @@ export default function QuickstartPage() {
         }
       }
 
+      if (!apiKey) {
+        try {
+          const createRes = await fetch('/api/v1/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environment: 'sandbox' })
+          });
+
+          if (createRes.ok) {
+            const data = await createRes.json();
+            apiKey = data?.rawSecretKey || null;
+          }
+        } catch {
+          apiKey = null;
+        }
+      }
+
       if (!apiKey) throw new Error("No API Key found. Please generate one in the Keys page first, or log back in.");
 
       const response = await fetch('https://opayque-three.vercel.app/api/v1/sessions', {

@@ -1,31 +1,56 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import crypto from 'node:crypto';
 
-const supabaseAdmin = createSupabaseServerClient();
+export function normalizeApiKeyHeader(authHeader: string | null) {
+  if (!authHeader) return null;
+
+  const normalized = authHeader.trim();
+  if (!normalized) return null;
+
+  const match = normalized.match(/^Bearer\s+(.+)$/i);
+  const rawKey = match ? match[1] : normalized;
+  const trimmed = rawKey.trim();
+
+  return trimmed || null;
+}
+
+export function buildKeyHash(rawKey: string) {
+  return crypto.createHash('sha256').update(rawKey.trim()).digest('hex');
+}
 
 export async function authenticateApiKey(authHeader: string | null) {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const rawKey = normalizeApiKeyHeader(authHeader);
+  if (!rawKey) {
     return { error: 'Missing or invalid Authorization header' };
   }
 
-  const rawKey = authHeader.replace('Bearer ', '').trim();
-  const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+  const supabaseAdmin = createSupabaseServerClient();
+  const keyHash = buildKeyHash(rawKey);
 
   const { data: keyRecord, error } = await supabaseAdmin
     .from('api_keys')
     .select('merchant_id, environment')
     .eq('key_hash', keyHash)
-    .single();
+    .maybeSingle();
 
-  if (error || !keyRecord) {
-    return { error: 'Invalid API Key' };
+  if (!error && keyRecord?.merchant_id) {
+    supabaseAdmin.from('api_keys')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('key_hash', keyHash)
+      .then();
+
+    return { merchantId: keyRecord.merchant_id, environment: keyRecord.environment ?? 'sandbox' };
   }
 
-  // Update last_used_at timestamp non-blockingly
-  supabaseAdmin.from('api_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('key_hash', keyHash)
-    .then();
+  const { data: legacyMerchant, error: legacyError } = await supabaseAdmin
+    .from('merchants')
+    .select('id')
+    .eq('api_key', rawKey)
+    .maybeSingle();
 
-  return { merchantId: keyRecord.merchant_id, environment: keyRecord.environment };
+  if (!legacyError && legacyMerchant?.id) {
+    return { merchantId: legacyMerchant.id, environment: 'sandbox' };
+  }
+
+  return { error: 'Invalid API Key' };
 }

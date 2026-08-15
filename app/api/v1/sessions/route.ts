@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function getRequestOrigin(request: Request): string {
@@ -15,16 +16,12 @@ function getRequestOrigin(request: Request): string {
 }
 
 async function authenticateMerchantApiKey(authHeader: string | null) {
-  if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+  const rawKey = normalizeApiKeyHeader(authHeader);
+  if (!rawKey) {
     return { error: "Missing or invalid Authorization header" } as const;
   }
 
-  const rawKey = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!rawKey) {
-    return { error: "Missing API key" } as const;
-  }
-
-  const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+  const keyHash = buildKeyHash(rawKey);
   const supabase = createSupabaseServerClient();
 
   const { data: keyRecord, error } = await supabase
@@ -33,14 +30,24 @@ async function authenticateMerchantApiKey(authHeader: string | null) {
     .eq("key_hash", keyHash)
     .maybeSingle();
 
-  if (error || !keyRecord?.merchant_id) {
-    return { error: "Invalid API Key" } as const;
+  if (!error && keyRecord?.merchant_id) {
+    return {
+      merchantId: keyRecord.merchant_id,
+      environment: keyRecord.environment ?? "sandbox",
+    };
   }
 
-  return {
-    merchantId: keyRecord.merchant_id,
-    environment: keyRecord.environment ?? "sandbox",
-  };
+  const { data: legacyMerchant, error: legacyError } = await supabase
+    .from("merchants")
+    .select("id")
+    .eq("api_key", rawKey)
+    .maybeSingle();
+
+  if (!legacyError && legacyMerchant?.id) {
+    return { merchantId: legacyMerchant.id, environment: "sandbox" };
+  }
+
+  return { error: "Invalid API Key" } as const;
 }
 
 export async function POST(request: Request) {
