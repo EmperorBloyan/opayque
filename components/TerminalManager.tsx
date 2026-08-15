@@ -312,8 +312,14 @@ export default function TerminalManager({
       const merchantWalletRecord = await ensureActiveMerchantWalletRecord();
       const merchantIdForPairing = resolvedMerchantId ?? merchantWalletRecord.merchantId;
 
-      if (!merchantIdForPairing) {
-        setToast("Merchant session is not ready. Please refresh.");
+      if (!merchantIdForPairing || merchantIdForPairing === "merchant-vault") {
+        setToast("Merchant wallet not linked. Complete vault authorization first.");
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+
+      if (!isValidUuid(merchantIdForPairing)) {
+        setToast("Invalid merchant context. Please re-authorize.");
         setTimeout(() => setToast(null), 3000);
         return;
       }

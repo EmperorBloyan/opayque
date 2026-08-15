@@ -33,8 +33,8 @@ export async function POST(request: Request) {
     const supabase = await createSupabaseServerClient();
 
     if (action === "create") {
-      if (!isValidMerchantId(merchantId)) {
-        return NextResponse.json({ success: false, error: "merchant_id is required for pairing code creation" }, { status: 400 });
+      if (!isValidMerchantId(merchantId) || merchantId === "merchant-vault") {
+        return NextResponse.json({ success: false, error: "Valid merchant wallet context required. Use vault registry to generate codes." }, { status: 400 });
       }
 
       const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
@@ -104,14 +104,28 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
       }
 
-      const { data: merchantData, error: merchantError } = await supabase
+      let merchantData: { id: string; wallet_address?: string | null; settlement_wallet_address?: string | null; merchant_name?: string | null; merchant_logo?: string | null } | null = null;
+      const { data: fetchedMerchantData, error: merchantError } = await supabase
         .from("merchants")
         .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
         .single();
 
-      const merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
+      merchantData = fetchedMerchantData ?? null;
       const suppliedWalletAddress = normalizeWalletAddress(walletAddress);
+      let merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
+
+      if (!merchantError && !merchantWalletAddress && suppliedWalletAddress && resolvedMerchantId) {
+        const { error: walletPatchError } = await supabase
+          .from("merchants")
+          .update({ wallet_address: suppliedWalletAddress, updated_at: new Date().toISOString() })
+          .eq("id", resolvedMerchantId);
+
+        if (!walletPatchError) {
+          merchantWalletAddress = suppliedWalletAddress;
+          merchantData = { ...(merchantData ?? { id: resolvedMerchantId }), wallet_address: suppliedWalletAddress };
+        }
+      }
 
       if (merchantError || !merchantWalletAddress) {
         return NextResponse.json({
@@ -141,8 +155,8 @@ export async function POST(request: Request) {
         code,
         merchantId: resolvedMerchantId,
         walletAddress: merchantWalletAddress,
-        merchantName: merchantData.merchant_name ?? null,
-        merchantLogo: merchantData.merchant_logo ?? null,
+        merchantName: merchantData?.merchant_name ?? null,
+        merchantLogo: merchantData?.merchant_logo ?? null,
         terminalLabel: data.terminal_label ?? null,
       });
     }

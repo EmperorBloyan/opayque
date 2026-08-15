@@ -26,9 +26,24 @@ export default function RegistryPage() {
   const [selectedEndpoint, setSelectedEndpoint] = useState<Endpoint | null>(null);
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [vaultReady, setVaultReady] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
+
+    const validateVaultContext = () => {
+      const merchantId = getActiveMerchantId();
+      if (!merchantId || merchantId === "merchant-vault") {
+        console.warn("Invalid vault context. Redirecting to merchant authorization.");
+        clearActiveSession();
+        router.push("/");
+        return false;
+      }
+      setVaultReady(true);
+      return true;
+    };
+
+    if (!validateVaultContext()) return;
 
     const loadEndpointData = () => {
       if (typeof window === "undefined") return;
@@ -47,9 +62,9 @@ export default function RegistryPage() {
     const loadTerminalData = async () => {
       try {
         const merchantId = getActiveMerchantId();
-        if (!merchantId) {
-          console.warn("Registry page skipped terminal load because merchant ID is unavailable.");
-          setTerminals([]); // Fallback to safe state
+        if (!merchantId || merchantId === "merchant-vault") {
+          console.warn("Registry vault context invalid. Redirecting to authorization.");
+          setTerminals([]);
           return;
         }
 
@@ -99,6 +114,17 @@ export default function RegistryPage() {
     persistEndpoints(updated);
     if (selectedEndpoint?.id === id) setSelectedEndpoint(null);
   };
+
+  if (!vaultReady) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Vault Authorization Required</p>
+          <h2 className="mt-4 text-2xl font-black">Redirecting to merchant setup...</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
