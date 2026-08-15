@@ -18,6 +18,8 @@ export function buildKeyHash(rawKey: string) {
   return crypto.createHash('sha256').update(rawKey.trim()).digest('hex');
 }
 
+export { isValidPublishableKey, resolveMerchantAccessStatus } from '@/lib/auth/merchantAccess';
+
 export async function authenticateApiKey(authHeader: string | null) {
   const rawKey = normalizeApiKeyHeader(authHeader);
   if (!rawKey) {

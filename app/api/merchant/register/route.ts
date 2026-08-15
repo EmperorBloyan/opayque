@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       .from("merchants")
       .upsert({ wallet_address: walletAddress, merchant_name: merchantName, merchant_logo: merchantLogo }, { onConflict: "wallet_address" })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

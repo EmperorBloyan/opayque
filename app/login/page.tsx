@@ -17,6 +17,19 @@ function getSavedMerchantLogo() {
   return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
 }
 
+function getRedirectTarget(defaultTarget: string) {
+  if (typeof window === "undefined") return defaultTarget;
+
+  const params = new URLSearchParams(window.location.search);
+  const paramTarget = params.get("next")?.trim();
+  const storedTarget = window.localStorage.getItem("opayque_next_route")?.trim();
+
+  const candidate = paramTarget || storedTarget || defaultTarget;
+  if (candidate.startsWith("/")) return candidate;
+
+  return defaultTarget;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
@@ -67,7 +80,11 @@ export default function LoginPage() {
           console.warn("Failed to hydrate merchant profile after login", merchantError);
         }
 
-        router.push("/developer/overview");
+        const destination = getRedirectTarget("/developer/overview");
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("opayque_next_route", destination);
+        }
+        router.push(destination);
       } else {
         setMessage("Signed in successfully. Redirecting…");
       }
@@ -169,7 +186,7 @@ export default function LoginPage() {
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
                 {/* Create Account Link (Bottom-Left) */}
                 <Link
-                  href="/developer/onboarding"
+                  href={`/developer/onboarding?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`}
                   className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto"
                 >
                   <UserPlus className="h-4 w-4" />

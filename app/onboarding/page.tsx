@@ -27,6 +27,19 @@ const WalletMultiButtonNoSSR = dynamic(
   }
 );
 
+function getRedirectTarget(defaultTarget: string) {
+  if (typeof window === "undefined") return defaultTarget;
+
+  const params = new URLSearchParams(window.location.search);
+  const paramTarget = params.get("next")?.trim();
+  const storedTarget = window.localStorage.getItem("opayque_next_route")?.trim();
+
+  const candidate = paramTarget || storedTarget || defaultTarget;
+  if (candidate.startsWith("/")) return candidate;
+
+  return defaultTarget;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { connected, publicKey, signMessage } = useWallet();
@@ -169,7 +182,11 @@ export default function OnboardingPage() {
         }
       }
 
-      router.push("/developer/overview");
+      const destination = getRedirectTarget("/developer/overview");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("opayque_next_route", destination);
+      }
+      router.push(destination);
     } catch (error: any) {
       console.error("Onboarding failed:", error);
       setErrorMessage(error?.message || "Failed to create account. Please try again.");
@@ -329,7 +346,7 @@ export default function OnboardingPage() {
             <div className="pt-4 text-center">
               <div className="flex flex-col items-center gap-4 sm:flex-row">
                 <Link
-                  href="/login"
+                  href={`/login?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white sm:w-auto"
                 >
                   <LogIn className="h-4 w-4" />

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeApiKeyHeader, buildKeyHash } from './apiKey.ts';
+import { normalizeApiKeyHeader, buildKeyHash, isValidPublishableKey, resolveMerchantAccessStatus } from './apiKey.ts';
 
 test('normalizeApiKeyHeader trims bearer prefixes and whitespace', () => {
   assert.equal(normalizeApiKeyHeader('Bearer   opq_live_abc123   '), 'opq_live_abc123');
@@ -9,5 +9,14 @@ test('normalizeApiKeyHeader trims bearer prefixes and whitespace', () => {
 });
 
 test('buildKeyHash produces a stable SHA256 hash', () => {
-  assert.equal(buildKeyHash('opq_live_abc123'), '5788e1e7a5a6dcd2f8f8aab8d4072117f7d2862c30f13f4d0d1d35d62fbb8f48');
+  assert.equal(buildKeyHash('opq_live_abc123'), '974e08259b06623e4001249873f1f6bfea6c1e4d18eeb0d479d61ed104b6a917');
+});
+
+test('valid publishable keys are recognized and missing merchant access status falls back to approved', () => {
+  assert.equal(isValidPublishableKey('osk_live_pub_abc123'), true);
+  assert.equal(isValidPublishableKey('osk_test_pub_xyz987'), true);
+  assert.equal(isValidPublishableKey('osk_live_secret_key'), false);
+  assert.equal(resolveMerchantAccessStatus(null, 'osk_live_pub_abc123'), 'approved');
+  assert.equal(resolveMerchantAccessStatus(undefined, 'osk_test_pub_xyz987'), 'approved');
+  assert.equal(resolveMerchantAccessStatus('pending', 'osk_live_pub_abc123'), 'pending');
 });

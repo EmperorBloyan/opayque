@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     .from('api_keys')
     .insert([{ merchant_id: merchant.id, environment, prefix, key_hash: keyHash }])
     .select('id, prefix, environment, created_at')
-    .single();
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

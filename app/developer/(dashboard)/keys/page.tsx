@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
+import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import {
   AlertCircle,
   ArrowLeft,
@@ -124,9 +125,22 @@ export default function ApiKeysPage() {
           }
 
           if (merchantData) {
-            if (merchantData.api_access_status) {
-              setMerchantApiAccessStatus(merchantData.api_access_status as "pending" | "active" | "revoked");
-            }
+            const hasSavedMerchantProfile = Boolean(
+              merchantData.email ||
+              merchantData.merchant_name ||
+              merchantData.merchant_logo ||
+              merchantData.secondary_email ||
+              merchantData.settlement_wallet_address ||
+              merchantData.website_url ||
+              merchantData.webhook_url ||
+              merchantData.api_key
+            );
+            const nextStatus = resolveMerchantAccessStatus(merchantData.api_access_status, merchantData.api_key);
+            const effectiveStatus = nextStatus === "approved" || (nextStatus === "pending" && hasSavedMerchantProfile && Boolean(merchantData.api_key))
+              ? "active"
+              : nextStatus;
+
+            setMerchantApiAccessStatus(effectiveStatus as "pending" | "active" | "revoked");
             if (merchantData.email) setMerchantEmail(merchantData.email);
             if (merchantData.merchant_name) {
               setMerchantName(merchantData.merchant_name);

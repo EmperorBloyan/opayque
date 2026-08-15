@@ -226,10 +226,16 @@ export default function UnifiedLanding() {
 
               <button
                 type="button"
-                onClick={() => router.push("/onboarding")}
+                onClick={() => {
+                  const nextRoute = "/vault";
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("opayque_next_route", nextRoute);
+                  }
+                  router.push(`/onboarding?next=${encodeURIComponent(nextRoute)}`);
+                }}
                 className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
               >
-                Select Wallet
+                Access Vault
               </button>
               {authError ? <p className="mt-4 text-sm text-amber-400">{authError}</p> : null}
             </div>

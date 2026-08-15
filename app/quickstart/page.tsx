@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
 import {
   ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2,
   Copy, Check, Link2, Zap, ExternalLink, Code, AlertCircle
@@ -73,7 +74,17 @@ export default function QuickstartPage() {
 
         if (merchantRes.ok) {
           const merchantPayload = await merchantRes.json();
-          apiKey = merchantPayload?.merchant?.api_key || null;
+          const merchant = merchantPayload?.merchant;
+          const merchantStatus = typeof merchant?.api_access_status === "string" ? merchant.api_access_status.trim().toLowerCase() : "";
+          const merchantKey = typeof merchant?.api_key === "string" ? merchant.api_key.trim() : null;
+
+          const hasApprovedMerchantAccess = merchantStatus === "active"
+            || merchantStatus === "approved"
+            || (merchantStatus === "" && isValidPublishableKey(merchantKey));
+
+          if (merchantKey && hasApprovedMerchantAccess) {
+            apiKey = merchantKey;
+          }
         }
       } catch {
         apiKey = null;

@@ -12,7 +12,8 @@ import {
   LucideCamera, 
   LucideShieldCheck, 
   LucideShieldAlert,
-  LucidePencilLine
+  LucidePencilLine,
+  Lock
 } from "lucide-react";
 
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
@@ -130,22 +131,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}` 
     : "Not Connected";
 
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.warn("Supabase sign-out failed during vault sign-out", error);
+  const handleLockHub = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("opayque_next_route", "/vault");
     }
 
-    clearActiveSession();
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem("merchant_name");
-      window.localStorage.removeItem("merchant_logo");
-      window.localStorage.removeItem("merchant_email");
-      window.localStorage.removeItem("settlement_wallet_address");
-    }
-    router.push("/login");
+    // Keep the merchant session active until an explicit end-session function is added.
+    router.push("/login?next=%2Fvault");
   };
 
   if (isStandaloneCheckout) {
@@ -223,10 +215,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             </Link>
             <button
               type="button"
-              onClick={() => void handleSignOut()}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-red-500/40 hover:text-red-300"
+              onClick={handleLockHub}
+              className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
             >
-              Sign Out
+              <Lock size={14} /> Lock Hub
             </button>
           </nav>
         </header>

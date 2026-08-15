@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { resolveMerchantAccessStatus } from '@/lib/auth/merchantAccess';
 
 export async function GET() {
   try {
@@ -41,7 +42,14 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ merchant: merchant || null });
+    const normalizedMerchant = merchant
+      ? {
+          ...merchant,
+          api_access_status: resolveMerchantAccessStatus(merchant.api_access_status, merchant.api_key),
+        }
+      : null;
+
+    return NextResponse.json({ merchant: normalizedMerchant });
   } catch (err: any) {
     console.error('GET /api/v1/merchant error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
