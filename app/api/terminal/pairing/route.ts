@@ -14,6 +14,14 @@ function createPairingCode() {
   return code;
 }
 
+function normalizeWalletAddress(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -29,9 +37,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "merchant_id is required for pairing code creation" }, { status: 400 });
       }
 
+      const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
+
+      if (normalizedWalletAddress) {
+        const { error: merchantUpdateError } = await supabase
+          .from("merchants")
+          .update({ wallet_address: normalizedWalletAddress, updated_at: new Date().toISOString() })
+          .eq("id", merchantId);
+
+        if (merchantUpdateError) {
+          console.warn("Failed to link merchant wallet to pairing record", merchantUpdateError);
+        }
+      }
 
       const { error } = await supabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
@@ -63,9 +83,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 404 });
       }
 
-      const now = new Date();
-      const expiresAt = new Date(data.expires_at);
-      const isExpired = now > expiresAt;
+      const expiresAtMs = new Date(data.expires_at).getTime();
+      const isExpired = Number.isNaN(expiresAtMs) || Date.now() >= expiresAtMs;
       const isPending = data.status === "PENDING";
 
       if (!isPending || isExpired) {
@@ -85,6 +104,29 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
       }
 
+      const { data: merchantData, error: merchantError } = await supabase
+        .from("merchants")
+        .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
+        .eq("id", resolvedMerchantId)
+        .single();
+
+      const merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
+      const suppliedWalletAddress = normalizeWalletAddress(walletAddress);
+
+      if (merchantError || !merchantWalletAddress) {
+        return NextResponse.json({
+          success: false,
+          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
+        }, { status: 404 });
+      }
+
+      if (suppliedWalletAddress && suppliedWalletAddress !== merchantWalletAddress) {
+        return NextResponse.json({
+          success: false,
+          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
+        }, { status: 409 });
+      }
+
       const { error: updateError } = await supabase
         .from("terminal_pairing_codes")
         .update({ status: "USED", merchant_id: resolvedMerchantId })
@@ -92,21 +134,6 @@ export async function POST(request: Request) {
 
       if (updateError) {
         return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
-      }
-
-      const { data: merchantData, error: merchantError } = await supabase
-        .from("merchants")
-        .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
-        .eq("id", resolvedMerchantId)
-        .single();
-
-      const merchantWalletAddress = (merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "").trim();
-
-      if (merchantError || !merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
-        }, { status: 404 });
       }
 
       return NextResponse.json({
