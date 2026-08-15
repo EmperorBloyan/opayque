@@ -126,6 +126,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const { error: merchantStatusError } = await supabase
+    .from('merchants')
+    .update({
+      api_access_status: 'active',
+      onboarding_status: 'completed',
+      api_key: rawSecretKey,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', merchant.id);
+
+  if (merchantStatusError) {
+    return NextResponse.json({ error: merchantStatusError.message }, { status: 500 });
+  }
+
   return NextResponse.json(
     {
       id: data.id,

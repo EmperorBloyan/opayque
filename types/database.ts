@@ -6,6 +6,7 @@ export interface MerchantRecord {
   secondary_email?: string | null;
   settlement_wallet_address?: string | null;
   tee_enforcement_enabled?: boolean | null;
+  api_access_status?: 'pending' | 'active' | 'revoked' | null;
   created_at: string;
 }
 

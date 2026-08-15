@@ -56,6 +56,7 @@ export default function ApiKeysPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [merchantApiAccessStatus, setMerchantApiAccessStatus] = useState<"pending" | "active" | "revoked">("pending");
   const [sendingNotification, setSendingNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
@@ -103,7 +104,7 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("api_key, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .select("api_key, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
             .eq("auth_user_id", user.id)
             .maybeSingle();
 
@@ -123,6 +124,9 @@ export default function ApiKeysPage() {
           }
 
           if (merchantData) {
+            if (merchantData.api_access_status) {
+              setMerchantApiAccessStatus(merchantData.api_access_status as "pending" | "active" | "revoked");
+            }
             if (merchantData.email) setMerchantEmail(merchantData.email);
             if (merchantData.merchant_name) {
               setMerchantName(merchantData.merchant_name);
@@ -254,16 +258,16 @@ export default function ApiKeysPage() {
       if (newKey?.secret) {
         const { error: dbError } = await supabase
           .from("merchants")
-          .upsert(
-            {
-              auth_user_id: user.id,
-              api_key: newKey.secret,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "auth_user_id" }
-          );
+          .update({
+            api_key: newKey.secret,
+            api_access_status: "active",
+            onboarding_status: "completed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("auth_user_id", user.id);
 
         if (dbError) throw dbError;
+        setMerchantApiAccessStatus("active");
       }
     } catch (error) {
       console.warn("API endpoint offline, generating key locally", error);
@@ -313,28 +317,53 @@ export default function ApiKeysPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
+      const payload = {
+        email: merchantEmail.trim() || null,
+        merchantName: merchantName.trim() || null,
+        merchantLogo: merchantLogo.trim() || null,
+        secondaryEmail: secondaryEmail.trim() || null,
+        settlementWalletAddress: settlementWalletAddress.trim() || null,
+        websiteUrl: websiteUrl.trim() || null,
+        webhookUrl: webhookUrl.trim() || null,
+      };
+
+      const { error: supabaseError } = await supabase
+        .from("merchants")
+        .update({
+          email: payload.email,
+          merchant_name: payload.merchantName,
+          merchant_logo: payload.merchantLogo,
+          secondary_email: payload.secondaryEmail,
+          settlement_wallet_address: payload.settlementWalletAddress,
+          website_url: payload.websiteUrl,
+          webhook_url: payload.webhookUrl,
+          api_access_status: "active",
+          onboarding_status: "completed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("auth_user_id", user.id);
+
+      if (supabaseError) {
+        throw new Error(supabaseError.message || "Supabase merchant update failed");
+      }
+
       const res = await fetch("/api/v1/merchant", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.id,
-          email: merchantEmail.trim() || null,
-          merchantName: merchantName.trim() || null,
-          merchantLogo: merchantLogo.trim() || null,
-          secondaryEmail: secondaryEmail.trim() || null,
-          settlementWalletAddress: settlementWalletAddress.trim() || null,
-          websiteUrl: websiteUrl.trim() || null,
-          webhookUrl: webhookUrl.trim() || null,
+          ...payload,
         }),
       });
 
       if (!res.ok) {
-        const body = await res.json();
+        const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || "Unable to save merchant details");
       }
 
       const data = await res.json();
-      setProfileMessage("Merchant details updated successfully.");
+      setProfileMessage("Merchant details saved to Supabase.");
+      setMerchantApiAccessStatus("active");
 
       const updated = data?.merchant;
       if (updated) {
@@ -347,8 +376,9 @@ export default function ApiKeysPage() {
         if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
       }
     } catch (error: any) {
-      console.warn("API update failed; saved to local cache", error);
-      setProfileMessage("Merchant details saved locally.");
+      console.error("Supabase update failed", error);
+      setProfileError(error?.message || "Unable to save merchant details.");
+      setProfileMessage(null);
     } finally {
       setProfileSaving(false);
     }
@@ -587,7 +617,7 @@ export default function ApiKeysPage() {
               <div className="space-y-3 text-sm text-zinc-300">
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <span>API access</span>
-                  <span className="text-emerald-300">{primaryEmailAvailable ? "Available" : "Pending"}</span>
+                  <span className={merchantApiAccessStatus === "active" ? "text-emerald-300" : "text-amber-300"}>{merchantApiAccessStatus === "active" ? "Active" : "Pending"}</span>
                 </div>
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <span>Wallet attached</span>

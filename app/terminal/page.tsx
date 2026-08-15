@@ -3,10 +3,11 @@
 import { Component, useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent, type FormEvent, type ErrorInfo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
-import { LucideEdit3 } from "lucide-react";
+import { Bell, LucideEdit3, X } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
 
 interface TerminalPaymentErrorBoundaryProps {
@@ -73,11 +74,74 @@ export default function TerminalPage() {
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState<string>("");
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const { currency, setCurrency, rates, convert } = useCurrency();
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
   const router = useRouter();
+
+  const persistLocalActivity = useCallback((items: any[]) => {
+    if (typeof window === "undefined") return items;
+    const next = items.slice(0, 20);
+    window.localStorage.setItem("opayque_terminal_transactions", JSON.stringify(next));
+    return next;
+  }, []);
+
+  const readLocalActivity = useCallback(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = window.localStorage.getItem("opayque_terminal_transactions");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const hydrateRecentActivity = useCallback(async () => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const windowNow = Date.now();
+      const cutoff = new Date(windowNow - 24 * 60 * 60 * 1000).toISOString();
+      const effectiveTerminalId = terminalId;
+      if (!effectiveTerminalId) {
+        setRecentActivity(readLocalActivity());
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("terminal_id", effectiveTerminalId)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error || !Array.isArray(data)) {
+        setRecentActivity(readLocalActivity());
+        return;
+      }
+
+      const mapped = data.map((row: any) => ({
+        id: String(row.id ?? row.signature ?? "pending"),
+        status: String(row.status ?? "pending").toUpperCase(),
+        amount: Number(row.amount ?? 0),
+        tokenSymbol: String(row.token_symbol ?? "USDC"),
+        time: row.created_at ?? new Date().toISOString(),
+        walletAddress: row.wallet_address ?? activeSession?.walletAddress ?? null,
+        txHash: row.tx_hash ?? row.signature ?? null,
+      }));
+
+      const merged = [...mapped, ...readLocalActivity().filter((tx: any) => !mapped.some((item) => item.id === tx.id))].slice(0, 20);
+      setRecentActivity(merged);
+      persistLocalActivity(merged);
+    } catch (error) {
+      console.warn("Failed to hydrate recent terminal activity", error);
+      setRecentActivity(readLocalActivity());
+    }
+  }, [activeSession?.walletAddress, persistLocalActivity, readLocalActivity, terminalId]);
 
   useEffect(() => {
     if (!activeSession) {
@@ -198,6 +262,11 @@ export default function TerminalPage() {
         walletSignature: new TextEncoder().encode(`terminal-pair:${resolvedMerchantId}`),
       });
 
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("opayque_terminal_merchant_id", resolvedMerchantId);
+        window.localStorage.setItem("opayque_terminal_wallet", pairedWalletAddress);
+      }
+
       if (resolvedMerchantName) {
         setMerchantName(resolvedMerchantName);
         if (typeof window !== "undefined") {
@@ -275,7 +344,18 @@ export default function TerminalPage() {
         throw new Error(error?.message || "Failed to create pending transaction");
       }
 
-      setTransactionId((data as TransactionRecord).id);
+      const pendingRecord = data as TransactionRecord & { tx_hash?: string | null; wallet_address?: string | null; token_symbol?: string | null; created_at?: string };
+      const nextActivity = [{
+        id: String(pendingRecord.id),
+        status: "PENDING",
+        amount: Number(pendingRecord.amount ?? numericAmount),
+        tokenSymbol: String(pendingRecord.token_symbol ?? asset),
+        time: pendingRecord.created_at ?? new Date().toISOString(),
+        walletAddress: activeSession?.walletAddress ?? null,
+        txHash: pendingRecord.tx_hash ?? null,
+      }, ...readLocalActivity()];
+      setRecentActivity(persistLocalActivity(nextActivity));
+      setTransactionId(String(pendingRecord.id));
       setLatestTxHash(null);
       setIsPaid(false);
       // Persist pending transaction so terminal survives refresh
@@ -304,16 +384,21 @@ export default function TerminalPage() {
 
   useEffect(() => {
     setMounted(true);
+    setRecentActivity(readLocalActivity());
 
     try {
       if (typeof window !== "undefined") {
         const savedName = window.localStorage.getItem("merchant_name")?.trim();
         const savedAvatar = window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim();
+        const savedCurrency = window.localStorage.getItem("merchant_preferred_currency")?.trim();
         if (savedName) {
           setMerchantName(savedName);
         }
         if (savedAvatar) {
           setAvatarPreview(savedAvatar);
+        }
+        if (savedCurrency) {
+          setCurrency(savedCurrency);
         }
       }
     } catch (error) {
@@ -374,6 +459,17 @@ export default function TerminalPage() {
         (payload) => {
           const record = payload.new as TransactionRecord | null;
           if (!record) return;
+          const nextActivityItem = {
+            id: String(record.id ?? transactionId),
+            status: String(record.status ?? "pending").toUpperCase(),
+            amount: Number(record.amount ?? 0),
+            tokenSymbol: String((record as any).token_symbol ?? asset),
+            time: (record as any).created_at ?? new Date().toISOString(),
+            walletAddress: activeSession?.walletAddress ?? null,
+            txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
+          };
+          const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
+          setRecentActivity(persistLocalActivity(merged));
           if (record.status === "settled") {
             setPaymentStatus("SETTLED");
             setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
@@ -392,7 +488,7 @@ export default function TerminalPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [transactionId]);
+  }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
 
   // Restore pending transaction or latest settled status for this terminal on load
   useEffect(() => {
@@ -529,6 +625,10 @@ export default function TerminalPage() {
 
   const unpairTerminal = async () => {
     try {
+      if (terminalId) {
+        const supabase = createSupabaseBrowserClient();
+        await supabase.from("terminals").update({ status: "revoked", last_active: new Date().toISOString() }).eq("id", terminalId);
+      }
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("opayque_terminal_id");
         window.localStorage.removeItem("opayque_terminal_token");
@@ -558,6 +658,11 @@ export default function TerminalPage() {
     ? merchantName.trim().charAt(0).toUpperCase()
     : "O";
 
+  const renderActivityList = recentActivity.filter((tx: any) => {
+    const when = tx.time ? new Date(tx.time).getTime() : 0;
+    return Date.now() - when <= 24 * 60 * 60 * 1000;
+  }).slice(0, 10);
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
       <div className="w-full max-w-md">
@@ -577,6 +682,14 @@ export default function TerminalPage() {
                 <h1 className="text-2xl font-black tracking-tight text-white">{merchantName}</h1>
               </div>
               <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Recent activity"
+                  onClick={() => setIsActivityOpen((open) => !open)}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-zinc-900/60 text-zinc-300 transition hover:bg-zinc-800"
+                >
+                  <Bell size={16} />
+                </button>
                 {terminalId ? (
                   <button
                     onClick={() => void unpairTerminal()}
@@ -618,6 +731,24 @@ export default function TerminalPage() {
 
         {step === "POS" && (
           <div className="text-center">
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3 text-left">
+              <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-500">Currency</span>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-white outline-none"
+              >
+                {Object.keys(rates || {}).length > 0 ? (
+                  Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>)
+                ) : (
+                  <option value="USD">USD</option>
+                )}
+              </select>
+            </div>
+            <div className="mb-4 flex items-center justify-center gap-2 text-zinc-400">
+              <span className="text-sm uppercase tracking-[0.3em]">Amount</span>
+              <span className="text-xs font-bold uppercase tracking-[0.3em] text-violet-300">{currency}</span>
+            </div>
             <input
               aria-label="Transaction Amount"
               inputMode="decimal"
@@ -689,6 +820,14 @@ export default function TerminalPage() {
                     <span className="text-4xl italic font-black">✓</span>
                   </div>
                   <h2 className="text-5xl font-black italic uppercase">Settled</h2>
+                  <div className="mt-4 space-y-2 text-center text-xs font-mono uppercase tracking-[0.2em] text-zinc-300">
+                    {activeSession?.walletAddress && (
+                      <p>From {`${activeSession.walletAddress.slice(0, 3)}...${activeSession.walletAddress.slice(-3)}`}</p>
+                    )}
+                    {transactionId && (
+                      <p>Tx {`${transactionId.slice(0, 3)}...${transactionId.slice(-3)}`}</p>
+                    )}
+                  </div>
                 </div>
               )}
             </TerminalPaymentErrorBoundary>
@@ -703,11 +842,73 @@ export default function TerminalPage() {
         {step === 'PAYING' && isPaid && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
             <button
-              onClick={() => void generateNewPayment()}
+              onClick={() => {
+                setIsPaid(false);
+                setPaymentStatus(null);
+                setLatestTxHash(null);
+                setTransactionId(null);
+                setLockedAmount("");
+                setAmount("");
+                setStep("POS");
+                setToast("Ready for a new payment");
+                if (typeof window !== "undefined") {
+                  window.localStorage.removeItem("opayque_pending_tx_id");
+                }
+              }}
               className="rounded-full bg-green-600 px-6 py-3 font-black uppercase tracking-wider shadow-xl text-white"
             >
               Generate New Payment
             </button>
+          </div>
+        )}
+
+        {isActivityOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-2xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Recent Activity</p>
+                  <h3 className="mt-2 text-2xl font-black text-white">Transactions received</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsActivityOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-white/10">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-zinc-900/80 text-zinc-500">
+                    <tr>
+                      <th className="px-4 py-3 font-bold uppercase">Tx ID</th>
+                      <th className="px-4 py-3 font-bold uppercase">Status</th>
+                      <th className="px-4 py-3 font-bold uppercase">Amount</th>
+                      <th className="px-4 py-3 font-bold uppercase">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10 bg-black/30">
+                    {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => (
+                      <tr key={`${tx.id ?? idx}`} className="hover:bg-white/5">
+                        <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+                            {tx.status || "PENDING"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-bold text-violet-300">{convert(Number(tx.amount ?? 0)).formatted}</td>
+                        <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-10 text-center text-zinc-500">No transactions received in the last 24 hours.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </div>

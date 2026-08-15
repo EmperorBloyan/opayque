@@ -14,6 +14,7 @@ create table if not exists merchants (
   email text not null unique,
   password_hash text,
   onboarding_status text not null default 'pending' check (onboarding_status in ('pending', 'completed')),
+  api_access_status text not null default 'pending' check (api_access_status in ('pending', 'active', 'revoked')),
   wallet_address text not null unique,
   merchant_name text not null,
   merchant_logo text,
