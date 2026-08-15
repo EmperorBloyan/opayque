@@ -33,7 +33,7 @@ export async function GET() {
 
     const { data: merchant, error } = await supabase
       .from('merchants')
-      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, settlement_wallet_address, tee_enforcement_enabled, api_key')
+      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key')
       .eq('auth_user_id', user.id)
       .maybeSingle();
 
@@ -78,13 +78,25 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { merchantName, merchantLogo, secondaryEmail, settlementWalletAddress, teeEnforcementEnabled } = body;
+    const {
+      email,
+      merchantName,
+      merchantLogo,
+      secondaryEmail,
+      settlementWalletAddress,
+      websiteUrl,
+      webhookUrl,
+      teeEnforcementEnabled,
+    } = body;
 
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (email !== undefined) updates.email = email;
     if (merchantName !== undefined) updates.merchant_name = merchantName;
     if (merchantLogo !== undefined) updates.merchant_logo = merchantLogo;
     if (secondaryEmail !== undefined) updates.secondary_email = secondaryEmail;
     if (settlementWalletAddress !== undefined) updates.settlement_wallet_address = settlementWalletAddress;
+    if (websiteUrl !== undefined) updates.website_url = websiteUrl;
+    if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
     if (teeEnforcementEnabled !== undefined) updates.tee_enforcement_enabled = teeEnforcementEnabled;
 
     const { data: merchant, error } = await supabase

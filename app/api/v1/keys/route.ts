@@ -42,10 +42,24 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { data: merchant, error: merchantError } = await supabase
+    .from('merchants')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (merchantError) {
+    return NextResponse.json({ error: merchantError.message }, { status: 500 });
+  }
+
+  if (!merchant?.id) {
+    return NextResponse.json({ keys: [] });
+  }
+
   const { data: keys, error } = await supabase
     .from('api_keys')
     .select('id, environment, prefix, created_at, last_used_at')
-    .eq('merchant_id', user.id)
+    .eq('merchant_id', merchant.id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -88,9 +102,23 @@ export async function POST(request: Request) {
     .update(rawSecretKey)
     .digest('hex');
 
+  const { data: merchant, error: merchantError } = await supabase
+    .from('merchants')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (merchantError) {
+    return NextResponse.json({ error: merchantError.message }, { status: 500 });
+  }
+
+  if (!merchant?.id) {
+    return NextResponse.json({ error: 'Merchant profile not found for authenticated user.' }, { status: 404 });
+  }
+
   const { data, error } = await supabase
     .from('api_keys')
-    .insert([{ merchant_id: user.id, environment, prefix, key_hash: keyHash }])
+    .insert([{ merchant_id: merchant.id, environment, prefix, key_hash: keyHash }])
     .select('id, prefix, environment, created_at')
     .single();
 

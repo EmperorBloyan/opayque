@@ -103,8 +103,8 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("api_key")
-            .eq("user_id", user.id)
+            .select("api_key, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .eq("auth_user_id", user.id)
             .maybeSingle();
 
           if (merchantData?.api_key) {
@@ -120,6 +120,22 @@ export default function ApiKeysPage() {
                 environment: prefix.includes("test") ? "devnet" : "mainnet",
               }];
             });
+          }
+
+          if (merchantData) {
+            if (merchantData.email) setMerchantEmail(merchantData.email);
+            if (merchantData.merchant_name) {
+              setMerchantName(merchantData.merchant_name);
+              window.localStorage.setItem("merchant_name", merchantData.merchant_name);
+            }
+            if (merchantData.merchant_logo) {
+              setMerchantLogo(merchantData.merchant_logo);
+              window.localStorage.setItem("merchant_logo", merchantData.merchant_logo);
+            }
+            if (merchantData.secondary_email) setSecondaryEmail(merchantData.secondary_email);
+            if (merchantData.settlement_wallet_address) setSettlementWalletAddress(merchantData.settlement_wallet_address);
+            if (merchantData.website_url) setWebsiteUrl(merchantData.website_url);
+            if (merchantData.webhook_url) setWebhookUrl(merchantData.webhook_url);
           }
         }
 
@@ -240,11 +256,11 @@ export default function ApiKeysPage() {
           .from("merchants")
           .upsert(
             {
-              user_id: user.id,
+              auth_user_id: user.id,
               api_key: newKey.secret,
               updated_at: new Date().toISOString(),
             },
-            { onConflict: "user_id" }
+            { onConflict: "auth_user_id" }
           );
 
         if (dbError) throw dbError;

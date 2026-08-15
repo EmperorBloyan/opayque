@@ -63,20 +63,37 @@ export default function QuickstartPage() {
     setError(null);
 
     try {
-      // 1. Fetch the merchant's secret key from Supabase via our internal API
-      const merchantRes = await fetch('/api/v1/merchant', {
-        method: 'GET',
-        credentials: 'include' // important for cookies/auth
-      });
+      let apiKey: string | null = null;
 
-      if (!merchantRes.ok) throw new Error("Could not fetch merchant profile. Are you logged in?");
-      
-      const merchantPayload = await merchantRes.json();
-      const apiKey = merchantPayload?.merchant?.api_key; // This comes from keys/page.tsx and is saved to Supabase
+      try {
+        const merchantRes = await fetch('/api/v1/merchant', {
+          method: 'GET',
+          credentials: 'include'
+        });
 
-      if (!apiKey) throw new Error("No API Key found. Please generate one in Keys page first.");
+        if (merchantRes.ok) {
+          const merchantPayload = await merchantRes.json();
+          apiKey = merchantPayload?.merchant?.api_key || null;
+        }
+      } catch {
+        apiKey = null;
+      }
 
-      // 2. Call the sessions endpoint with the real key
+      if (!apiKey && typeof window !== 'undefined') {
+        try {
+          const savedKeysRaw = window.localStorage.getItem('opayque_api_keys');
+          if (savedKeysRaw) {
+            const savedKeys = JSON.parse(savedKeysRaw);
+            const selectedKey = Array.isArray(savedKeys) ? savedKeys.find((key: any) => key?.secret)?.secret : null;
+            if (selectedKey) apiKey = selectedKey;
+          }
+        } catch {
+          apiKey = null;
+        }
+      }
+
+      if (!apiKey) throw new Error("No API Key found. Please generate one in the Keys page first, or log back in.");
+
       const response = await fetch('https://opayque-three.vercel.app/api/v1/sessions', {
         method: 'POST',
         headers: {
