@@ -78,9 +78,7 @@ export default function QuickstartPage() {
           const merchantStatus = typeof merchant?.api_access_status === "string" ? merchant.api_access_status.trim().toLowerCase() : "";
           const merchantKey = typeof merchant?.api_key === "string" ? merchant.api_key.trim() : null;
 
-          const hasApprovedMerchantAccess = merchantStatus === "active"
-            || merchantStatus === "approved"
-            || (merchantStatus === "" && isValidPublishableKey(merchantKey));
+          const hasApprovedMerchantAccess = merchantStatus === "active" || merchantStatus === "approved";
 
           if (merchantKey && hasApprovedMerchantAccess) {
             apiKey = merchantKey;

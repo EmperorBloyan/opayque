@@ -77,6 +77,8 @@ export default function OnboardingPage() {
     if (isNavigating) return;
     setIsNavigating(true);
     router.push(path);
+    // Reset after brief delay to allow for re-attempts if navigation fails
+    setTimeout(() => setIsNavigating(false), 1000);
   };
 
   const handleWalletSign = async () => {

@@ -55,6 +55,8 @@ export default function LoginPage() {
     if (isNavigating) return;
     setIsNavigating(true);
     router.push(path);
+    // Reset after brief delay to allow for re-attempts if navigation fails
+    setTimeout(() => setIsNavigating(false), 1000);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -195,7 +197,7 @@ export default function LoginPage() {
                 {/* Create Account Link (Bottom-Left) */}
                 <button
                   type="button"
-                  onClick={() => goToDestination(`/developer/onboarding?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`)}
+                  onClick={() => goToDestination(`/onboarding?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`)}
                   disabled={isNavigating}
                   className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >

@@ -31,8 +31,27 @@ export default function RegistryPage() {
   useEffect(() => {
     setIsMounted(true);
 
-    const validateVaultContext = () => {
-      const merchantId = getActiveMerchantId();
+    const validateVaultContext = async () => {
+      // For vault users, try to get merchantId from terminal session first
+      let merchantId = getActiveMerchantId();
+      
+      // If no terminal session, fetch from Supabase auth
+      if (!merchantId || merchantId === "merchant-vault") {
+        try {
+          const res = await fetch("/api/v1/merchant");
+          if (res.ok) {
+            const payload = await res.json();
+            const merchant = payload?.merchant;
+            if (merchant?.id) {
+              merchantId = merchant.id;
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to fetch merchant context", error);
+        }
+      }
+
+      // If still no merchantId, redirect to auth
       if (!merchantId || merchantId === "merchant-vault") {
         console.warn("Invalid vault context. Redirecting to merchant authorization.");
         clearActiveSession();
@@ -43,7 +62,7 @@ export default function RegistryPage() {
       return true;
     };
 
-    if (!validateVaultContext()) return;
+    void validateVaultContext();
 
     const loadEndpointData = () => {
       if (typeof window === "undefined") return;
@@ -61,7 +80,20 @@ export default function RegistryPage() {
 
     const loadTerminalData = async () => {
       try {
-        const merchantId = getActiveMerchantId();
+        let merchantId = getActiveMerchantId();
+        
+        // If no terminal session, fetch from Supabase auth
+        if (!merchantId || merchantId === "merchant-vault") {
+          const res = await fetch("/api/v1/merchant");
+          if (res.ok) {
+            const payload = await res.json();
+            const merchant = payload?.merchant;
+            if (merchant?.id) {
+              merchantId = merchant.id;
+            }
+          }
+        }
+
         if (!merchantId || merchantId === "merchant-vault") {
           console.warn("Registry vault context invalid. Redirecting to authorization.");
           setTerminals([]);

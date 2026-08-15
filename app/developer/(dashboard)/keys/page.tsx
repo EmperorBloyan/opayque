@@ -473,8 +473,9 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem("merchant_email");
       window.localStorage.removeItem("developer_environment");
       window.localStorage.removeItem("opayque_api_keys");
+      window.localStorage.setItem("opayque_next_route", "/onboarding");
     }
-    router.push("/login");
+    router.push("/onboarding");
   };
 
   return (
