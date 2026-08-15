@@ -52,7 +52,6 @@ export async function GET() {
     return NextResponse.json({ merchant: normalizedMerchant });
   } catch (err: any) {
     console.error('GET /api/v1/merchant error:', err);
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
   }
 }
 

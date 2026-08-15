@@ -27,6 +27,14 @@ export default function RegistryPage() {
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [vaultReady, setVaultReady] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const goToDestination = (path: string) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    router.push(path);
+    setTimeout(() => setIsNavigating(false), 1000);
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -168,9 +176,10 @@ export default function RegistryPage() {
               if (typeof window !== "undefined") {
                 window.localStorage.setItem("opayque_next_route", "/vault/registry");
               }
-              router.push("/login?next=%2Fvault%2Fregistry");
+              goToDestination("/login?next=%2Fvault%2Fregistry");
             }}
-            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-purple-400 transition-all"
+            disabled={isNavigating}
+            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
           >
             <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault
           </button>

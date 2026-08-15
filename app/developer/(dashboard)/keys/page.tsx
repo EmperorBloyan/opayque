@@ -85,6 +85,14 @@ export default function ApiKeysPage() {
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
   const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const goToDestination = (path: string) => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    router.push(path);
+    setTimeout(() => setIsNavigating(false), 1000);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -475,7 +483,7 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem("opayque_api_keys");
       window.localStorage.setItem("opayque_next_route", "/onboarding");
     }
-    router.push("/onboarding");
+    goToDestination("/onboarding");
   };
 
   return (
@@ -501,7 +509,8 @@ export default function ApiKeysPage() {
 
             <button
               type="button"
-              onClick={() => router.push("/developer/overview")}
+              onClick={() => goToDestination("/developer/overview")}
+              disabled={isNavigating}
               className="inline-flex items-center gap-2 rounded-full border-white/10 bg-zinc-900/80 px-4 py-3 text-xs font-black uppercase tracking-[0.28em] text-white transition hover:border-purple-400/40 hover:bg-white/5"
             >
               <ArrowLeft size={16} /> Back

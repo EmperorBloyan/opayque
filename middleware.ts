@@ -45,11 +45,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && isOnboardingRoute) {
-    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault';
-    return NextResponse.redirect(new URL(nextTarget, request.url));
-  }
-
   return response;
 }
 
