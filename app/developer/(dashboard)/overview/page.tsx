@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import { Activity, CheckCircle2, Server, Smartphone, Zap, RefreshCw } from "lucide-react";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 
 export default function OverviewPage() {
   const { isSandbox, network } = useEnvironment();
+  const { currency, setCurrency, rates } = useCurrency();
 
   // Dynamic RPC URL calculation based on active environment context
   const targetRpcEndpoint = isSandbox
@@ -107,19 +109,39 @@ export default function OverviewPage() {
           </p>
         </div>
         
-        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2">
-          <div className={`h-2 w-2 rounded-full ${
-            networkStatus === 'HEALTHY' ? 'bg-emerald-400 animate-pulse' : 
-            networkStatus === 'DEGRADED' ? 'bg-amber-400' : 
-            networkStatus === 'OFFLINE' ? 'bg-rose-500' : 'bg-zinc-500'
-          }`} />
-          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
-            Network Status:{" "}
-            <span className={networkStatus === 'HEALTHY' ? 'text-emerald-400' : networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-amber-400'}>
-              {networkStatus === 'HEALTHY' ? `Solana ${isSandbox ? 'Devnet' : 'Mainnet'}` : networkStatus}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div>
+            <label className="block text-[9px] text-zinc-400 mb-1.5 font-medium uppercase tracking-widest">Display Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-full px-4 py-1.5 text-[9px] text-zinc-200 focus:outline-none focus:border-purple-500"
+            >
+              {Object.keys(rates).length > 0 ? (
+                Object.keys(rates).map((curr) => (
+                  <option key={curr} value={curr}>
+                    {curr}
+                  </option>
+                ))
+              ) : (
+                <option value="USD">USD</option>
+              )}
+            </select>
+          </div>
+          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2">
+            <div className={`h-2 w-2 rounded-full ${
+              networkStatus === 'HEALTHY' ? 'bg-emerald-400 animate-pulse' : 
+              networkStatus === 'DEGRADED' ? 'bg-amber-400' : 
+              networkStatus === 'OFFLINE' ? 'bg-rose-500' : 'bg-zinc-500'
+            }`} />
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+              Network Status:{" "}
+              <span className={networkStatus === 'HEALTHY' ? 'text-emerald-400' : networkStatus === 'OFFLINE' ? 'text-rose-500' : 'text-amber-400'}>
+                {networkStatus === 'HEALTHY' ? `Solana ${isSandbox ? 'Devnet' : 'Mainnet'}` : networkStatus}
+              </span>
             </span>
-          </span>
-          <RefreshCw size={12} className={`text-zinc-500 ${networkStatus === 'SYNCING' ? 'animate-spin' : ''}`} />
+            <RefreshCw size={12} className={`text-zinc-500 ${networkStatus === 'SYNCING' ? 'animate-spin' : ''}`} />
+          </div>
         </div>
       </header>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface CurrencyContextType {
   currency: string;
@@ -18,11 +19,48 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingRates, setIsLoadingRates] = useState<boolean>(true);
 
   useEffect(() => {
-    // 1. Load saved preferred currency from local storage
-    const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
-    if (savedCurrency) {
-      setCurrencyState(savedCurrency);
-    }
+    const initCurrency = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        
+        // Get authenticated user
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          // Try to fetch merchant's preferred currency from Supabase
+          const { data: merchant, error } = await supabase
+            .from("merchants")
+            .select("preferred_currency")
+            .eq("auth_user_id", user.id)
+            .single();
+          
+          if (!error && merchant?.preferred_currency) {
+            setCurrencyState(merchant.preferred_currency);
+          } else {
+            // Fallback to localStorage
+            const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
+            if (savedCurrency) {
+              setCurrencyState(savedCurrency);
+            }
+          }
+        } else {
+          // User not authenticated - use localStorage
+          const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
+          if (savedCurrency) {
+            setCurrencyState(savedCurrency);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load currency preference from Supabase, using localStorage", err);
+        const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
+        if (savedCurrency) {
+          setCurrencyState(savedCurrency);
+        }
+      }
+    };
+
+    // 1. Load currency preference
+    void initCurrency();
 
     // 2. Fetch live fiat rates
     const fetchRates = async () => {
@@ -44,7 +82,30 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 
   const setCurrency = (curr: string) => {
     setCurrencyState(curr);
-    window.localStorage.setItem("merchant_preferred_currency", curr);
+    
+    // Save to localStorage always
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("merchant_preferred_currency", curr);
+    }
+
+    // Save to Supabase if user is authenticated
+    const saveToDB = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          await supabase
+            .from("merchants")
+            .update({ preferred_currency: curr })
+            .eq("auth_user_id", user.id);
+        }
+      } catch (err) {
+        console.warn("Failed to save currency preference to Supabase", err);
+      }
+    };
+
+    void saveToDB();
   };
 
   const convert = (amountInUsdc: number) => {

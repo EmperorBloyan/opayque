@@ -3,6 +3,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState, useMemo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useCurrency } from '@/lib/context/CurrencyContext';
 import { Search, RotateCcw, Copy, Check, AlertTriangle, X } from 'lucide-react';
 
 const formatUSDC = (val: number) => 
@@ -10,6 +11,7 @@ const formatUSDC = (val: number) =>
 
 export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
+  const { currency, setCurrency, rates } = useCurrency();
   const [privateBalance, setPrivateBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [flushLoading, setFlushLoading] = useState(false);
@@ -301,13 +303,35 @@ export default function VaultDashboard() {
            </div>
          )}
 
-        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Private Shielded Volume</p>
-        <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{formatUSDC(privateBalance)}</h2>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-6">
+          <div>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Private Shielded Volume</p>
+            <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{formatUSDC(privateBalance)}</h2>
+          </div>
+          <div>
+            <label className="block text-[9px] text-zinc-400 mb-2 font-medium uppercase tracking-widest">Display Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:border-purple-500"
+            >
+              {Object.keys(rates).length > 0 ? (
+                Object.keys(rates).map((curr) => (
+                  <option key={curr} value={curr}>
+                    {curr}
+                  </option>
+                ))
+              ) : (
+                <option value="USD">USD</option>
+              )}
+            </select>
+          </div>
+        </div>
         
         <button 
           onClick={handleSettlement}
           disabled={privateBalance <= 0 || flushLoading || !connected}
-          className="mt-8 px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
+          className="px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
         >
           {flushLoading ? "TEE Settlement in Progress..." : "Execute L1 Settlement"}
         </button>
