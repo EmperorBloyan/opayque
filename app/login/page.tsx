@@ -89,9 +89,11 @@ export default function LoginPage() {
           console.warn("Failed to hydrate merchant profile after login", merchantError);
         }
 
-        const destination = getRedirectTarget("/developer/overview");
+        // Use /vault/registry as the default hub destination, not developer overview
+        // This ensures "Unlock Hub" goes to the management center
+        const destination = getRedirectTarget("/vault/registry");
         if (typeof window !== "undefined") {
-          window.localStorage.setItem("opayque_next_route", destination);
+          window.localStorage.removeItem("opayque_next_route");
         }
         router.push(destination);
       } else {
