@@ -148,8 +148,9 @@ export async function PATCH(request: Request) {
         .insert({
           ...updates,
           auth_user_id: user.id,
-          onboarding_status: 'pending',
-          api_access_status: updates.api_access_status || 'pending',
+          email: updates.email ?? user.email ?? null,
+          onboarding_status: 'completed',
+          api_access_status: updates.api_access_status || 'active',
           created_at: new Date().toISOString(),
         })
         .select(selectColumns)
