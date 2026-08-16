@@ -35,14 +35,16 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // 1. Instantly populate from local storage to eliminate UI flicker
-    const localName = window.localStorage.getItem("merchant_name") || window.localStorage.getItem("business_name");
-    const localLogo = window.localStorage.getItem("merchant_logo") || window.localStorage.getItem("merchant_avatar");
+    const localName =
+      window.localStorage.getItem("merchant_name") ||
+      window.localStorage.getItem("business_name");
+    const localLogo =
+      window.localStorage.getItem("merchant_logo") ||
+      window.localStorage.getItem("merchant_avatar");
 
     if (localName) setMerchantName(localName);
     if (localLogo) setMerchantLogo(localLogo);
 
-    // 2. Fetch fresh profile in background
     const fetchMerchantProfile = async () => {
       try {
         const res = await fetch("/api/v1/merchant");
@@ -65,13 +67,14 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     };
 
     void fetchMerchantProfile();
-  }, []);
+  }, [pathname]); // refresh when navigating inside developer
 
-  // Sync state when profile is updated from modal/forms
   useEffect(() => {
     const handleProfileUpdate = () => {
       const localName = window.localStorage.getItem("merchant_name");
+      const localLogo = window.localStorage.getItem("merchant_logo");
       if (localName) setMerchantName(localName);
+      if (localLogo) setMerchantLogo(localLogo);
     };
 
     window.addEventListener("storage", handleProfileUpdate);
