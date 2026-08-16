@@ -58,9 +58,15 @@ export async function middleware(request: NextRequest) {
 
   // 3. Prevent logged-in users from getting stuck on the login page
   if (user && isLoginRoute) {
-    // If they have a 'next' parameter, send them there. Otherwise, default to vault.
-    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault';
-    return NextResponse.redirect(new URL(nextTarget, request.url));
+    const nextTarget = request.nextUrl.searchParams.get("next");
+    const safeTarget =
+      nextTarget &&
+      nextTarget.startsWith("/") &&
+      !nextTarget.startsWith("//")
+        ? nextTarget
+        : "/developer/overview";
+
+    return NextResponse.redirect(new URL(safeTarget, request.url));
   }
 
   return response;
