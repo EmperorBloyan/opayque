@@ -76,7 +76,9 @@ export default function TerminalPage() {
   const [lockedAmount, setLockedAmount] = useState<string>("");
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
-  const { currency, setCurrency, rates, convert } = useCurrency();
+
+  // Correct currency hooks
+  const { currency, setCurrency, rates, convert, toUsdc } = useCurrency();
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
@@ -164,6 +166,7 @@ export default function TerminalPage() {
     numericAmount > 0 &&
     numericAmount < 1_000_000;
 
+  // Fixed buildUri — uses toUsdc for settlement
   const buildUri = useCallback(() => {
     try {
       const recipient =
@@ -178,35 +181,15 @@ export default function TerminalPage() {
         return "";
       }
 
-      // Convert local currency amount -> USDC equivalent
-      // convert() is from useCurrency; fallback: assume USD = USDC 1:1
-      let usdcAmount = fiatAmount;
-      try {
-        if (currency && currency.toUpperCase() !== "USD" && currency.toUpperCase() !== "USDC") {
-          // If convert returns object with numeric value, use it; else keep fiat
-          const converted = convert(fiatAmount);
-          const maybeNumber =
-            typeof converted === "number"
-              ? converted
-              : Number((converted as any)?.usd ?? (converted as any)?.value ?? fiatAmount);
-          if (Number.isFinite(maybeNumber) && maybeNumber > 0) {
-            // convert() in your app often formats local display; for USDC settlement
-            // prefer rate-based math if rates exist
-            const rate = Number((rates as any)?.[currency] ?? 0);
-            // If rates[currency] means "local units per 1 USD"
-            usdcAmount = rate > 0 ? fiatAmount / rate : maybeNumber;
-          }
-        }
-      } catch {
-        usdcAmount = fiatAmount;
-      }
+      // Correct conversion: local fiat → USDC for settlement
+      const usdcAmount = toUsdc(fiatAmount, currency);
 
       const origin =
         typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
 
       const checkoutUrl = new URL("/checkout", origin);
       checkoutUrl.searchParams.set("address", recipient);
-      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(2)); // settlement amount in USDC
+      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(2)); // USDC settlement amount
       checkoutUrl.searchParams.set("fiat_amount", fiatAmount.toFixed(2));
       checkoutUrl.searchParams.set("currency", currency || "USD");
       checkoutUrl.searchParams.set("token", asset || "USDC");
@@ -225,8 +208,7 @@ export default function TerminalPage() {
     merchantName,
     currency,
     asset,
-    rates,
-    convert,
+    toUsdc,
     transactionId,
   ]);
 
@@ -325,7 +307,7 @@ export default function TerminalPage() {
         : createDefaultTerminalLabelLocal();
 
       setActiveSession(session);
-      // Create terminal record and persist pairing locally
+
       try {
         const terminalLabel = createDefaultTerminalLabelLocal();
         const resp = await fetch(`/api/terminal/pair`, {
@@ -397,7 +379,7 @@ export default function TerminalPage() {
       setTransactionId(String(pendingRecord.id));
       setLatestTxHash(null);
       setIsPaid(false);
-      // Persist pending transaction so terminal survives refresh
+
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem("opayque_pending_tx_id", String((data as TransactionRecord).id));
@@ -417,7 +399,6 @@ export default function TerminalPage() {
   };
 
   const triggerSuccess = useCallback(async () => {
-    // Deprecated: mock handler removed. Use real upstream confirmation via customer checkout
     return;
   }, [isPaid, isAmountValid]);
 
@@ -451,13 +432,11 @@ export default function TerminalPage() {
       setPaymentStatus("PENDING");
     }
 
-    // Hydrate terminal pairing from localStorage if present
     try {
       if (typeof window !== "undefined") {
         const storedId = window.localStorage.getItem("opayque_terminal_id")?.trim() || null;
         const storedToken = window.localStorage.getItem("opayque_terminal_token")?.trim() || null;
         if (storedId) {
-          // validate terminal via Supabase
           const supabase = createSupabaseBrowserClient();
           (async () => {
             try {
@@ -468,7 +447,6 @@ export default function TerminalPage() {
                   setTerminalToken(storedToken);
                   setStep("POS");
                 } else {
-                  // invalid token — clear pairing
                   window.localStorage.removeItem("opayque_terminal_id");
                   window.localStorage.removeItem("opayque_terminal_token");
                 }
@@ -529,7 +507,6 @@ export default function TerminalPage() {
     };
   }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
 
-  // Restore pending transaction or latest settled status for this terminal on load
   useEffect(() => {
     if (!terminalId) return;
 
@@ -537,12 +514,10 @@ export default function TerminalPage() {
 
     (async () => {
       try {
-        // If there's a locally persisted pending tx id, prefer restoring it
         const stored = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id") : null;
         if (stored) {
           const { data: storedRow, error: err } = await supabase.from("transactions").select("*").eq("id", stored).single();
           if (!err && storedRow) {
-            // If already settled, show settled state; otherwise restore PAYING with QR
             if (String(storedRow.status) === "settled") {
               setPaymentStatus("SETTLED");
               setLatestTxHash(storedRow.tx_hash ?? storedRow.signature ?? null);
@@ -560,7 +535,6 @@ export default function TerminalPage() {
           }
         }
 
-        // Fallback: fetch the latest transaction for this terminal
         const { data, error } = await supabase
           .from("transactions")
           .select("*")
@@ -593,7 +567,6 @@ export default function TerminalPage() {
         console.warn("Failed to restore terminal transaction state", err);
       }
     })();
-
   }, [terminalId]);
 
   useEffect(() => {
@@ -708,7 +681,7 @@ export default function TerminalPage() {
         <div className="mb-8 space-y-4">
           <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Opayque</p>
           <div className="flex items-center justify-between gap-4 rounded-[2.2rem] border border-white/10 bg-zinc-900/60 p-4 shadow-[0_0_20px_rgba(168,85,247,0.18)]">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4">
               <div className="h-14 w-14 rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] overflow-hidden flex items-center justify-center text-2xl font-black text-white">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Merchant Avatar" className="h-full w-full object-cover" />
