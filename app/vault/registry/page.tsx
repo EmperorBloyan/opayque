@@ -6,14 +6,15 @@ import EndpointRegistry from "@/components/EndpointRegistry";
 import TerminalManager from "@/components/TerminalManager";
 import ReportingHub from "@/components/ReportingHub";
 import { Endpoint, Terminal } from "@/lib/types";
-import { 
-  LucideLock, 
-  LucideFileSpreadsheet, 
-  LucideTrash2, 
+import {
+  LucideLock,
+  LucideFileSpreadsheet,
+  LucideTrash2,
   LucideQrCode,
   LucideShieldCheck,
   LucideX,
-  LucidePrinter
+  LucidePrinter,
+  LucideLoader2,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -26,6 +27,7 @@ export default function RegistryPage() {
   const [selectedEndpoint, setSelectedEndpoint] = useState<Endpoint | null>(null);
   const [isReportHubOpen, setIsReportHubOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
   const [vaultReady, setVaultReady] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
 
@@ -40,12 +42,14 @@ export default function RegistryPage() {
     setIsMounted(true);
 
     const validateVaultContext = async () => {
-      // For vault users, try to get merchantId from terminal session first
-      let merchantId = getActiveMerchantId();
-      
-      // If no terminal session, fetch from Supabase auth
-      if (!merchantId || merchantId === "merchant-vault") {
-        try {
+      setIsChecking(true);
+
+      try {
+        // 1) Prefer terminal/session merchant id
+        let merchantId = getActiveMerchantId();
+
+        // 2) Fallback to authenticated merchant profile
+        if (!merchantId || merchantId === "merchant-vault") {
           const res = await fetch("/api/v1/merchant");
           if (res.ok) {
             const payload = await res.json();
@@ -54,23 +58,24 @@ export default function RegistryPage() {
               merchantId = merchant.id;
             }
           }
-        } catch (error) {
-          console.warn("Failed to fetch merchant context", error);
         }
-      }
 
-      // If still no merchantId, redirect to auth
-      if (!merchantId || merchantId === "merchant-vault") {
-        console.warn("Invalid vault context. Redirecting to merchant authorization.");
+        // 3) Only redirect after check is complete
+        if (!merchantId || merchantId === "merchant-vault") {
+          clearActiveSession();
+          router.replace("/onboarding?next=%2Fvault%2Fregistry");
+          return;
+        }
+
+        setVaultReady(true);
+      } catch (error) {
+        console.warn("Failed to validate vault context", error);
         clearActiveSession();
-        router.push("/");
-        return false;
+        router.replace("/onboarding?next=%2Fvault%2Fregistry");
+      } finally {
+        setIsChecking(false);
       }
-      setVaultReady(true);
-      return true;
     };
-
-    void validateVaultContext();
 
     const loadEndpointData = () => {
       if (typeof window === "undefined") return;
@@ -89,8 +94,7 @@ export default function RegistryPage() {
     const loadTerminalData = async () => {
       try {
         let merchantId = getActiveMerchantId();
-        
-        // If no terminal session, fetch from Supabase auth
+
         if (!merchantId || merchantId === "merchant-vault") {
           const res = await fetch("/api/v1/merchant");
           if (res.ok) {
@@ -103,7 +107,6 @@ export default function RegistryPage() {
         }
 
         if (!merchantId || merchantId === "merchant-vault") {
-          console.warn("Registry vault context invalid. Redirecting to authorization.");
           setTerminals([]);
           return;
         }
@@ -126,16 +129,18 @@ export default function RegistryPage() {
           isActive: row.status === "online",
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         }));
+
         setTerminals(mapped);
       } catch (error) {
         console.error("Failed to hydrate registry terminals", error);
-        setTerminals([]); // Prevent unhandled undefined state
+        setTerminals([]);
       }
     };
 
+    void validateVaultContext();
     loadEndpointData();
     void loadTerminalData();
-  }, []);
+  }, [router]);
 
   const persistEndpoints = (updated: Endpoint[]) => {
     setEndpoints(updated);
@@ -155,12 +160,16 @@ export default function RegistryPage() {
     if (selectedEndpoint?.id === id) setSelectedEndpoint(null);
   };
 
-  if (!vaultReady) {
+  // Loading state (no premature redirect message)
+  if (isChecking || !vaultReady) {
     return (
       <div className="relative min-h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Vault Authorization Required</p>
-          <h2 className="mt-4 text-2xl font-black">Redirecting to merchant setup...</h2>
+          <LucideLoader2 className="mx-auto mb-4 animate-spin text-purple-400" size={28} />
+          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">
+            Verifying Vault Access
+          </p>
+          <h2 className="mt-4 text-2xl font-black">Loading merchant session...</h2>
         </div>
       </div>
     );
@@ -171,11 +180,22 @@ export default function RegistryPage() {
       {/* TOP ACTION BAR */}
       <div className="flex justify-between items-center mb-12 px-4">
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => {
+          <button
+            onClick={async () => {
+              try {
+                const { createClient } = await import("@/lib/supabase/client");
+                const supabase = createClient();
+                await supabase.auth.signOut();
+              } catch (error) {
+                console.warn("Sign-out failed", error);
+              }
+
+              clearActiveSession();
+
               if (typeof window !== "undefined") {
                 window.localStorage.setItem("opayque_next_route", "/vault/registry");
               }
+
               goToDestination("/login?next=%2Fvault%2Fregistry");
             }}
             disabled={isNavigating}
@@ -184,61 +204,88 @@ export default function RegistryPage() {
             <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault
           </button>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <LucideShieldCheck size={16} className="text-purple-500" />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">TEE Session Active</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+            TEE Session Active
+          </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN: Management */}
+        {/* LEFT COLUMN */}
         <div className="lg:col-span-4 space-y-8">
           <section>
-            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">Identity Registration</h2>
+            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">
+              Identity Registration
+            </h2>
             <EndpointRegistry onSave={handleSaveEndpoint} existingEndpoints={endpoints} />
           </section>
 
           <section>
-            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">Hardware Fleet</h2>
-            <TerminalManager terminals={terminals} setTerminals={setTerminals} showHeaderInput={false} />
+            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-6 ml-4">
+              Hardware Fleet
+            </h2>
+            <TerminalManager
+              terminals={terminals}
+              setTerminals={setTerminals}
+              showHeaderInput={false}
+            />
           </section>
         </div>
 
-        {/* RIGHT COLUMN: Registry List */}
+        {/* RIGHT COLUMN */}
         <div className="lg:col-span-8">
           <section className="bg-zinc-900/20 border border-white/5 rounded-[3.5rem] p-10 min-h-[700px] shadow-2xl relative overflow-hidden">
             <div className="flex justify-between items-end mb-12">
               <div>
-                <h2 className="text-4xl font-black italic tracking-tighter uppercase text-white">Universal Registry</h2>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">Verified Recipient Database</p>
+                <h2 className="text-4xl font-black italic tracking-tighter uppercase text-white">
+                  Universal Registry
+                </h2>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                  Verified Recipient Database
+                </p>
               </div>
               <div className="bg-purple-500/10 border border-purple-500/20 px-4 py-2 rounded-xl">
-                <span className="text-[10px] font-black text-purple-500 uppercase">{endpoints.length} Registered</span>
+                <span className="text-[10px] font-black text-purple-500 uppercase">
+                  {endpoints.length} Registered
+                </span>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {endpoints.map((ep) => (
-                <div key={ep.id} className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500">
+                <div
+                  key={ep.id}
+                  className="group bg-black/40 border border-white/5 p-6 rounded-[2.5rem] hover:border-purple-500/30 transition-all duration-500"
+                >
                   <div className="flex items-center gap-4 mb-6">
                     <div className="w-14 h-14 bg-zinc-800 rounded-2xl flex items-center justify-center text-xl font-bold italic overflow-hidden border border-white/5">
-                      {ep.image ? <img src={ep.image} className="w-full h-full object-cover" alt="" /> : ep.name[0]}
+                      {ep.image ? (
+                        <img src={ep.image} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        ep.name[0]
+                      )}
                     </div>
                     <div>
-                      <p className="font-black uppercase text-sm tracking-tight text-white">{ep.name}</p>
-                      <p className="text-[9px] font-mono text-zinc-600 truncate w-32">{ep.address}</p>
+                      <p className="font-black uppercase text-sm tracking-tight text-white">
+                        {ep.name}
+                      </p>
+                      <p className="text-[9px] font-mono text-zinc-600 truncate w-32">
+                        {ep.address}
+                      </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => setSelectedEndpoint(ep)}
                       className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-800 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all"
                     >
                       <LucideQrCode size={14} /> Identity Tag
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDeleteEndpoint(ep.id)}
                       className="p-3 bg-zinc-900 text-zinc-700 hover:text-red-500 rounded-xl transition-all"
                     >
@@ -259,8 +306,8 @@ export default function RegistryPage() {
         </div>
       </div>
 
-      {/* FLOATING ACTION BUTTON: COMPLIANCE CENTER */}
-      <button 
+      {/* Compliance FAB */}
+      <button
         onClick={() => setIsReportHubOpen(true)}
         className="fixed bottom-10 right-10 z-40 w-16 h-16 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.4)] hover:scale-110 active:scale-95 transition-all group"
       >
@@ -270,21 +317,33 @@ export default function RegistryPage() {
         </span>
       </button>
 
-      {/* MODAL: QR OVERLAY */}
+      {/* QR Modal */}
       {selectedEndpoint && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-zinc-900 border border-white/10 p-12 rounded-[4rem] max-w-sm w-full text-center relative shadow-2xl">
-            <button onClick={() => setSelectedEndpoint(null)} className="absolute top-8 right-8 text-zinc-500 hover:text-white">
+            <button
+              onClick={() => setSelectedEndpoint(null)}
+              className="absolute top-8 right-8 text-zinc-500 hover:text-white"
+            >
               <LucideX size={24} />
             </button>
-            <h3 className="text-2xl font-black italic uppercase mb-2 text-white">{selectedEndpoint.name}</h3>
-            <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-10">Opayque Protected Endpoint</p>
-            
+
+            <h3 className="text-2xl font-black italic uppercase mb-2 text-white">
+              {selectedEndpoint.name}
+            </h3>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-10">
+              Opayque Protected Endpoint
+            </p>
+
             <div className="relative p-8 bg-white rounded-[3rem] mb-10 inline-block">
               {isMounted && typeof window !== "undefined" ? (
                 <>
-                  <QRCodeSVG 
-                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(selectedEndpoint.address)}&name=${encodeURIComponent(selectedEndpoint.name)}&category=${encodeURIComponent(selectedEndpoint.category)}`} 
+                  <QRCodeSVG
+                    value={`${window.location.origin}/vault/checkout?address=${encodeURIComponent(
+                      selectedEndpoint.address
+                    )}&name=${encodeURIComponent(selectedEndpoint.name)}&category=${encodeURIComponent(
+                      selectedEndpoint.category || ""
+                    )}`}
                     size={200}
                     level="H"
                   />
@@ -299,7 +358,7 @@ export default function RegistryPage() {
               )}
             </div>
 
-            <button 
+            <button
               onClick={() => window.print()}
               className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors"
             >
@@ -309,11 +368,7 @@ export default function RegistryPage() {
         </div>
       )}
 
-      {/* MODAL: REPORTING HUB */}
-      <ReportingHub 
-        isOpen={isReportHubOpen} 
-        onClose={() => setIsReportHubOpen(false)} 
-      />
+      <ReportingHub isOpen={isReportHubOpen} onClose={() => setIsReportHubOpen(false)} />
     </div>
   );
 }
