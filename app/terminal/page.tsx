@@ -166,30 +166,69 @@ export default function TerminalPage() {
 
   const buildUri = useCallback(() => {
     try {
-      const recipient = typeof activeSession?.walletAddress === "string" ? activeSession.walletAddress.trim() : "";
-      const amountValue = lockedAmount || amount || "";
-      const normalizedAmount = Number.parseFloat(String(amountValue).trim());
-      const resolvedAmount = Number.isFinite(normalizedAmount) && normalizedAmount > 0 ? normalizedAmount.toFixed(2) : undefined;
+      const recipient =
+        typeof activeSession?.walletAddress === "string"
+          ? activeSession.walletAddress.trim()
+          : "";
 
-      if (!recipient || !resolvedAmount) {
+      const amountValue = lockedAmount || amount || "";
+      const fiatAmount = Number.parseFloat(String(amountValue).trim());
+
+      if (!recipient || !Number.isFinite(fiatAmount) || fiatAmount <= 0) {
         return "";
       }
 
-      const origin = typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
+      // Convert local currency amount -> USDC equivalent
+      // convert() is from useCurrency; fallback: assume USD = USDC 1:1
+      let usdcAmount = fiatAmount;
+      try {
+        if (currency && currency.toUpperCase() !== "USD" && currency.toUpperCase() !== "USDC") {
+          // If convert returns object with numeric value, use it; else keep fiat
+          const converted = convert(fiatAmount);
+          const maybeNumber =
+            typeof converted === "number"
+              ? converted
+              : Number((converted as any)?.usd ?? (converted as any)?.value ?? fiatAmount);
+          if (Number.isFinite(maybeNumber) && maybeNumber > 0) {
+            // convert() in your app often formats local display; for USDC settlement
+            // prefer rate-based math if rates exist
+            const rate = Number((rates as any)?.[currency] ?? 0);
+            // If rates[currency] means "local units per 1 USD"
+            usdcAmount = rate > 0 ? fiatAmount / rate : maybeNumber;
+          }
+        }
+      } catch {
+        usdcAmount = fiatAmount;
+      }
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
+
       const checkoutUrl = new URL("/checkout", origin);
       checkoutUrl.searchParams.set("address", recipient);
-      checkoutUrl.searchParams.set("amount", resolvedAmount);
+      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(2)); // settlement amount in USDC
+      checkoutUrl.searchParams.set("fiat_amount", fiatAmount.toFixed(2));
+      checkoutUrl.searchParams.set("currency", currency || "USD");
+      checkoutUrl.searchParams.set("token", asset || "USDC");
       checkoutUrl.searchParams.set("name", merchantName || "Opayque Merchant");
-      if (transactionId) {
-        checkoutUrl.searchParams.set("tx_id", transactionId);
-      }
+      if (transactionId) checkoutUrl.searchParams.set("tx_id", transactionId);
 
       return checkoutUrl.toString();
     } catch (error) {
       console.error("Failed to build checkout URL", error);
       return "";
     }
-  }, [activeSession?.walletAddress, amount, lockedAmount, merchantName]);
+  }, [
+    activeSession?.walletAddress,
+    amount,
+    lockedAmount,
+    merchantName,
+    currency,
+    asset,
+    rates,
+    convert,
+    transactionId,
+  ]);
 
   const handlePairing = async (e: FormEvent) => {
     e.preventDefault();
