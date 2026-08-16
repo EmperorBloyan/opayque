@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -50,12 +49,12 @@ function OnboardingContent() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
-  const [walletSigned, setWalletSigned] = useState(false);
+  const [isVaultInitialized, setIsVaultInitialized] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSigningWallet, setIsSigningWallet] = useState(false);
+  const [isInitializingVault, setIsInitializingVault] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,30 +82,30 @@ function OnboardingContent() {
     setTimeout(() => setIsNavigating(false), 1000);
   };
 
-  const handleWalletSign = async () => {
+  const handleInitializeVault = async () => {
     if (!publicKey) {
       setErrorMessage("Connect a supported wallet before continuing.");
       return;
     }
 
     setErrorMessage(null);
-    setIsSigningWallet(true);
+    setIsInitializingVault(true);
 
     try {
-      // Mechanics Updated: This now uses the server-side relayer instead of forcing the wallet to sign
+      // Setup confidential account via server-side relayer
       await setupConfidentialAccount(publicKey.toBase58());
 
       setWalletAddress(publicKey.toBase58());
-      setWalletSigned(true);
+      setIsVaultInitialized(true);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("settlement_wallet_address", publicKey.toBase58());
       }
     } catch (error: any) {
       console.error("Confidential setup failed:", error);
       setErrorMessage(error?.message || "Failed to setup secured vault. Please try again.");
-      setWalletSigned(false);
+      setIsVaultInitialized(false);
     } finally {
-      setIsSigningWallet(false);
+      setIsInitializingVault(false);
     }
   };
 
@@ -120,10 +119,10 @@ function OnboardingContent() {
         throw new Error("Company name is required.");
       }
       if (!walletAddress.trim()) {
-        throw new Error("Connect and sign with your wallet to populate the settlement address.");
+        throw new Error("Connect your wallet to populate the settlement address.");
       }
-      if (!walletSigned) {
-        throw new Error("Wallet setup is required before onboarding.");
+      if (!isVaultInitialized) {
+        throw new Error("Secure vault initialization is required before onboarding.");
       }
 
       const supabase = createClient();
@@ -271,11 +270,11 @@ function OnboardingContent() {
                         <span className="truncate text-sm text-white">{walletAddress || publicKey?.toBase58() || "Wallet connected"}</span>
                         <button
                           type="button"
-                          onClick={() => void handleWalletSign()}
-                          disabled={isSigningWallet}
+                          onClick={() => void handleInitializeVault()}
+                          disabled={isInitializingVault || isVaultInitialized}
                           className="inline-flex w-fit items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {isSigningWallet ? "Signing..." : walletSigned ? "Wallet signed" : "Select Wallet & Sign"}
+                          {isInitializingVault ? "Initializing..." : isVaultInitialized ? "Vault Initialized" : "Initialize Secure Vault"}
                         </button>
                       </div>
                     ) : (
@@ -289,8 +288,8 @@ function OnboardingContent() {
             </div>
 
             <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-              {walletSigned ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Lock className="h-4 w-4 text-amber-400" />}
-              <span>{walletSigned ? "Settlement wallet signed and verified" : "Wallet must be connected and signed before submission"}</span>
+              {isVaultInitialized ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Lock className="h-4 w-4 text-amber-400" />}
+              <span>{isVaultInitialized ? "Settlement wallet configured securely" : "Wallet must be connected and initialized before submission"}</span>
             </div>
 
             <label className="block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">
@@ -366,7 +365,7 @@ function OnboardingContent() {
 
                 <button
                   type="submit"
-                  disabled={isLoading || isNavigating || !walletSigned}
+                  disabled={isLoading || isNavigating || !isVaultInitialized}
                   className="flex w-full flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   <span>{isLoading ? "Setting up..." : "Create Account"}</span>
