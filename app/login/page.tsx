@@ -98,54 +98,61 @@ export default function LoginPage() {
         password,
       });
       if (signInError) throw signInError;
+      if (!data?.user) throw new Error("Sign-in failed. Please try again.");
 
-      if (data?.user) {
-        let destination = getRedirectTarget("/developer/overview");
+      // 1) Resolve intended destination from URL first
+      let destination = getRedirectTarget("/vault/registry");
 
-        // If user explicitly came from vault, keep vault
-        const params = new URLSearchParams(window.location.search);
-        const nextParam = params.get("next")?.trim();
-        if (nextParam?.startsWith("/vault")) {
-          destination = nextParam;
-        } else if (nextParam?.startsWith("/developer")) {
-          destination = nextParam;
-        } else if (nextParam?.startsWith("/")) {
-          destination = nextParam;
-        }
+      // Never keep onboarding as unlock destination for existing accounts
+      if (destination.startsWith("/onboarding")) {
+        destination = "/vault/registry";
+      }
 
-        try {
-          const merchantRes = await fetch("/api/v1/merchant");
-          if (merchantRes.ok) {
-            const payload = await merchantRes.json();
-            const merchant = payload?.merchant;
-            if (merchant) {
-              hydrateMerchantLocal(merchant);
-              if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
-              if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
-              if (merchant.id) {
-                bindAuthenticatedMerchantSession({
-                  merchantId: merchant.id,
-                  walletAddress: merchant.settlement_wallet_address || null,
-                });
-              }
-            }
+      // Normalize bare /vault
+      if (destination === "/vault") {
+        destination = "/vault/registry";
+      }
+
+      // 2) Load merchant profile
+      let hasMerchant = false;
+
+      try {
+        const merchantRes = await fetch("/api/v1/merchant", { credentials: "include" });
+        if (merchantRes.ok) {
+          const payload = await merchantRes.json();
+          const merchant = payload?.merchant;
+
+          if (merchant?.id) {
+            hasMerchant = true;
+            hydrateMerchantLocal(merchant);
+
+            if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
+            if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
+
+            bindAuthenticatedMerchantSession({
+              merchantId: merchant.id,
+              walletAddress: merchant.settlement_wallet_address || null,
+            });
           }
-        } catch (merchantError) {
-          console.warn("Failed to hydrate merchant profile after login", merchantError);
         }
+      } catch (merchantError) {
+        console.warn("Failed to hydrate merchant profile after login", merchantError);
+      }
 
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("opayque_next_route", destination);
-        }
+      // 3) Only send brand-new users to onboarding
+      if (!hasMerchant) {
+        destination = `/onboarding?next=${encodeURIComponent("/vault/registry")}`;
+      }
 
-        setMessage("Signed in successfully. Redirecting…");
-
-        // Hard redirect (critical)
-        window.location.assign(destination);
-        return;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("opayque_next_route", destination);
       }
 
       setMessage("Signed in successfully. Redirecting…");
+
+      // 4) Hard redirect avoids middleware/router bounce
+      window.location.assign(destination);
+      return;
     } catch (err: any) {
       setError(err?.message || "Unable to sign in. Please try again.");
     } finally {
