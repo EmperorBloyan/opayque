@@ -5,33 +5,37 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { 
-  LucideShieldCheck, 
-  LucideLoader2, 
-  LucideLock, 
-  LucideMonitorSmartphone, 
-  LucideCode2 
+import {
+  LucideShieldCheck,
+  LucideLoader2,
+  LucideLock,
+  LucideMonitorSmartphone,
+  LucideCode2,
 } from "lucide-react";
-import { clearActiveSession, createSessionChallenge, createTerminalSession, getActiveSession, setActiveSession } from "@/lib/crypto/session";
+import {
+  clearActiveSession,
+  createSessionChallenge,
+  createTerminalSession,
+  getActiveSession,
+  setActiveSession,
+} from "@/lib/crypto/session";
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
 import { getAssetMintAddress } from "@/lib/solana/constants";
 import { PublicKey } from "@solana/web3.js";
+import { createClient } from "@/lib/supabase/client";
 
 function getSavedMerchantName() {
-  if (typeof window === "undefined") {
-    return "Opayque Merchant";
-  }
-
-  const merchantName = window.localStorage.getItem("merchant_name")?.trim();
-  return merchantName || "Opayque Merchant";
+  if (typeof window === "undefined") return "Opayque Merchant";
+  return window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant";
 }
 
 function getSavedMerchantLogo() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
+  if (typeof window === "undefined") return null;
+  return (
+    window.localStorage.getItem("merchant_logo")?.trim() ||
+    window.localStorage.getItem("merchant_avatar")?.trim() ||
+    null
+  );
 }
 
 async function registerMerchant(walletAddress: string): Promise<string> {
@@ -68,8 +72,13 @@ function getMobileWalletContext() {
 
   const ua = navigator.userAgent || "";
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  const isInAppBrowser = /Instagram|FBAN|FBAV|Line|TikTok|Twitter|Discord|WeChat|WhatsApp|Telegram|KAKAOTALK|Meta|FxiOS|CriOS|SamsungBrowser|FB_IAB|FB4A/i.test(ua);
-  const isStandalone = Boolean((window as Window & { navigator?: { standalone?: boolean } }).navigator?.standalone);
+  const isInAppBrowser =
+    /Instagram|FBAN|FBAV|Line|TikTok|Twitter|Discord|WeChat|WhatsApp|Telegram|KAKAOTALK|Meta|FxiOS|CriOS|SamsungBrowser|FB_IAB|FB4A/i.test(
+      ua
+    );
+  const isStandalone = Boolean(
+    (window as Window & { navigator?: { standalone?: boolean } }).navigator?.standalone
+  );
 
   return {
     isMobile,
@@ -78,23 +87,18 @@ function getMobileWalletContext() {
 }
 
 function openPhantomUniversalLink(targetUrl: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
+  if (typeof window === "undefined") return;
   const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(targetUrl)}`;
   const popup = window.open(phantomUrl, "_blank", "noopener,noreferrer");
-
-  if (!popup) {
-    window.location.assign(phantomUrl);
-  }
+  if (!popup) window.location.assign(phantomUrl);
 }
 
 export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { connected, publicKey, signMessage, signTransaction, signAndSendTransaction, connect } = useWallet();
+  const { connected, publicKey, signMessage, signTransaction, signAndSendTransaction, connect } =
+    useWallet();
   const router = useRouter();
   const mobileWalletContext = getMobileWalletContext();
 
@@ -104,6 +108,32 @@ export default function UnifiedLanding() {
       setIsAuthorizing(true);
     }
   }, []);
+
+  const handleAccessVault = async () => {
+    const nextRoute = "/vault/registry";
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("opayque_next_route", nextRoute);
+    }
+
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // Existing logged-in user -> go login unlock or directly vault
+      if (user) {
+        router.push(`/login?next=${encodeURIComponent(nextRoute)}`);
+        return;
+      }
+
+      // No session -> onboarding for new setup, with next preserved
+      router.push(`/onboarding?next=${encodeURIComponent(nextRoute)}`);
+    } catch {
+      router.push(`/onboarding?next=${encodeURIComponent(nextRoute)}`);
+    }
+  };
 
   const handleVaultEntrance = async () => {
     const canSignMessage = Boolean(signMessage);
@@ -120,7 +150,7 @@ export default function UnifiedLanding() {
       if (connect) {
         try {
           await connect();
-        } catch (e) {
+        } catch {
           setAuthError("Please connect a wallet to continue.");
           return;
         }
@@ -137,7 +167,9 @@ export default function UnifiedLanding() {
         return;
       }
 
-      setAuthError("Connected wallet cannot perform confidential signing operations. Please use Phantom or another supported wallet.");
+      setAuthError(
+        "Connected wallet cannot perform confidential signing operations. Please use Phantom or another supported wallet."
+      );
       return;
     }
 
@@ -193,14 +225,16 @@ export default function UnifiedLanding() {
             <div className="absolute inset-0 rounded-full border-t-2 border-purple-500 animate-spin duration-700" />
             <LucideShieldCheck size={32} className="text-purple-500" />
           </div>
-          <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Merchant Authorization</h2>
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">
+            Merchant Authorization
+          </h2>
           <div className="flex items-center gap-3 text-zinc-500">
             <LucideLoader2 size={14} className="animate-spin" />
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Shielded Identity...</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">
+              Verifying Shielded Identity...
+            </p>
           </div>
-          {authError ? (
-            <p className="mt-4 max-w-sm text-sm text-amber-400">{authError}</p>
-          ) : null}
+          {authError ? <p className="mt-4 max-w-sm text-sm text-amber-400">{authError}</p> : null}
         </div>
       ) : (
         <div className="z-10 w-full max-w-4xl animate-in fade-in duration-700">
@@ -212,7 +246,6 @@ export default function UnifiedLanding() {
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* CARD 1: MERCHANT VAULT */}
             <div className="group relative bg-zinc-900 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:border-purple-500/30 shadow-2xl flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-start mb-6">
@@ -226,13 +259,7 @@ export default function UnifiedLanding() {
 
               <button
                 type="button"
-                onClick={() => {
-                  const nextRoute = "/vault";
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem("opayque_next_route", nextRoute);
-                  }
-                  router.push(`/onboarding?next=${encodeURIComponent(nextRoute)}`);
-                }}
+                onClick={() => void handleAccessVault()}
                 className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
               >
                 Access Vault
@@ -240,7 +267,6 @@ export default function UnifiedLanding() {
               {authError ? <p className="mt-4 text-sm text-amber-400">{authError}</p> : null}
             </div>
 
-            {/* CARD 2: STAFF TERMINAL */}
             <Link
               href="/terminal"
               className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10 shadow-2xl flex flex-col justify-between"
@@ -261,7 +287,6 @@ export default function UnifiedLanding() {
               </span>
             </Link>
 
-            {/* CARD 3: API & DEVELOPERS (UNIFIED DESIGN) */}
             <div className="group relative bg-zinc-900/50 border border-white/5 p-10 rounded-[3.5rem] transition-all hover:bg-zinc-900 hover:border-white/10 shadow-2xl flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-start mb-6">
@@ -288,14 +313,15 @@ export default function UnifiedLanding() {
                 </Link>
               </div>
             </div>
-
           </div>
         </div>
       )}
 
       <footer className="absolute bottom-10 opacity-20">
         <div className="flex flex-col items-center gap-2">
-          <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-500">Global Settlement Layer</span>
+          <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-500">
+            Global Settlement Layer
+          </span>
           <p className="text-[9px] font-mono uppercase tracking-widest">Built for Solana Radar 2026</p>
         </div>
       </footer>
