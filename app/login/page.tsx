@@ -100,6 +100,19 @@ export default function LoginPage() {
       if (signInError) throw signInError;
 
       if (data?.user) {
+        let destination = getRedirectTarget("/developer/overview");
+
+        // If user explicitly came from vault, keep vault
+        const params = new URLSearchParams(window.location.search);
+        const nextParam = params.get("next")?.trim();
+        if (nextParam?.startsWith("/vault")) {
+          destination = nextParam;
+        } else if (nextParam?.startsWith("/developer")) {
+          destination = nextParam;
+        } else if (nextParam?.startsWith("/")) {
+          destination = nextParam;
+        }
+
         try {
           const merchantRes = await fetch("/api/v1/merchant");
           if (merchantRes.ok) {
@@ -109,7 +122,7 @@ export default function LoginPage() {
               hydrateMerchantLocal(merchant);
               if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
               if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
-              if (merchant?.id) {
+              if (merchant.id) {
                 bindAuthenticatedMerchantSession({
                   merchantId: merchant.id,
                   walletAddress: merchant.settlement_wallet_address || null,
@@ -121,13 +134,14 @@ export default function LoginPage() {
           console.warn("Failed to hydrate merchant profile after login", merchantError);
         }
 
-        const destination = getRedirectTarget("/vault/registry");
         if (typeof window !== "undefined") {
           window.localStorage.setItem("opayque_next_route", destination);
         }
 
         setMessage("Signed in successfully. Redirecting…");
-        router.push(destination);
+
+        // Hard redirect (critical)
+        window.location.assign(destination);
         return;
       }
 
