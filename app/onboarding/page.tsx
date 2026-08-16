@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { setupConfidentialAccount } from "@/lib/solana/relayer";
 
 const WalletMultiButtonNoSSR = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
@@ -43,7 +44,7 @@ function getRedirectTarget(defaultTarget: string) {
 function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { connected, publicKey, signMessage } = useWallet();
+  const { connected, publicKey } = useWallet();
   const [isNavigating, setIsNavigating] = useState(false);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -83,7 +84,7 @@ function OnboardingContent() {
   };
 
   const handleWalletSign = async () => {
-    if (!publicKey || !signMessage) {
+    if (!publicKey) {
       setErrorMessage("Connect a supported wallet before continuing.");
       return;
     }
@@ -92,22 +93,17 @@ function OnboardingContent() {
     setIsSigningWallet(true);
 
     try {
-      const challenge = `opayque:onboarding:${Date.now()}`;
-      const message = new TextEncoder().encode(challenge);
-      const signature = await signMessage(message);
-      const signaturePayload = typeof window !== "undefined"
-        ? btoa(Array.from(signature).map((byte) => String.fromCharCode(byte)).join(""))
-        : "";
+      // Mechanics Updated: This now uses the server-side relayer instead of forcing the wallet to sign
+      await setupConfidentialAccount(publicKey.toBase58());
 
       setWalletAddress(publicKey.toBase58());
-      setWalletSigned(Boolean(signaturePayload));
+      setWalletSigned(true);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("settlement_wallet_address", publicKey.toBase58());
-        window.localStorage.setItem("wallet_signature", signaturePayload);
       }
-    } catch (error) {
-      console.error("Wallet signing failed", error);
-      setErrorMessage("Wallet signing was rejected. Please approve the message to continue.");
+    } catch (error: any) {
+      console.error("Confidential setup failed:", error);
+      setErrorMessage(error?.message || "Failed to setup secured vault. Please try again.");
       setWalletSigned(false);
     } finally {
       setIsSigningWallet(false);
@@ -127,7 +123,7 @@ function OnboardingContent() {
         throw new Error("Connect and sign with your wallet to populate the settlement address.");
       }
       if (!walletSigned) {
-        throw new Error("Wallet signature is required before onboarding.");
+        throw new Error("Wallet setup is required before onboarding.");
       }
 
       const supabase = createClient();
