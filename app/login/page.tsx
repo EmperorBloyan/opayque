@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") return "Opayque Merchant";
@@ -108,6 +109,12 @@ export default function LoginPage() {
               hydrateMerchantLocal(merchant);
               if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
               if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
+              if (merchant?.id) {
+                bindAuthenticatedMerchantSession({
+                  merchantId: merchant.id,
+                  walletAddress: merchant.settlement_wallet_address || null,
+                });
+              }
             }
           }
         } catch (merchantError) {
