@@ -3,7 +3,6 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 
-// Helper function to create a Supabase client with complete cookie management
 async function getSupabaseClient() {
   const cookieStore = await cookies();
 
@@ -21,7 +20,7 @@ async function getSupabaseClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Ignored if called from Server Components
+            // ignore when called from Server Components
           }
         },
       },
@@ -29,7 +28,7 @@ async function getSupabaseClient() {
   );
 }
 
-// GET: Fetch API Keys for the Authenticated Merchant
+// GET: list keys for authenticated merchant
 export async function GET() {
   const supabase = await getSupabaseClient();
 
@@ -66,10 +65,10 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ keys });
+  return NextResponse.json({ keys: keys ?? [] });
 }
 
-// POST: Create a New Secret API Key
+// POST: create a real persisted key only
 export async function POST(request: Request) {
   const supabase = await getSupabaseClient();
 
@@ -86,27 +85,18 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    // If request body is empty or invalid JSON, fall back to default
+    // empty body is fine
   }
 
-  // Normalize environment: accept "devnet", "mainnet", "sandbox", "live"
   const rawEnv = body.environment || 'sandbox';
-  const environment = (rawEnv === 'mainnet' || rawEnv === 'live') ? 'mainnet' : 'sandbox';
+  const environment =
+    rawEnv === 'mainnet' || rawEnv === 'live' ? 'mainnet' : 'sandbox';
   const prefix = environment === 'mainnet' ? 'osk_live_' : 'osk_test_';
 
-  // Generate 256 bits of secure entropy
-  const randomEntropy = crypto.randomBytes(32).toString('hex');
-  const rawSecretKey = `${prefix}${randomEntropy}`;
-
-  // Hash the raw key using SHA-256 for secure DB storage
-  const keyHash = crypto
-    .createHash('sha256')
-    .update(rawSecretKey)
-    .digest('hex');
-
-  const { data: merchant, error: merchantError } = await supabase
+  // Find or create merchant row
+  let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, settlement_wallet_address, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -114,33 +104,65 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: merchantError.message }, { status: 500 });
   }
 
-  // If merchant profile doesn't exist, create a temporary key for testing
+  // Auto-create merchant if missing
   if (!merchant?.id) {
-    return NextResponse.json(
-      {
-        id: `temp_${Date.now()}`,
-        environment,
-        prefix,
-        createdAt: new Date().toISOString(),
-        rawSecretKey,
-        isTemporary: true,
-        warning: 'This is a temporary test key. Create a merchant profile and generate a persistent key to go live.',
-      },
-      { status: 201 }
-    );
+    const { data: created, error: createError } = await supabase
+      .from('merchants')
+      .insert([
+        {
+          auth_user_id: user.id,
+          email: user.email ?? null,
+          onboarding_status: 'pending',
+          api_access_status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ])
+      .select('id, settlement_wallet_address, merchant_name')
+      .maybeSingle();
+
+    if (createError || !created?.id) {
+      return NextResponse.json(
+        {
+          error:
+            createError?.message ||
+            'Merchant profile not found. Please complete merchant setup first.',
+        },
+        { status: 400 }
+      );
+    }
+
+    merchant = created;
   }
 
+  // Generate secure key
+  const randomEntropy = crypto.randomBytes(32).toString('hex');
+  const rawSecretKey = `${prefix}${randomEntropy}`;
+  const keyHash = crypto.createHash('sha256').update(rawSecretKey).digest('hex');
+
+  // Persist key in api_keys
   const { data, error } = await supabase
     .from('api_keys')
-    .insert([{ merchant_id: merchant.id, environment, prefix, key_hash: keyHash }])
+    .insert([
+      {
+        merchant_id: merchant.id,
+        environment,
+        prefix,
+        key_hash: keyHash,
+      },
+    ])
     .select('id, prefix, environment, created_at')
     .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !data) {
+    return NextResponse.json(
+      { error: error?.message || 'Failed to create API key' },
+      { status: 500 }
+    );
   }
 
-  const { error: merchantStatusError } = await supabase
+  // Also store latest key on merchant for legacy support
+  await supabase
     .from('merchants')
     .update({
       api_access_status: 'active',
@@ -150,24 +172,21 @@ export async function POST(request: Request) {
     })
     .eq('id', merchant.id);
 
-  if (merchantStatusError) {
-    return NextResponse.json({ error: merchantStatusError.message }, { status: 500 });
-  }
-
   return NextResponse.json(
     {
       id: data.id,
       environment: data.environment,
       prefix: data.prefix,
       createdAt: data.created_at,
-      rawSecretKey, // Returned once upon creation
+      publishableKey: `${prefix}pub_${String(data.id).slice(0, 8)}`,
+      rawSecretKey, // shown only once
       isTemporary: false,
     },
     { status: 201 }
   );
 }
 
-// DELETE: Revoke/Delete an API Key
+// DELETE: revoke key
 export async function DELETE(request: Request) {
   const supabase = await getSupabaseClient();
 
@@ -187,11 +206,22 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Missing key ID' }, { status: 400 });
   }
 
+  // Resolve merchant first
+  const { data: merchant } = await supabase
+    .from('merchants')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (!merchant?.id) {
+    return NextResponse.json({ error: 'Merchant not found' }, { status: 404 });
+  }
+
   const { error } = await supabase
     .from('api_keys')
     .delete()
     .eq('id', keyId)
-    .eq('merchant_id', user.id);
+    .eq('merchant_id', merchant.id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
