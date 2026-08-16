@@ -73,6 +73,29 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     void hydrateMerchantProfile();
   }, []);
 
+  // Listen for local storage updates and custom events to sync profile state globally
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      const localName = window.localStorage.getItem("merchant_name");
+      const localLogo = window.localStorage.getItem("merchant_logo");
+      if (localName) {
+        setMerchantName(localName);
+        setDraftName(localName);
+      }
+      if (localLogo) {
+        setLogo(localLogo);
+        setDraftLogo(localLogo);
+      }
+    };
+
+    window.addEventListener("storage", handleProfileUpdate);
+    window.addEventListener("merchant_profile_updated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("storage", handleProfileUpdate);
+      window.removeEventListener("merchant_profile_updated", handleProfileUpdate);
+    };
+  }, []);
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
