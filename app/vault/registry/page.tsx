@@ -18,7 +18,11 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { clearActiveSession, getActiveMerchantId } from "@/lib/crypto/session";
+import { 
+  clearActiveSession, 
+  getActiveMerchantId, 
+  bindAuthenticatedMerchantSession 
+} from "@/lib/crypto/session";
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -56,14 +60,19 @@ export default function RegistryPage() {
             const merchant = payload?.merchant;
             if (merchant?.id) {
               merchantId = merchant.id;
+              // If merchant fetch succeeds, set session and continue
+              bindAuthenticatedMerchantSession({
+                merchantId: merchant.id,
+                walletAddress: merchant.settlement_wallet_address || null,
+              });
             }
           }
         }
 
-        // 3) Only redirect after check is complete
+        // 3) Only redirect if both are true: no auth merchant AND no active merchant id
         if (!merchantId || merchantId === "merchant-vault") {
           clearActiveSession();
-          router.replace("/onboarding?next=%2Fvault%2Fregistry");
+          router.replace("/login?next=%2Fvault%2Fregistry");
           return;
         }
 
@@ -71,7 +80,7 @@ export default function RegistryPage() {
       } catch (error) {
         console.warn("Failed to validate vault context", error);
         clearActiveSession();
-        router.replace("/onboarding?next=%2Fvault%2Fregistry");
+        router.replace("/login?next=%2Fvault%2Fregistry");
       } finally {
         setIsChecking(false);
       }
