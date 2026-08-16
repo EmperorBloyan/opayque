@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
-import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") return "Opayque Merchant";
-  return window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant";
+  const merchantName = window.localStorage.getItem("merchant_name")?.trim();
+  return merchantName || "Opayque Merchant";
 }
 
 function getSavedMerchantLogo() {
   if (typeof window === "undefined") return null;
-  return (
-    window.localStorage.getItem("merchant_logo")?.trim() ||
-    window.localStorage.getItem("merchant_avatar")?.trim() ||
-    null
-  );
+  return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
 }
 
 function getRedirectTarget(defaultTarget: string) {
@@ -26,38 +23,16 @@ function getRedirectTarget(defaultTarget: string) {
   const params = new URLSearchParams(window.location.search);
   const paramTarget = params.get("next")?.trim();
   const storedTarget = window.localStorage.getItem("opayque_next_route")?.trim();
+
   const candidate = paramTarget || storedTarget || defaultTarget;
+  if (candidate.startsWith("/")) return candidate;
 
-  return candidate.startsWith("/") ? candidate : defaultTarget;
+  return defaultTarget;
 }
 
-function hydrateMerchantLocal(merchant: any) {
-  if (typeof window === "undefined" || !merchant) return;
-
-  if (merchant.merchant_name) {
-    window.localStorage.setItem("merchant_name", merchant.merchant_name);
-  }
-  if (merchant.merchant_logo) {
-    window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
-  }
-  if (merchant.email) {
-    window.localStorage.setItem("merchant_email", merchant.email);
-  }
-  if (merchant.settlement_wallet_address) {
-    window.localStorage.setItem(
-      "settlement_wallet_address",
-      merchant.settlement_wallet_address
-    );
-  }
-  if (merchant.webhook_url) {
-    window.localStorage.setItem("webhook_url", merchant.webhook_url);
-  }
-
-  window.dispatchEvent(new Event("merchant_profile_updated"));
-}
-
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -73,8 +48,7 @@ export default function LoginPage() {
   }, []);
 
   const infoText = useMemo(
-    () =>
-      "Enter your company password to unlock the developer hub and continue managing your merchant session.",
+    () => "Enter your company password to unlock the developer hub and continue managing your merchant session.",
     []
   );
 
@@ -82,6 +56,7 @@ export default function LoginPage() {
     if (isNavigating) return;
     setIsNavigating(true);
     router.push(path);
+    // Reset after brief delay to allow for re-attempts if navigation fails
     setTimeout(() => setIsNavigating(false), 1000);
   };
 
@@ -93,66 +68,39 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
-      if (!data?.user) throw new Error("Sign-in failed. Please try again.");
 
-      // 1) Resolve intended destination from URL first
-      let destination = getRedirectTarget("/vault/registry");
-
-      // Never keep onboarding as unlock destination for existing accounts
-      if (destination.startsWith("/onboarding")) {
-        destination = "/vault/registry";
-      }
-
-      // Normalize bare /vault
-      if (destination === "/vault") {
-        destination = "/vault/registry";
-      }
-
-      // 2) Load merchant profile
-      let hasMerchant = false;
-
-      try {
-        const merchantRes = await fetch("/api/v1/merchant", { credentials: "include" });
-        if (merchantRes.ok) {
-          const payload = await merchantRes.json();
-          const merchant = payload?.merchant;
-
-          if (merchant?.id) {
-            hasMerchant = true;
-            hydrateMerchantLocal(merchant);
-
-            if (merchant.merchant_name) setMerchantName(merchant.merchant_name);
-            if (merchant.merchant_logo) setMerchantLogo(merchant.merchant_logo);
-
-            bindAuthenticatedMerchantSession({
-              merchantId: merchant.id,
-              walletAddress: merchant.settlement_wallet_address || null,
-            });
+      if (data?.user) {
+        try {
+          const merchantRes = await fetch("/api/v1/merchant");
+          if (merchantRes.ok) {
+            const payload = await merchantRes.json();
+            const merchant = payload?.merchant;
+            if (merchant) {
+              if (typeof window !== "undefined") {
+                if (merchant.merchant_name) window.localStorage.setItem("merchant_name", merchant.merchant_name);
+                if (merchant.merchant_logo) window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+                if (merchant.email) window.localStorage.setItem("merchant_email", merchant.email);
+                if (merchant.settlement_wallet_address) window.localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+              }
+            }
           }
+        } catch (merchantError) {
+          console.warn("Failed to hydrate merchant profile after login", merchantError);
         }
-      } catch (merchantError) {
-        console.warn("Failed to hydrate merchant profile after login", merchantError);
+
+        const next = searchParams.get("next");
+        const destination = next && next.startsWith("/") ? next : getRedirectTarget("/vault/registry");
+
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("opayque_next_route", destination);
+          window.localStorage.removeItem("opayque_next_route");
+        }
+        router.push(destination);
+      } else {
+        setMessage("Signed in successfully. Redirecting…");
       }
-
-      // 3) Only send brand-new users to onboarding
-      if (!hasMerchant) {
-        destination = `/onboarding?next=${encodeURIComponent("/vault/registry")}`;
-      }
-
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("opayque_next_route", destination);
-      }
-
-      setMessage("Signed in successfully. Redirecting…");
-
-      // 4) Hard redirect avoids middleware/router bounce
-      window.location.assign(destination);
-      return;
     } catch (err: any) {
       setError(err?.message || "Unable to sign in. Please try again.");
     } finally {
@@ -164,6 +112,7 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
+      {/* Close Button in top right */}
       <button
         type="button"
         onClick={() => goToDestination("/")}
@@ -177,9 +126,7 @@ export default function LoginPage() {
       <div className="w-full max-w-2xl my-10">
         <div className="mb-10 space-y-4 text-center">
           <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Access Control Center</p>
-          <h1 className="text-5xl font-black uppercase tracking-tighter text-white">
-            Secure Hub Unlock
-          </h1>
+          <h1 className="text-5xl font-black uppercase tracking-tighter text-white">Secure Hub Unlock</h1>
           <p className="mx-auto max-w-2xl text-sm leading-7 text-zinc-400">
             Re-enter your credentials to restore access to your developer workspace.
           </p>
@@ -189,22 +136,14 @@ export default function LoginPage() {
           <div className="flex flex-col items-center gap-5 rounded-[2.5rem] border border-white/10 bg-zinc-950/90 p-6 text-center shadow-xl shadow-black/30">
             <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 overflow-hidden shadow-[0_0_30px_rgba(168,85,247,0.25)]">
               {merchantLogo ? (
-                <img
-                  src={merchantLogo}
-                  alt={`${merchantName} logo`}
-                  className="h-full w-full object-cover"
-                />
+                <img src={merchantLogo} alt={`${merchantName} logo`} className="h-full w-full object-cover" />
               ) : (
                 <span className="text-4xl font-black text-white">{merchantInitial}</span>
               )}
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">
-                Merchant Identity
-              </p>
-              <h2 className="mt-3 text-3xl font-black uppercase tracking-tight text-white">
-                {merchantName}
-              </h2>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Merchant Identity</p>
+              <h2 className="mt-3 text-3xl font-black uppercase tracking-tight text-white">{merchantName}</h2>
             </div>
           </div>
 
@@ -257,16 +196,12 @@ export default function LoginPage() {
                 </div>
               )}
 
+              {/* Action Buttons Row */}
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+                {/* Create Account Link (Bottom-Left) */}
                 <button
                   type="button"
-                  onClick={() =>
-                    goToDestination(
-                      `/onboarding?next=${encodeURIComponent(
-                        getRedirectTarget("/vault/registry")
-                      )}`
-                    )
-                  }
+                  onClick={() => goToDestination(`/onboarding?next=${encodeURIComponent(getRedirectTarget("/vault/registry"))}`)}
                   disabled={isNavigating}
                   className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -274,6 +209,7 @@ export default function LoginPage() {
                   <span>Create Account</span>
                 </button>
 
+                {/* Unlock Hub Primary Action */}
                 <button
                   type="submit"
                   disabled={isLoading || isNavigating}
@@ -288,5 +224,13 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading…</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

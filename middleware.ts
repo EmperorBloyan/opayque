@@ -37,36 +37,48 @@ export async function middleware(request: NextRequest) {
   // 1. Define ALL protected routes here
   const isDeveloperRoute = pathname.startsWith('/developer');
   const isVaultRoute = pathname.startsWith('/vault');
-  const isBotRoute = pathname.startsWith('/bot');           // <-- ADDED THIS
-  const isRegistryRoute = pathname.startsWith('/registry'); // <-- ADDED THIS
-  const isOnboardingRoute = pathname === '/onboarding' || pathname === '/developer/onboarding';
+  const isBotRoute = pathname.startsWith('/bot');
+  const isRegistryRoute = pathname.startsWith('/registry');
+  const isOnboardingRoute = pathname === '/onboarding';
   const isLoginRoute = pathname === '/login';
 
   // 2. Protect unauthenticated users and track their intended destination
   const isProtectedRoute = isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute || isOnboardingRoute;
+  const isOnboardingPage = pathname === '/onboarding';
 
   if (!user && isProtectedRoute) {
-    // Capture exactly where they were trying to go
     const nextTarget = request.nextUrl.pathname;
-    
     const redirectUrl = new URL('/login', request.url);
-    // Attach it to the URL (e.g., /login?next=/bot/unlock)
     redirectUrl.searchParams.set('next', nextTarget);
-    
     return NextResponse.redirect(redirectUrl);
   }
 
-  // 3. Prevent logged-in users from getting stuck on the login page
-  if (user && isLoginRoute) {
-    const nextTarget = request.nextUrl.searchParams.get("next");
-    const safeTarget =
-      nextTarget &&
-      nextTarget.startsWith("/") &&
-      !nextTarget.startsWith("//")
-        ? nextTarget
-        : "/developer/overview";
+  let merchant: { id: string; settlement_wallet_address?: string | null } | null = null;
 
-    return NextResponse.redirect(new URL(safeTarget, request.url));
+  if (user && isProtectedRoute) {
+    const { data } = await supabase
+      .from('merchants')
+      .select('id, settlement_wallet_address')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+
+    merchant = data ?? null;
+  }
+
+  if (user && !isOnboardingPage && isProtectedRoute && !merchant) {
+    const redirectUrl = new URL('/onboarding', request.url);
+    redirectUrl.searchParams.set('next', request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (user && isOnboardingPage && merchant) {
+    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault/registry';
+    return NextResponse.redirect(new URL(nextTarget, request.url));
+  }
+
+  if (user && isLoginRoute) {
+    const nextTarget = request.nextUrl.searchParams.get('next') || '/vault/registry';
+    return NextResponse.redirect(new URL(nextTarget, request.url));
   }
 
   return response;
