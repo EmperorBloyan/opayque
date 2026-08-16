@@ -27,17 +27,15 @@ const WalletMultiButtonNoSSR = dynamic(
   }
 );
 
-function getRedirectTarget(defaultTarget: string) {
+function getRedirectTarget(defaultTarget = "/vault/registry") {
   if (typeof window === "undefined") return defaultTarget;
 
   const params = new URLSearchParams(window.location.search);
   const paramTarget = params.get("next")?.trim();
   const storedTarget = window.localStorage.getItem("opayque_next_route")?.trim();
-
   const candidate = paramTarget || storedTarget || defaultTarget;
-  if (candidate.startsWith("/")) return candidate;
 
-  return defaultTarget;
+  return candidate.startsWith("/") ? candidate : defaultTarget;
 }
 
 export default function OnboardingPage() {
@@ -119,52 +117,74 @@ export default function OnboardingPage() {
     setErrorMessage(null);
 
     try {
-      if (!companyName.trim()) {
-        throw new Error("Company name is required.");
-      }
+      if (!companyName.trim()) throw new Error("Company name is required.");
       if (!walletAddress.trim()) {
         throw new Error("Connect and sign with your wallet to populate the settlement address.");
       }
       if (!walletSigned) {
         throw new Error("Wallet signature is required before onboarding.");
       }
+      if (!email.trim() || !password.trim()) {
+        throw new Error("Email and password are required.");
+      }
 
       const supabase = createClient();
+      let userId: string | null = null;
 
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      // 1) Try sign-in first (existing account)
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (signUpError) throw signUpError;
+      if (!signInError && signInData.user) {
+        userId = signInData.user.id;
+      } else {
+        // 2) Create account if not existing
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+        });
 
-      const user = signUpData.user;
-      if (!user) {
-        throw new Error("Authentication did not create a user.");
+        if (signUpError) {
+          const msg = String(signUpError.message || "").toLowerCase();
+          if (msg.includes("already") || msg.includes("registered")) {
+            // Account exists but password may be wrong
+            throw new Error("Account already exists. Please sign in with your password.");
+          }
+          throw signUpError;
+        }
+
+        userId = signUpData.user?.id ?? null;
+
+        // Ensure session exists
+        const { data: secondSignIn, error: secondSignInError } =
+          await supabase.auth.signInWithPassword({ email, password });
+        if (secondSignInError) throw secondSignInError;
+        userId = secondSignIn.user?.id ?? userId;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInError) throw signInError;
+      if (!userId) throw new Error("Authentication did not create a user session.");
 
-      const { error: dbError } = await supabase
-        .from("merchants")
-        .upsert(
-          {
-            auth_user_id: user.id,
-            email,
-            merchant_name: companyName.trim(),
-            merchant_logo: logoPreview ?? null,
-            settlement_wallet_address: walletAddress.trim(),
-            webhook_url: webhookUrl.trim() || null,
-            onboarding_status: "completed",
-            api_access_status: "active",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "auth_user_id" }
-        );
+      // 3) Upsert merchant profile
+      const { error: dbError } = await supabase.from("merchants").upsert(
+        {
+          auth_user_id: userId,
+          email,
+          merchant_name: companyName.trim(),
+          merchant_logo: logoPreview ?? null,
+          settlement_wallet_address: walletAddress.trim(),
+          webhook_url: webhookUrl.trim() || null,
+          onboarding_status: "completed",
+          api_access_status: "active",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "auth_user_id" }
+      );
 
       if (dbError) throw dbError;
 
+      // 4) Local hydrate for headers
       if (typeof window !== "undefined") {
         window.localStorage.setItem("merchant_name", companyName.trim());
         window.localStorage.setItem("merchant_email", email.trim());
@@ -173,25 +193,27 @@ export default function OnboardingPage() {
         if (webhookUrl.trim()) {
           window.localStorage.setItem("webhook_url", webhookUrl.trim());
         }
+        window.dispatchEvent(new Event("merchant_profile_updated"));
       }
 
-      const merchantResponse = await fetch("/api/v1/merchant");
-      if (merchantResponse.ok) {
-        const merchantPayload = await merchantResponse.json();
-        const merchant = merchantPayload?.merchant;
-        if (merchant?.merchant_name) {
-          if (typeof window !== "undefined") {
+      // 5) Refresh from API if available
+      try {
+        const merchantResponse = await fetch("/api/v1/merchant");
+        if (merchantResponse.ok) {
+          const merchantPayload = await merchantResponse.json();
+          const merchant = merchantPayload?.merchant;
+          if (merchant?.merchant_name) {
             window.localStorage.setItem("merchant_name", merchant.merchant_name);
           }
-        }
-        if (merchant?.merchant_logo) {
-          if (typeof window !== "undefined") {
+          if (merchant?.merchant_logo) {
             window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
           }
         }
+      } catch {
+        // non-blocking
       }
 
-      const destination = getRedirectTarget("/developer/overview");
+      const destination = getRedirectTarget("/vault/registry");
       if (typeof window !== "undefined") {
         window.localStorage.setItem("opayque_next_route", destination);
       }
@@ -357,7 +379,11 @@ export default function OnboardingPage() {
               <div className="flex flex-col items-center gap-4 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => goToDestination(`/login?next=${encodeURIComponent(getRedirectTarget("/developer/overview"))}`)}
+                  onClick={() =>
+                    goToDestination(
+                      `/login?next=${encodeURIComponent(getRedirectTarget("/vault/registry"))}`
+                    )
+                  }
                   disabled={isNavigating}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
