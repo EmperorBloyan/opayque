@@ -1,143 +1,156 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-interface CurrencyContextType {
+type RatesMap = Record<string, number>;
+
+type CurrencyContextValue = {
   currency: string;
-  setCurrency: (curr: string) => void;
-  rates: Record<string, number>;
-  convert: (amountInUsdc: number) => { formatted: string; raw: number };
-  isLoadingRates: boolean;
-}
+  setCurrency: (code: string) => void;
+  rates: RatesMap;
+  loading: boolean;
+  error: string | null;
+  convert: (usdAmount: number) => { value: number; formatted: string };
+  toUsdc: (fiatAmount: number, fromCurrency?: string) => number;
+  refreshRates: () => Promise<void>;
+};
 
-const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
+const CurrencyContext = createContext<CurrencyContextValue | null>(null);
+
+const FALLBACK_RATES: RatesMap = {
+  USD: 1,
+  USDC: 1,
+  EUR: 0.92,
+  GBP: 0.78,
+  NGN: 1600,
+  GHS: 15.5,
+  KES: 129,
+  ZAR: 18.2,
+  INR: 83,
+  CAD: 1.36,
+  AUD: 1.52,
+};
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [currency, setCurrencyState] = useState<string>("USD");
-  const [rates, setRates] = useState<Record<string, number>>({ USD: 1 });
-  const [isLoadingRates, setIsLoadingRates] = useState<boolean>(true);
+  const [currency, setCurrencyState] = useState("USD");
+  const [rates, setRates] = useState<RatesMap>(FALLBACK_RATES);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const initCurrency = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        
-        // Get authenticated user
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          // Try to fetch merchant's preferred currency from Supabase
-          const { data: merchant, error } = await supabase
-            .from("merchants")
-            .select("preferred_currency")
-            .eq("auth_user_id", user.id)
-            .single();
-          
-          if (!error && merchant?.preferred_currency) {
-            setCurrencyState(merchant.preferred_currency);
-          } else {
-            // Fallback to localStorage
-            const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
-            if (savedCurrency) {
-              setCurrencyState(savedCurrency);
-            }
-          }
-        } else {
-          // User not authenticated - use localStorage
-          const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
-          if (savedCurrency) {
-            setCurrencyState(savedCurrency);
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to load currency preference from Supabase, using localStorage", err);
-        const savedCurrency = window.localStorage.getItem("merchant_preferred_currency");
-        if (savedCurrency) {
-          setCurrencyState(savedCurrency);
-        }
-      }
-    };
-
-    // 1. Load currency preference
-    void initCurrency();
-
-    // 2. Fetch live fiat rates
-    const fetchRates = async () => {
-      try {
-        const res = await fetch("/api/v1/rates");
-        const data = await res.json();
-        if (data.success && data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.warn("Failed to load exchange rates, defaulting to USD", err);
-      } finally {
-        setIsLoadingRates(false);
-      }
-    };
-
-    fetchRates();
+  const setCurrency = useCallback((code: string) => {
+    const next = (code || "USD").toUpperCase();
+    setCurrencyState(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("merchant_preferred_currency", next);
+    }
   }, []);
 
-  const setCurrency = (curr: string) => {
-    setCurrencyState(curr);
-    
-    // Save to localStorage always
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("merchant_preferred_currency", curr);
-    }
-
-    // Save to Supabase if user is authenticated
-    const saveToDB = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          await supabase
-            .from("merchants")
-            .update({ preferred_currency: curr })
-            .eq("auth_user_id", user.id);
-        }
-      } catch (err) {
-        console.warn("Failed to save currency preference to Supabase", err);
+  const refreshRates = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Prefer your own API if it exists
+      let res = await fetch("/api/v1/rates", { cache: "no-store" });
+      
+      if (!res.ok) {
+        // Fallback to public provider
+        res = await fetch("https://api.frankfurter.app/latest?from=USD", {
+          cache: "no-store",
+        });
       }
-    };
 
-    void saveToDB();
-  };
+      if (!res.ok) throw new Error(`Rate provider failed (${res.status})`);
 
-  const convert = (amountInUsdc: number) => {
-    const rate = rates[currency] || 1;
-    const convertedAmount = amountInUsdc * rate;
-    
-    const formatted = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(convertedAmount);
+      const data = await res.json();
+      const incoming = (data.rates || data) as RatesMap;
 
-    return {
-      formatted,
-      raw: convertedAmount,
-    };
-  };
+      setRates({
+        USD: 1,
+        USDC: 1,
+        ...incoming,
+        NGN: incoming.NGN || FALLBACK_RATES.NGN,
+        GHS: incoming.GHS || FALLBACK_RATES.GHS,
+        KES: incoming.KES || FALLBACK_RATES.KES,
+      });
+    } catch (err: any) {
+      console.warn("FX rate fetch failed, using fallback", err);
+      setError(err?.message || "Failed to fetch rates");
+      setRates((prev) => ({ ...FALLBACK_RATES, ...prev }));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("merchant_preferred_currency");
+    if (saved) setCurrencyState(saved.toUpperCase());
+    void refreshRates();
+  }, [refreshRates]);
+
+  // Display only (USD → local)
+  const convert = useCallback(
+    (usdAmount: number) => {
+      const amount = Number(usdAmount) || 0;
+      const rate = Number(rates[currency] ?? 1) || 1;
+      const local = amount * rate;
+      return {
+        value: local,
+        formatted: `${local.toLocaleString(undefined, {
+          maximumFractionDigits: 2,
+        })} ${currency}`,
+      };
+    },
+    [currency, rates]
+  );
+
+  // Settlement only (local fiat → USDC)
+  const toUsdc = useCallback(
+    (fiatAmount: number, fromCurrency?: string) => {
+      const amount = Number(fiatAmount) || 0;
+      const code = (fromCurrency || currency || "USD").toUpperCase();
+
+      if (code === "USD" || code === "USDC") return amount;
+
+      const rate = Number(rates[code] ?? 0);
+      if (!rate || rate <= 0) return amount; // safe fallback
+
+      return amount / rate;
+    },
+    [currency, rates]
+  );
+
+  const value = useMemo(
+    () => ({
+      currency,
+      setCurrency,
+      rates,
+      loading,
+      error,
+      convert,
+      toUsdc,
+      refreshRates,
+    }),
+    [currency, setCurrency, rates, loading, error, convert, toUsdc, refreshRates]
+  );
 
   return (
-    <CurrencyContext.Provider
-      value={{ currency, setCurrency, rates, convert, isLoadingRates }}
-    >
+    <CurrencyContext.Provider value={value}>
       {children}
     </CurrencyContext.Provider>
   );
 }
 
 export function useCurrency() {
-  const context = useContext(CurrencyContext);
-  if (!context) {
-    throw new Error("useCurrency must be used within a CurrencyProvider");
+  const ctx = useContext(CurrencyContext);
+  if (!ctx) {
+    throw new Error("useCurrency must be used within CurrencyProvider");
   }
-  return context;
+  return ctx;
 }
