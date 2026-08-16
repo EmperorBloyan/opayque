@@ -20,7 +20,7 @@ async function getSupabaseClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // ignore when called from Server Components
+            // ignore in server components
           }
         },
       },
@@ -28,7 +28,7 @@ async function getSupabaseClient() {
   );
 }
 
-// GET: list keys for authenticated merchant
+// GET keys
 export async function GET() {
   const supabase = await getSupabaseClient();
 
@@ -68,7 +68,7 @@ export async function GET() {
   return NextResponse.json({ keys: keys ?? [] });
 }
 
-// POST: create a real persisted key only
+// POST create real key only
 export async function POST(request: Request) {
   const supabase = await getSupabaseClient();
 
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    // empty body is fine
+    // empty body ok
   }
 
   const rawEnv = body.environment || 'sandbox';
@@ -93,10 +93,10 @@ export async function POST(request: Request) {
     rawEnv === 'mainnet' || rawEnv === 'live' ? 'mainnet' : 'sandbox';
   const prefix = environment === 'mainnet' ? 'osk_live_' : 'osk_test_';
 
-  // Find or create merchant row
+  // Find merchant
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id, settlement_wallet_address, merchant_name')
+    .select('id')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: merchantError.message }, { status: 500 });
   }
 
-  // Auto-create merchant if missing
+  // Auto-create merchant if missing (prevents temp keys)
   if (!merchant?.id) {
     const { data: created, error: createError } = await supabase
       .from('merchants')
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         },
       ])
-      .select('id, settlement_wallet_address, merchant_name')
+      .select('id')
       .maybeSingle();
 
     if (createError || !created?.id) {
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
   const rawSecretKey = `${prefix}${randomEntropy}`;
   const keyHash = crypto.createHash('sha256').update(rawSecretKey).digest('hex');
 
-  // Persist key in api_keys
+  // Persist key
   const { data, error } = await supabase
     .from('api_keys')
     .insert([
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Also store latest key on merchant for legacy support
+  // Update merchant status + legacy api_key field
   await supabase
     .from('merchants')
     .update({
@@ -179,14 +179,14 @@ export async function POST(request: Request) {
       prefix: data.prefix,
       createdAt: data.created_at,
       publishableKey: `${prefix}pub_${String(data.id).slice(0, 8)}`,
-      rawSecretKey, // shown only once
+      rawSecretKey, // only once
       isTemporary: false,
     },
     { status: 201 }
   );
 }
 
-// DELETE: revoke key
+// DELETE key
 export async function DELETE(request: Request) {
   const supabase = await getSupabaseClient();
 
@@ -206,7 +206,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Missing key ID' }, { status: 400 });
   }
 
-  // Resolve merchant first
   const { data: merchant } = await supabase
     .from('merchants')
     .select('id')
