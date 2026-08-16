@@ -177,6 +177,53 @@ export function clearActiveSession(): void {
   }
 }
 
+export function setActiveMerchantId(merchantId: string): void {
+  if (!merchantId || merchantId === "merchant-vault") return;
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ACTIVE_MERCHANT_ID_KEY, merchantId);
+  }
+
+  // Keep in-memory session merchant id in sync if present
+  if (activeSession) {
+    activeSession = {
+      ...activeSession,
+      merchantId,
+    };
+  }
+}
+
+export function bindAuthenticatedMerchantSession(input: {
+  merchantId: string;
+  walletAddress?: string | null;
+}): void {
+  const merchantId = input.merchantId?.trim();
+  if (!merchantId || merchantId === "merchant-vault") return;
+
+  setActiveMerchantId(merchantId);
+
+  // Lightweight non-wallet session marker so vault pages treat user as authorized
+  if (typeof window !== "undefined") {
+    const existing = window.localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (!existing) {
+      const now = Date.now();
+      window.localStorage.setItem(
+        ACTIVE_SESSION_KEY,
+        JSON.stringify({
+          id: `auth-session-${merchantId.slice(0, 8)}`,
+          merchantId,
+          walletAddress: input.walletAddress || "email-auth",
+          nonce: `auth-${now}`,
+          issuedAt: now,
+          expiresAt: now + 12 * 60 * 60 * 1000, // 12h
+          walletSignature: "",
+          publicKeyJwk: {},
+        })
+      );
+    }
+  }
+}
+
 export function getStoredMerchantId(): string | null {
   if (typeof window === "undefined") {
     return null;
