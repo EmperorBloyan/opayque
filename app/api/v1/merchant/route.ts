@@ -52,6 +52,7 @@ export async function GET() {
     return NextResponse.json({ merchant: normalizedMerchant });
   } catch (err: any) {
     console.error('GET /api/v1/merchant error:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
@@ -96,12 +97,11 @@ export async function PATCH(request: Request) {
       teeEnforcementEnabled,
     } = body;
 
+    // Safely build the updates object so we don't overwrite missing body fields with null
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    
     if (email !== undefined) updates.email = email;
     if (merchantName !== undefined) updates.merchant_name = merchantName;
-    if (typeof email !== 'undefined' || typeof merchantName !== 'undefined' || typeof merchantLogo !== 'undefined' || typeof secondaryEmail !== 'undefined' || typeof settlementWalletAddress !== 'undefined' || typeof websiteUrl !== 'undefined' || typeof webhookUrl !== 'undefined') {
-      updates.api_access_status = 'active';
-    }
     if (merchantLogo !== undefined) updates.merchant_logo = merchantLogo;
     if (secondaryEmail !== undefined) updates.secondary_email = secondaryEmail;
     if (settlementWalletAddress !== undefined) updates.settlement_wallet_address = settlementWalletAddress;
@@ -109,17 +109,60 @@ export async function PATCH(request: Request) {
     if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
     if (teeEnforcementEnabled !== undefined) updates.tee_enforcement_enabled = teeEnforcementEnabled;
 
-    const { data: merchant, error } = await supabase
+    if (
+      email !== undefined || 
+      merchantName !== undefined || 
+      merchantLogo !== undefined || 
+      secondaryEmail !== undefined || 
+      settlementWalletAddress !== undefined || 
+      websiteUrl !== undefined || 
+      webhookUrl !== undefined
+    ) {
+      updates.api_access_status = 'active';
+    }
+
+    // 1. Check if the merchant record already exists
+    const { data: existing } = await supabase
       .from('merchants')
-      .update(updates)
+      .select('id')
       .eq('auth_user_id', user.id)
-      .select('id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key')
       .maybeSingle();
+
+    const selectColumns = 'id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key';
+    
+    let dbResult;
+
+    // 2. Branch logic based on existence
+    if (existing?.id) {
+      // Update existing record targeting the specific primary key ID
+      dbResult = await supabase
+        .from('merchants')
+        .update(updates)
+        .eq('id', existing.id)
+        .select(selectColumns)
+        .maybeSingle();
+    } else {
+      // Insert new record with explicit creation defaults
+      dbResult = await supabase
+        .from('merchants')
+        .insert({
+          ...updates,
+          auth_user_id: user.id,
+          onboarding_status: 'pending',
+          api_access_status: updates.api_access_status || 'pending',
+          created_at: new Date().toISOString(),
+        })
+        .select(selectColumns)
+        .maybeSingle();
+    }
+
+    const { data: merchant, error } = dbResult;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    // Retain the normalization logic
     const normalizedMerchant = merchant
       ? {
           ...merchant,
