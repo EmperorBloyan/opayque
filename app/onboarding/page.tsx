@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 
 const WalletMultiButtonNoSSR = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
@@ -167,7 +168,7 @@ export default function OnboardingPage() {
       if (!userId) throw new Error("Authentication did not create a user session.");
 
       // 3) Upsert merchant profile
-      const { error: dbError } = await supabase.from("merchants").upsert(
+      const { data: upsertedMerchant, error: dbError } = await supabase.from("merchants").upsert(
         {
           auth_user_id: userId,
           email,
@@ -180,9 +181,16 @@ export default function OnboardingPage() {
           updated_at: new Date().toISOString(),
         },
         { onConflict: "auth_user_id" }
-      );
+      ).select().single();
 
       if (dbError) throw dbError;
+
+      if (upsertedMerchant?.id) {
+        bindAuthenticatedMerchantSession({
+          merchantId: upsertedMerchant.id,
+          walletAddress: upsertedMerchant.settlement_wallet_address || walletAddress.trim() || null,
+        });
+      }
 
       // 4) Local hydrate for headers
       if (typeof window !== "undefined") {
@@ -202,6 +210,12 @@ export default function OnboardingPage() {
         if (merchantResponse.ok) {
           const merchantPayload = await merchantResponse.json();
           const merchant = merchantPayload?.merchant;
+          if (merchant?.id) {
+            bindAuthenticatedMerchantSession({
+              merchantId: merchant.id,
+              walletAddress: merchant.settlement_wallet_address || null,
+            });
+          }
           if (merchant?.merchant_name) {
             window.localStorage.setItem("merchant_name", merchant.merchant_name);
           }
