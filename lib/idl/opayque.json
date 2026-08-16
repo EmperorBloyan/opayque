@@ -1,15 +1,91 @@
 {
-  "name": "opayque",
   "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "next": "16.2.4",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  }
+  "name": "opayque",
+  "instructions": [
+    {
+      "name": "initializeMerchantVault",
+      "accounts": [
+        {
+          "name": "merchantAuthority",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "merchantVault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "opayqueTreasury",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "protocolConfig",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "feeBps",
+          "type": "u64"
+        },
+        {
+          "name": "merchant",
+          "type": "publicKey"
+        },
+        {
+          "name": "tokenDecimals",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MerchantVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "merchant",
+            "type": "publicKey"
+          },
+          {
+            "name": "feeBps",
+            "type": "u64"
+          },
+          {
+            "name": "tokenDecimals",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "publicKey"
+          }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": []
 }
