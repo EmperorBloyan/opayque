@@ -7,9 +7,7 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
-
-// Make sure the IDL is available in your Next.js project
-import idl from "@/anchor/target/idl/opayque.json"; // adjust path if needed
+import idl from "@/lib/idl/opayque.json";
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
