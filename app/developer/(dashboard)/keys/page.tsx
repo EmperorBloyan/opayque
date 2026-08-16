@@ -272,79 +272,54 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
 
-    const targetEnv = isSandbox ? "sandbox" : "mainnet";
-    const envPrefix = isSandbox ? "osk_test_" : "osk_live_";
-    let newKey: ApiKeyPair | null = null;
+    const targetEnv = isSandbox ? 'devnet' : 'mainnet';
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not logged in");
-
-      const res = await fetch("/api/v1/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/v1/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ environment: targetEnv }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed to create key: ${res.status}`);
+        throw new Error(data?.error || 'Failed to create API key');
       }
 
-      const data = await res.json();
-      const isTemporary = data.isTemporary === true;
+      // Reject temporary keys if backend still returns one
+      if (data.isTemporary || String(data.id || '').startsWith('temp_')) {
+        throw new Error(
+          'Merchant profile is incomplete. Save settlement wallet, then create a real key.'
+        );
+      }
 
-      newKey = {
-        id: data.id || Math.random().toString(36).substring(2, 9),
-        publishable: (data.prefix || envPrefix) + "pub_" + (data.id ? String(data.id).slice(0, 8) : "8f921a"),
-        secret: data.rawSecretKey || `${envPrefix}${Math.random().toString(36).substring(2, 15)}`,
+      const newKey: ApiKeyPair = {
+        id: data.id,
+        publishable:
+          data.publishableKey ||
+          `${data.prefix || (isSandbox ? 'osk_test_' : 'osk_live_')}pub_${String(data.id).slice(0, 8)}`,
+        secret: data.rawSecretKey,
         createdAt: data.createdAt || new Date().toISOString(),
-        lastUsed: "never",
-        environment: data.environment === 'mainnet' ? 'mainnet' : 'devnet',
+        lastUsed: 'never',
+        environment: targetEnv === 'devnet' ? 'devnet' : 'mainnet',
       };
 
-      // If this is a persistent key, update the merchant profile
-      if (newKey?.secret && !isTemporary) {
-        const { error: dbError } = await supabase
-          .from("merchants")
-          .update({
-            api_key: newKey.secret,
-            api_access_status: "active",
-            onboarding_status: "completed",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("auth_user_id", user.id);
+      setKeyPairs((current) => {
+        const updated = [newKey, ...current];
+        window.localStorage.setItem('opayque_api_keys', JSON.stringify(updated));
+        return updated;
+      });
 
-        if (dbError) throw dbError;
-        setMerchantApiAccessStatus("active");
-      }
-
-      // Show appropriate message
-      if (isTemporary) {
-        setProfileMessage(
-          `Temporary ${targetEnv.toUpperCase()} key generated. Save your merchant profile to create a persistent key.`
-        );
-      } else {
-        setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated and saved.`);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Failed to create API key";
-      setProfileError(errorMsg);
+      setVisibleSecretId(newKey.id);
+      setProfileMessage(
+        'New API key created. Copy the secret now — it will not be shown again.'
+      );
+    } catch (error: any) {
+      setProfileError(error?.message || 'Could not create API key');
+    } finally {
       setCreatingKey(false);
-      return;
     }
-
-    setKeyPairs((current) => {
-      const updated = [newKey!, ...current];
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("opayque_api_keys", JSON.stringify(updated));
-      }
-      return updated;
-    });
-
-    setVisibleSecretId(newKey.id);
-    setProfileMessage(`New ${targetEnv.toUpperCase()} API key pair generated and saved.`);
-    setCreatingKey(false);
   };
 
   const handleSaveProfile = async () => {
