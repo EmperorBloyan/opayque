@@ -955,19 +955,30 @@ export default function TerminalManager({
   };
 
   const disconnectTerminal = async (id: string) => {
-    if (confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { error } = await supabase
-          .from("terminals")
-          .update({ status: "revoked", last_active: new Date().toISOString() })
-          .eq("id", id);
-        if (error) {
-          throw error;
-        }
-      } catch (error) {
-        console.error("Failed to revoke terminal in Supabase", error);
-      }
+  if (!confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
+    return;
+  }
+
+  try {
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("terminals")
+      .update({ status: "revoked", last_active: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error("Failed to revoke terminal in Supabase", error);
+  }
+
+  // Optimistic local update
+  const updated = safeTerminals.filter((terminal) => terminal.id !== id);
+  await persistTerminals(updated);
+
+  // Authoritative refresh
+  await loadFromSupabase();
+  notifyFleetUpdated();
+};
 
       const updated = safeTerminals.map((terminal) =>
         terminal.id === id ? { ...terminal, status: "offline", isActive: false } : terminal
