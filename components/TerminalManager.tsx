@@ -861,25 +861,46 @@ export default function TerminalManager({
   };
 
   useEffect(() => {
-    let cancelled = false;
+  let cancelled = false;
 
-    const initMerchantId = async () => {
-      const storedMerchantId = getStoredMerchantId();
-      if (storedMerchantId && !cancelled) {
-        setResolvedMerchantId(storedMerchantId);
+  const initMerchantId = async () => {
+    // 1) Fast path: stored merchant id from vault/login
+    const storedMerchantId = getStoredMerchantId();
+    if (storedMerchantId && !cancelled) {
+      setResolvedMerchantId(storedMerchantId);
+    }
+
+    // 2) Auth merchant API (email/password vault users)
+    try {
+      const res = await fetch("/api/v1/merchant", { credentials: "include" });
+      if (res.ok) {
+        const payload = await res.json();
+        const merchant = payload?.merchant;
+        if (merchant?.id && !cancelled) {
+          bindAuthenticatedMerchantSession({
+            merchantId: merchant.id,
+            walletAddress: merchant.settlement_wallet_address || null,
+          });
+          setResolvedMerchantId(merchant.id);
+          return;
+        }
       }
+    } catch (error) {
+      console.warn("TerminalManager merchant API resolve failed", error);
+    }
 
-      const id = await resolveMerchantId();
-      if (!cancelled) {
-        setResolvedMerchantId(id);
-      }
-    };
+    // 3) Fallback: existing wallet-session resolver
+    const id = await resolveMerchantId();
+    if (!cancelled && id) {
+      setResolvedMerchantId(id);
+    }
+  };
 
-    void initMerchantId();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  void initMerchantId();
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   useEffect(() => {
     if (!resolvedMerchantId) return;
