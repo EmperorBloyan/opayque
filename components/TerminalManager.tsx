@@ -279,13 +279,14 @@ export default function TerminalManager({
 
   // --- PERSIST / LOAD TERMINALS ---
   const persistTerminals = useCallback(
-    async (updated: Terminal[]) => {
-      if (setTerminals) {
-        setTerminals(updated);
-      }
-    },
-    [setTerminals]
-  );
+  async (updated: Terminal[]) => {
+    if (setTerminals) {
+      setTerminals(updated);
+    }
+    notifyFleetUpdated();
+  },
+  [setTerminals]
+);
 
   const loadFromSupabase = useCallback(async () => {
     if (!resolvedMerchantId) return;
