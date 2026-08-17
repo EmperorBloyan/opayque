@@ -220,6 +220,15 @@ function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   }));
 }
 
+function notifyFleetUpdated() {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event("opayque_terminals_updated"));
+    window.localStorage.setItem("opayque_terminals_updated_at", String(Date.now()));
+  } catch {
+    // ignore
+  }
+}
 export default function TerminalManager({
   terminals = [],
   setTerminals,
