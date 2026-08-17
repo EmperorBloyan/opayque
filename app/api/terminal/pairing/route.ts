@@ -161,7 +161,7 @@ export async function POST(request: Request) {
       const nowIso = new Date().toISOString();
       const terminalId = `term_${resolvedMerchantId.slice(0, 8)}_${code}`;
 
-      // Upsert fleet node into terminals (aligned to your real columns)
+      // Find existing fleet row by merchant + label (tolerant)
       const { data: existingTerminal } = await supabase
         .from("terminals")
         .select("id")
@@ -169,24 +169,41 @@ export async function POST(request: Request) {
         .or(`terminal_label.eq.${terminalLabel},label.eq.${terminalLabel}`)
         .maybeSingle();
 
+      // Minimal core fields first (always safe)
+      const coreUpdate = {
+        status: "online",
+        label: terminalLabel,
+        terminal_label: terminalLabel,
+      };
+
+      // Optional enrichment (may not exist on every schema)
+      const richUpdate = {
+        ...coreUpdate,
+        last_active: nowIso,
+        is_active: true,
+        device_token: code,
+      };
+
       if (existingTerminal?.id) {
-        const { error: terminalUpdateError } = await supabase
+        let { error: terminalUpdateError } = await supabase
           .from("terminals")
-          .update({
-            status: "online",
-            label: terminalLabel,
-            terminal_label: terminalLabel,
-            last_active: nowIso,
-            is_active: true,
-            device_token: code,
-          })
+          .update(richUpdate)
           .eq("id", existingTerminal.id);
+
+        // Fallback if optional columns don't exist
+        if (terminalUpdateError) {
+          const retry = await supabase
+            .from("terminals")
+            .update(coreUpdate)
+            .eq("id", existingTerminal.id);
+          terminalUpdateError = retry.error;
+        }
 
         if (terminalUpdateError) {
           console.warn("Failed to update terminal fleet row", terminalUpdateError);
         }
       } else {
-        const { error: terminalInsertError } = await supabase.from("terminals").insert({
+        const richInsert = {
           id: terminalId,
           merchant_id: resolvedMerchantId,
           label: terminalLabel,
@@ -196,7 +213,24 @@ export async function POST(request: Request) {
           last_active: nowIso,
           is_active: true,
           device_token: code,
-        });
+        };
+
+        let { error: terminalInsertError } = await supabase
+          .from("terminals")
+          .insert(richInsert);
+
+        // Fallback to minimal insert
+        if (terminalInsertError) {
+          const retry = await supabase.from("terminals").insert({
+            id: terminalId,
+            merchant_id: resolvedMerchantId,
+            label: terminalLabel,
+            terminal_label: terminalLabel,
+            status: "online",
+            created_at: nowIso,
+          });
+          terminalInsertError = retry.error;
+        }
 
         if (terminalInsertError) {
           console.warn("Failed to insert terminal fleet row", terminalInsertError);
