@@ -21,16 +21,6 @@ interface ShieldedCheckoutProps {
   settlementToken?: string; // USDC / USDT / SOL
 }
 
-function persistLocalTx(items: unknown[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem("opayque_tx", JSON.stringify(items));
-    window.dispatchEvent(new Event("storage"));
-  } catch {
-    // ignore
-  }
-}
-
 export default function ShieldedCheckout({
   amount,
   merchantPubkey,
@@ -173,28 +163,28 @@ export default function ShieldedCheckout({
       }
 
       // Persist lightweight activity for dashboards
+      const endpointLabel = recipientName || endpointName || "Registry Endpoint";
+      const endpointCategoryLabel = endpointCategory || "Registry";
+
+      const activityItem = {
+        id: signature || `EP-${Date.now()}`,
+        staff: endpointLabel,          // shows under Endpoint column
+        category: endpointCategoryLabel,
+        amount: safeAmount,
+        status: "SHIELDED",
+        time: new Date().toISOString(),
+        source: "registry_endpoint",
+      };
+
       try {
-        const existingRaw =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("opayque_tx")
-            : null;
-        const existing = existingRaw ? JSON.parse(existingRaw) : [];
-        const next = [
-          {
-            id: signature,
-            amount: safeAmount,
-            token: settlementToken || "USDC",
-            fiatAmount: fiatLabelAmount,
-            currency: displayCurrency || "USD",
-            merchant: recipientName || endpointName || safeMerchantPubkey,
-            status: "SHIELDED",
-            time: new Date().toISOString(),
-          },
-          ...(Array.isArray(existing) ? existing : []),
-        ].slice(0, 30);
-        persistLocalTx(next);
-      } catch {
-        // ignore storage failures
+        const raw = window.localStorage.getItem("opayque_tx");
+        const existing = raw ? JSON.parse(raw) : [];
+        const next = [activityItem, ...(Array.isArray(existing) ? existing : [])].slice(0, 30);
+        window.localStorage.setItem("opayque_tx", JSON.stringify(next));
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new Event("opayque_tx_updated"));
+      } catch (e) {
+        console.warn("Failed to persist endpoint activity", e);
       }
 
       setSuccessSignature(signature);
