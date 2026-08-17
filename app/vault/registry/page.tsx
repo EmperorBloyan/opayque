@@ -100,15 +100,21 @@ export default function RegistryPage() {
 
       if (error) throw error;
 
-      const mapped = (data ?? []).map((row: any) => ({
-        id: row.id,
-        label: row.terminal_label ?? "Fleet Terminal",
-        status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
-        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
-        accessCode: row.device_token ?? "",
-        isActive: row.status === "online",
-        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-      }));
+      const mapped = (data ?? [])
+        .filter((row: any) => String(row.status || "").toLowerCase() !== "revoked")
+        .map((row: any) => ({
+          id: String(row.id),
+          label: row.terminal_label || row.label || "Fleet Terminal",
+          status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
+          lastSeen: row.last_active
+            ? new Date(row.last_active).getTime()
+            : row.created_at
+              ? new Date(row.created_at).getTime()
+              : Date.now(),
+          accessCode: row.device_token || row.code || "",
+          isActive: row.status === "online" || Boolean(row.is_active),
+          lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+        }));
 
       setTerminals(mapped);
     } catch (error) {
