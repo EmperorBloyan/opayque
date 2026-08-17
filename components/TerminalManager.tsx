@@ -436,9 +436,12 @@ export default function TerminalManager({
   }, [pairingExpiresAt, isPairingOpen]);
 
   const closePairingModal = () => {
-    setIsPairingOpen(false);
-    setPairingState("idle");
-  };
+  setIsPairingOpen(false);
+  setPairingState("idle");
+  // Force fleet refresh when merchant closes pairing UI
+  void loadFromSupabase();
+  notifyFleetUpdated();
+};
 
   const expectedUsdcBaseUnits = useMemo(() => {
     if (!amount || Number.isNaN(amount)) return 0n;
