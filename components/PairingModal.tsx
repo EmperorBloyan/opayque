@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { LucideCheck, LucideCopy, LucideRefreshCw, LucideShieldCheck, LucideClock3, LucideX, LucideSmartphone } from "lucide-react";
+import {
+  LucideCheck,
+  LucideCopy,
+  LucideRefreshCw,
+  LucideShieldCheck,
+  LucideClock3,
+  LucideX,
+  LucideSmartphone,
+} from "lucide-react";
 
 interface PairingModalProps {
   isOpen: boolean;
@@ -14,7 +22,16 @@ interface PairingModalProps {
   pairingState?: "idle" | "waiting" | "used";
 }
 
-export default function PairingModal({ isOpen, onClose, authCode, onRefresh, timeLeft, terminalName, onTerminalNameChange, pairingState = "idle" }: PairingModalProps) {
+export default function PairingModal({
+  isOpen,
+  onClose,
+  authCode,
+  onRefresh,
+  timeLeft,
+  terminalName,
+  onTerminalNameChange,
+  pairingState = "idle",
+}: PairingModalProps) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -22,6 +39,17 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
     const timer = window.setTimeout(() => setCopied(false), 1200);
     return () => window.clearTimeout(timer);
   }, [copied]);
+
+  useEffect(() => {
+    if (!isOpen) setCopied(false);
+  }, [isOpen]);
+
+  // Auto-close shortly after successful pair so parent can refresh fleet
+  useEffect(() => {
+    if (!isOpen || pairingState !== "used") return;
+    const t = window.setTimeout(() => onClose(), 1200);
+    return () => window.clearTimeout(t);
+  }, [isOpen, pairingState, onClose]);
 
   const copyCode = async () => {
     try {
@@ -32,12 +60,6 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
       setCopied(false);
     }
   };
-
-  useEffect(() => {
-    if (!isOpen) {
-      setCopied(false);
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -62,13 +84,15 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
             Terminal Pairing
           </h3>
           <p className="mt-2 text-[10px] uppercase tracking-[0.35em] text-zinc-500">
-            Security window active. enter this code on your device.
+            Security window active. Enter this code on your device.
           </p>
         </div>
 
         <div className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#050507] p-4">
           <div className="mb-3">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.35em] text-zinc-600">Terminal Name</label>
+            <label className="text-[10px] font-semibold uppercase tracking-[0.35em] text-zinc-600">
+              Terminal Name
+            </label>
             <input
               value={terminalName ?? ""}
               onChange={(e) => onTerminalNameChange?.(e.target.value)}
@@ -76,17 +100,25 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
               className="mt-2 w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-sm text-white outline-none"
             />
           </div>
+
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 rounded-[1.25rem] border border-white/10 bg-black/50 px-4 py-4">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.35em] text-zinc-600">Auth Code</p>
-              <p className="mt-2 font-mono text-3xl font-black tracking-[0.4em] text-white">{authCode}</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.35em] text-zinc-600">
+                Auth Code
+              </p>
+              <p className="mt-2 font-mono text-3xl font-black tracking-[0.4em] text-white">
+                {authCode}
+              </p>
             </div>
             <div className="flex flex-col gap-2">
               <button
                 onClick={copyCode}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all ${copied ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all ${
+                  copied
+                    ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                    : "border-white/10 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
                 aria-label="Copy auth code"
-                title={copied ? "Copied" : "Copy auth code"}
               >
                 {copied ? <LucideCheck size={16} /> : <LucideCopy size={16} />}
               </button>
@@ -108,10 +140,15 @@ export default function PairingModal({ isOpen, onClose, authCode, onRefresh, tim
               <LucideClock3 size={14} /> Valid for: {timeLeft}
             </div>
           </div>
+
           {pairingState === "waiting" ? (
-            <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">Awaiting log in...</div>
+            <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">
+              Awaiting login...
+            </div>
           ) : pairingState === "used" ? (
-            <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">Login successful — terminal connected</div>
+            <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">
+              Login successful — terminal connected
+            </div>
           ) : null}
         </div>
 
