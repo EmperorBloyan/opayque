@@ -6,6 +6,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
+import { appendLocalActivity } from "@/lib/activity";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -163,29 +164,15 @@ export default function ShieldedCheckout({
       }
 
       // Persist lightweight activity for dashboards
-      const endpointLabel = recipientName || endpointName || "Registry Endpoint";
-      const endpointCategoryLabel = endpointCategory || "Registry";
-
-      const activityItem = {
+      appendLocalActivity({
         id: signature || `EP-${Date.now()}`,
-        staff: endpointLabel,          // shows under Endpoint column
-        category: endpointCategoryLabel,
+        staff: recipientName || endpointName || "Registry Endpoint",
+        category: endpointCategory || "Registry",
         amount: safeAmount,
         status: "SHIELDED",
         time: new Date().toISOString(),
         source: "registry_endpoint",
-      };
-
-      try {
-        const raw = window.localStorage.getItem("opayque_tx");
-        const existing = raw ? JSON.parse(raw) : [];
-        const next = [activityItem, ...(Array.isArray(existing) ? existing : [])].slice(0, 30);
-        window.localStorage.setItem("opayque_tx", JSON.stringify(next));
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("opayque_tx_updated"));
-      } catch (e) {
-        console.warn("Failed to persist endpoint activity", e);
-      }
+      });
 
       setSuccessSignature(signature);
       setStatus("success");
