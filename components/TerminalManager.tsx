@@ -937,6 +937,27 @@ export default function TerminalManager({
     };
   }, [loadFromSupabase, resolvedMerchantId]);
 
+  useEffect(() => {
+    if (!isPairingOpen || !resolvedMerchantId) return;
+
+    let cancelled = false;
+
+    const pollForPairingStatus = async () => {
+      if (cancelled) return;
+      await loadFromSupabase();
+    };
+
+    void pollForPairingStatus();
+    const interval = window.setInterval(() => {
+      void pollForPairingStatus();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isPairingOpen, loadFromSupabase, resolvedMerchantId]);
+
   const pairNewTerminal = async () => {
     if (!resolvedMerchantId) {
       setToast("Merchant session loading, please wait...");
