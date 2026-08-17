@@ -73,6 +73,37 @@ export default function VaultDashboard() {
     };
   }, []);
 
+  // Live refresh when registry/terminal payments write local activity
+  useEffect(() => {
+    const hydrateFromLocal = () => {
+      try {
+        const raw = window.localStorage.getItem("opayque_tx");
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setTransactions(parsed);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const onCustom = () => hydrateFromLocal();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "opayque_tx") hydrateFromLocal();
+    };
+
+    window.addEventListener("opayque_tx_updated", onCustom as EventListener);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", hydrateFromLocal);
+
+    return () => {
+      window.removeEventListener("opayque_tx_updated", onCustom as EventListener);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", hydrateFromLocal);
+    };
+  }, []);
+
   useEffect(() => {
     const resolvedBalance = transactions.reduce((sum, tx) => {
       const amount = Number(tx.amount ?? 0);
@@ -80,7 +111,9 @@ export default function VaultDashboard() {
       if (!Number.isFinite(amount)) {
         return sum;
       }
-      if (['SETTLED', 'SHIELDED_CONFIRMED', 'CONFIRMED'].includes(status)) {
+      if (
+        ["SETTLED", "SHIELDED", "SHIELDED_CONFIRMED", "CONFIRMED", "SUCCESS"].includes(status)
+      ) {
         return sum + amount;
       }
       return sum;
