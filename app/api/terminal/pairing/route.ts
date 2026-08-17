@@ -141,46 +141,66 @@ export async function POST(request: Request) {
         }, { status: 409 });
       }
 
-      // Mark code used
+      // Mark pairing code as used
       const { error: updateError } = await supabase
         .from("terminal_pairing_codes")
         .update({ status: "USED", merchant_id: resolvedMerchantId })
         .eq("code", code);
 
       if (updateError) {
-        return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+        return NextResponse.json(
+          { success: false, error: updateError.message },
+          { status: 500 }
+        );
       }
 
-      // IMPORTANT: create / refresh fleet node in terminals table
-      const terminalLabel = data.terminal_label || "Fleet Terminal";
-      const deviceToken = code; // or generate a dedicated token
+      const terminalLabel =
+        (typeof data.terminal_label === "string" && data.terminal_label.trim()) ||
+        "Fleet Terminal";
 
+      const nowIso = new Date().toISOString();
+      const terminalId = `term_${resolvedMerchantId.slice(0, 8)}_${code}`;
+
+      // Upsert fleet node into terminals (aligned to your real columns)
       const { data: existingTerminal } = await supabase
         .from("terminals")
         .select("id")
         .eq("merchant_id", resolvedMerchantId)
-        .eq("terminal_label", terminalLabel)
+        .or(`terminal_label.eq.${terminalLabel},label.eq.${terminalLabel}`)
         .maybeSingle();
 
       if (existingTerminal?.id) {
-        await supabase
+        const { error: terminalUpdateError } = await supabase
           .from("terminals")
           .update({
             status: "online",
+            label: terminalLabel,
+            terminal_label: terminalLabel,
+            last_active: nowIso,
             is_active: true,
-            device_token: deviceToken,
-            last_active: new Date().toISOString(),
+            device_token: code,
           })
           .eq("id", existingTerminal.id);
+
+        if (terminalUpdateError) {
+          console.warn("Failed to update terminal fleet row", terminalUpdateError);
+        }
       } else {
-        await supabase.from("terminals").insert({
+        const { error: terminalInsertError } = await supabase.from("terminals").insert({
+          id: terminalId,
           merchant_id: resolvedMerchantId,
+          label: terminalLabel,
           terminal_label: terminalLabel,
           status: "online",
+          created_at: nowIso,
+          last_active: nowIso,
           is_active: true,
-          device_token: deviceToken,
-          last_active: new Date().toISOString(),
+          device_token: code,
         });
+
+        if (terminalInsertError) {
+          console.warn("Failed to insert terminal fleet row", terminalInsertError);
+        }
       }
 
       return NextResponse.json({
