@@ -42,16 +42,35 @@ export default function VaultDashboard() {
     });
   };
 
+  // Load from local storage and listen for cross-tab or component updates
   useEffect(() => {
-    const savedTx = localStorage.getItem('opayque_tx');
-    if (savedTx) {
+    const reloadFromStorage = () => {
       try {
+        const savedTx = localStorage.getItem("opayque_tx");
+        if (!savedTx) return;
         const parsed = JSON.parse(savedTx);
-        setTransactions(parsed);
+        if (Array.isArray(parsed)) {
+          setTransactions(parsed);
+        }
       } catch {
-        // ignore invalid storage data
+        // ignore
       }
-    }
+    };
+
+    // Initial load
+    reloadFromStorage();
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === "opayque_tx") reloadFromStorage();
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("opayque_tx_updated", reloadFromStorage as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("opayque_tx_updated", reloadFromStorage as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -288,6 +307,7 @@ export default function VaultDashboard() {
       (tx) =>
         String(tx.id ?? '').toLowerCase().includes(query) ||
         String(tx.staff ?? '').toLowerCase().includes(query) ||
+        String(tx.category ?? '').toLowerCase().includes(query) ||
         String(tx.status ?? '').toLowerCase().includes(query) ||
         String(tx.amount ?? '').includes(query)
     );
@@ -389,7 +409,7 @@ export default function VaultDashboard() {
                           </button>
                         </div>
                       </td>
-                      <td className="py-4 px-4 font-bold text-white">{tx.staff}</td>
+                      <td className="py-4 px-4 font-bold text-white">{tx.staff || tx.category || "—"}</td>
                       <td className={`py-4 px-4 font-bold font-mono ${tx.amount < 0 ? 'text-zinc-500' : 'text-purple-400'}`}>
                         {convert(tx.amount).formatted}
                       </td>
@@ -459,7 +479,7 @@ export default function VaultDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500 uppercase">Endpoint:</span>
-                <span className="text-white">{selectedTxForRefund.staff}</span>
+                <span className="text-white">{selectedTxForRefund.staff || selectedTxForRefund.category || "—"}</span>
               </div>
               <div className="flex justify-between border-t border-white/10 pt-2">
                 <span className="text-zinc-500 uppercase">Refund Amount:</span>
