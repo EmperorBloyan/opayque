@@ -278,44 +278,81 @@ export default function TerminalManager({
   const isCheckoutMode = typeof amount === "number" && amount > 0 && Boolean(merchantWallet) && Boolean(sessionId);
 
   // --- PERSIST / LOAD TERMINALS ---
-  const persistTerminals = useCallback(
-  async (updated: Terminal[]) => {
-    if (setTerminals) {
-      setTerminals(updated);
+  const notifyFleetUpdated = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.dispatchEvent(new Event("opayque_terminals_updated"));
+      window.localStorage.setItem("opayque_terminals_tick", String(Date.now()));
+    } catch {
+      // ignore
     }
-    notifyFleetUpdated();
-  },
-  [setTerminals]
-);
+  }, []);
+
+  const persistTerminals = useCallback(
+    async (updated: Terminal[]) => {
+      if (setTerminals) {
+        setTerminals(updated);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem("opayque_terminals", JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+      }
+      notifyFleetUpdated();
+    },
+    [setTerminals, notifyFleetUpdated]
+  );
 
   const loadFromSupabase = useCallback(async () => {
     if (!resolvedMerchantId) return;
     setIsLoadingTerminals(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("terminals")
-        .select("*")
-        .eq("merchant_id", resolvedMerchantId)
-        .order("last_active", { ascending: false });
+
+      // Prefer last_active; fall back to created_at if column missing
+      let data: any[] | null = null;
+      let error: any = null;
+
+      {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", resolvedMerchantId)
+          .order("last_active", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", resolvedMerchantId)
+          .order("created_at", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
 
       if (error) throw error;
 
-      const mapped: Terminal[] = (data ?? [])
-        .filter((row: any) => String(row.status || "").toLowerCase() !== "revoked")
-        .map((row: any) => ({
-          id: String(row.id),
+      const mapped: Terminal[] = (data ?? []).map((row: any) => {
+        const when =
+          row.last_active ||
+          row.created_at ||
+          row.updated_at ||
+          new Date().toISOString();
+        return {
+          id: row.id,
           label: row.terminal_label || row.label || "Terminal Node",
           status: row.status === "online" ? "online" : "offline",
-          lastSeen: row.last_active
-            ? new Date(row.last_active).getTime()
-            : row.created_at
-              ? new Date(row.created_at).getTime()
-              : Date.now(),
-          accessCode: row.device_token || row.code || "",
+          lastSeen: new Date(when).getTime(),
+          accessCode: row.device_token || row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-        }));
+        };
+      });
 
       await persistTerminals(mapped);
     } catch (err: any) {
@@ -417,12 +454,10 @@ export default function TerminalManager({
   }, [pairingExpiresAt, isPairingOpen]);
 
   const closePairingModal = () => {
-  setIsPairingOpen(false);
-  setPairingState("idle");
-  // Force fleet refresh when merchant closes pairing UI
-  void loadFromSupabase();
-  notifyFleetUpdated();
-};
+    setIsPairingOpen(false);
+    setPairingState("idle");
+    void loadFromSupabase();
+  };
 
   const expectedUsdcBaseUnits = useMemo(() => {
     if (!amount || Number.isNaN(amount)) return 0n;
