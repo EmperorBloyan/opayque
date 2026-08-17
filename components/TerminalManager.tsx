@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getActiveSession, getStoredMerchantId } from "@/lib/crypto/session";
+import {
+  bindAuthenticatedMerchantSession,
+  getActiveSession,
+  getStoredMerchantId,
+} from "@/lib/crypto/session";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
 import { sendJitoBundle } from "@/lib/solana/jito";
 import type { Terminal } from "@/lib/types";
