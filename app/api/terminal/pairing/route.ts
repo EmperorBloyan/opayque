@@ -141,6 +141,7 @@ export async function POST(request: Request) {
         }, { status: 409 });
       }
 
+      // Mark code used
       const { error: updateError } = await supabase
         .from("terminal_pairing_codes")
         .update({ status: "USED", merchant_id: resolvedMerchantId })
@@ -150,6 +151,38 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
       }
 
+      // IMPORTANT: create / refresh fleet node in terminals table
+      const terminalLabel = data.terminal_label || "Fleet Terminal";
+      const deviceToken = code; // or generate a dedicated token
+
+      const { data: existingTerminal } = await supabase
+        .from("terminals")
+        .select("id")
+        .eq("merchant_id", resolvedMerchantId)
+        .eq("terminal_label", terminalLabel)
+        .maybeSingle();
+
+      if (existingTerminal?.id) {
+        await supabase
+          .from("terminals")
+          .update({
+            status: "online",
+            is_active: true,
+            device_token: deviceToken,
+            last_active: new Date().toISOString(),
+          })
+          .eq("id", existingTerminal.id);
+      } else {
+        await supabase.from("terminals").insert({
+          merchant_id: resolvedMerchantId,
+          terminal_label: terminalLabel,
+          status: "online",
+          is_active: true,
+          device_token: deviceToken,
+          last_active: new Date().toISOString(),
+        });
+      }
+
       return NextResponse.json({
         success: true,
         code,
@@ -157,7 +190,7 @@ export async function POST(request: Request) {
         walletAddress: merchantWalletAddress,
         merchantName: merchantData?.merchant_name ?? null,
         merchantLogo: merchantData?.merchant_logo ?? null,
-        terminalLabel: data.terminal_label ?? null,
+        terminalLabel,
       });
     }
 
