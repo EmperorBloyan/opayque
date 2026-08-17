@@ -289,15 +289,39 @@ export default function TerminalManager({
 );
 
   const loadFromSupabase = useCallback(async () => {
-    if (!resolvedMerchantId) return;
-    setIsLoadingTerminals(true);
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("terminals")
-        .select("*")
-        .eq("merchant_id", resolvedMerchantId)
-        .order("last_active", { ascending: false });
+  if (!resolvedMerchantId) return;
+  setIsLoadingTerminals(true);
+  try {
+    const supabase = createSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from("terminals")
+      .select("*")
+      .eq("merchant_id", resolvedMerchantId)
+      .order("last_active", { ascending: false });
+
+    if (error) throw error;
+
+    const mapped: Terminal[] = (data ?? [])
+      .filter((row: any) => String(row.status || "").toLowerCase() !== "revoked")
+      .map((row: any) => ({
+        id: row.id,
+        label: row.terminal_label || row.label || "Terminal Node",
+        status: row.status === "online" ? "online" : "offline",
+        lastSeen: row.last_active ? new Date(row.last_active).getTime() : Date.now(),
+        accessCode: row.device_token || row.access_code || createAccessCode(),
+        isActive: row.status === "online" || Boolean(row.is_active),
+        lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+      }));
+
+    await persistTerminals(mapped);
+  } catch (err: any) {
+    console.error("Failed to load terminals from Supabase", err);
+  } finally {
+    setIsLoadingTerminals(false);
+  }
+}, [persistTerminals, resolvedMerchantId]);
+
+    
 
       if (error) throw error;
 
