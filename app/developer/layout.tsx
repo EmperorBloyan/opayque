@@ -99,8 +99,9 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
       window.localStorage.removeItem("merchant_logo");
       window.localStorage.removeItem("merchant_email");
       window.localStorage.removeItem("settlement_wallet_address");
+      window.localStorage.setItem("opayque_next_route", "/developer/overview");
     }
-    router.push("/login");
+    router.push("/login?next=%2Fdeveloper%2Foverview");
   };
 
   return (

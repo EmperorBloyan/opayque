@@ -120,6 +120,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       localStorage.setItem("merchant_logo", nextLogo);
     }
 
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("merchant_profile_updated"));
+    }
+
     if (publicKey) {
       try {
         await fetch("/api/merchant/register", {
@@ -167,13 +171,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     clearActiveSession();
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("opayque_next_route", "/vault");
+      window.localStorage.setItem("opayque_next_route", "/vault/registry");
       window.localStorage.removeItem("merchant_name");
       window.localStorage.removeItem("merchant_logo");
       window.localStorage.removeItem("merchant_email");
     }
 
-    router.push("/login?next=%2Fvault");
+    router.push("/login?next=%2Fvault%2Fregistry");
   };
 
   const addressContent = publicKey
