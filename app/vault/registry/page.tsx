@@ -92,29 +92,48 @@ export default function RegistryPage() {
       }
 
       const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("terminals")
-        .select("*")
-        .eq("merchant_id", id)
-        .order("last_active", { ascending: false });
+
+      let data: any[] | null = null;
+      let error: any = null;
+
+      {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", id)
+          .order("last_active", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", id)
+          .order("created_at", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
 
       if (error) throw error;
 
-      const mapped = (data ?? [])
-        .filter((row: any) => String(row.status || "").toLowerCase() !== "revoked")
-        .map((row: any) => ({
-          id: String(row.id),
+      const mapped = (data ?? []).map((row: any) => {
+        const when =
+          row.last_active ||
+          row.created_at ||
+          row.updated_at ||
+          new Date().toISOString();
+        return {
+          id: row.id,
           label: row.terminal_label || row.label || "Fleet Terminal",
           status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
-          lastSeen: row.last_active
-            ? new Date(row.last_active).getTime()
-            : row.created_at
-              ? new Date(row.created_at).getTime()
-              : Date.now(),
-          accessCode: row.device_token || row.code || "",
+          lastSeen: new Date(when).getTime(),
+          accessCode: row.device_token || row.access_code || "",
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
-        }));
+        };
+      });
 
       setTerminals(mapped);
     } catch (error) {
@@ -181,6 +200,7 @@ export default function RegistryPage() {
       if (
         e.key === "opayque_terminals" ||
         e.key === "opayque_terminal_id" ||
+        e.key === "opayque_terminals_tick" ||
         e.key === ACTIVE_DUMMY_KEY
       ) {
         refresh();
