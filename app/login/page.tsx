@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
 
 function getSavedMerchantName() {
@@ -73,16 +74,35 @@ function LoginContent() {
 
       if (data?.user) {
         try {
-          const merchantRes = await fetch("/api/v1/merchant");
+          const merchantRes = await fetch("/api/v1/merchant", {
+            credentials: "include",
+          });
           if (merchantRes.ok) {
             const payload = await merchantRes.json();
             const merchant = payload?.merchant;
-            if (merchant) {
+            if (merchant?.id) {
+              bindAuthenticatedMerchantSession({
+                merchantId: merchant.id,
+                walletAddress: merchant.settlement_wallet_address || null,
+              });
+
               if (typeof window !== "undefined") {
-                if (merchant.merchant_name) window.localStorage.setItem("merchant_name", merchant.merchant_name);
-                if (merchant.merchant_logo) window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
-                if (merchant.email) window.localStorage.setItem("merchant_email", merchant.email);
-                if (merchant.settlement_wallet_address) window.localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+                if (merchant.merchant_name) {
+                  window.localStorage.setItem("merchant_name", merchant.merchant_name);
+                }
+                if (merchant.merchant_logo) {
+                  window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+                }
+                if (merchant.email) {
+                  window.localStorage.setItem("merchant_email", merchant.email);
+                }
+                if (merchant.settlement_wallet_address) {
+                  window.localStorage.setItem(
+                    "settlement_wallet_address",
+                    merchant.settlement_wallet_address
+                  );
+                }
+                window.dispatchEvent(new Event("merchant_profile_updated"));
               }
             }
           }
@@ -94,10 +114,11 @@ function LoginContent() {
         const destination = next && next.startsWith("/") ? next : getRedirectTarget("/vault/registry");
 
         if (typeof window !== "undefined") {
-          window.localStorage.setItem("opayque_next_route", destination);
           window.localStorage.removeItem("opayque_next_route");
         }
+
         router.push(destination);
+        router.refresh();
       } else {
         setMessage("Signed in successfully. Redirecting…");
       }
@@ -201,7 +222,10 @@ function LoginContent() {
                 {/* Create Account Link (Bottom-Left) */}
                 <button
                   type="button"
-                  onClick={() => goToDestination(`/onboarding?next=${encodeURIComponent(getRedirectTarget("/vault/registry"))}`)}
+                  onClick={() => {
+                    const nextTarget = getRedirectTarget("/vault/registry");
+                    goToDestination(`/onboarding?next=${encodeURIComponent(nextTarget)}`);
+                  }}
                   disabled={isNavigating}
                   className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
