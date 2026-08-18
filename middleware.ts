@@ -34,18 +34,18 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   
-  // 1. Define ALL protected routes here
+  // 1. Define route categories
   const isDeveloperRoute = pathname.startsWith('/developer');
   const isVaultRoute = pathname.startsWith('/vault');
   const isBotRoute = pathname.startsWith('/bot');
   const isRegistryRoute = pathname.startsWith('/registry');
-  const isOnboardingRoute = pathname === '/onboarding';
+  const isOnboardingPage = pathname === '/onboarding';
   const isLoginRoute = pathname === '/login';
 
-  // 2. Protect unauthenticated users and track their intended destination
-  const isProtectedRoute = isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute || isOnboardingRoute;
-  const isOnboardingPage = pathname === '/onboarding';
+  // 2. Protect routes requiring authentication (Excludes /onboarding and /login)
+  const isProtectedRoute = isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute;
 
+  // Protect unauthenticated users attempting to access dashboard routes
   if (!user && isProtectedRoute) {
     const nextTarget = request.nextUrl.pathname;
     const redirectUrl = new URL('/login', request.url);
@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
 
   let merchant: { id: string; settlement_wallet_address?: string | null } | null = null;
 
-  if (user && isProtectedRoute) {
+  if (user) {
     const { data } = await supabase
       .from('merchants')
       .select('id, settlement_wallet_address')
@@ -65,17 +65,20 @@ export async function middleware(request: NextRequest) {
     merchant = data ?? null;
   }
 
+  // Redirect authenticated user without a merchant profile to onboarding
   if (user && !isOnboardingPage && isProtectedRoute && !merchant) {
     const redirectUrl = new URL('/onboarding', request.url);
     redirectUrl.searchParams.set('next', request.nextUrl.pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Redirect authenticated user WITH a merchant profile away from onboarding
   if (user && isOnboardingPage && merchant) {
     const nextTarget = request.nextUrl.searchParams.get('next') || '/vault/registry';
     return NextResponse.redirect(new URL(nextTarget, request.url));
   }
 
+  // Redirect authenticated user away from login
   if (user && isLoginRoute) {
     const nextTarget = request.nextUrl.searchParams.get('next') || '/vault/registry';
     return NextResponse.redirect(new URL(nextTarget, request.url));
