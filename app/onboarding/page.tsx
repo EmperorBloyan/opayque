@@ -15,9 +15,28 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const markMerchantOnboarded = async () => {
+    if (!publicKey) return;
+
+    try {
+      await fetch("/api/merchant/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicKey: publicKey.toBase58(),
+          wallet_address: publicKey.toBase58(),
+          merchant_name: "Opayque Merchant",
+          vaultInitialized: true,
+        }),
+      });
+    } catch (registrationError) {
+      console.warn("Unable to mark merchant as onboarded", registrationError);
+    }
+  };
+
   const handleEnterVault = async () => {
     if (!publicKey || !signTransaction) {
-      setError("Please connect a supported wallet first.");
+      setError("Please connect your wallet first");
       return;
     }
 
@@ -39,6 +58,12 @@ export default function OnboardingPage() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Failed to build setup transaction.");
+      }
+
+      if (data.alreadyExists) {
+        await markMerchantOnboarded();
+        router.push("/vault/dashboard");
+        return;
       }
 
       const txBuffer = Buffer.from(data.transaction, "base64");
@@ -73,12 +98,14 @@ export default function OnboardingPage() {
         "confirmed"
       );
 
+      await markMerchantOnboarded();
+
       // 5. Store session marker and redirect
       if (typeof window !== "undefined") {
         window.localStorage.setItem("settlement_wallet_address", publicKey.toBase58());
       }
 
-      router.push("/vault/registry");
+      router.push("/vault/dashboard");
     } catch (err: any) {
       console.error("Vault initialization failed:", err);
       setError(err?.message || "Failed to initialize secured vault. Please try again.");

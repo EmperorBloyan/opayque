@@ -40,6 +40,16 @@ export async function POST(req: Request) {
       program.programId
     );
 
+    const vaultInfo = await connection.getAccountInfo(merchantVaultPda);
+    if (vaultInfo) {
+      return NextResponse.json({
+        success: true,
+        alreadyExists: true,
+        message: "Merchant vault already initialized",
+        merchantVault: merchantVaultPda.toBase58(),
+      });
+    }
+
     const [treasuryPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("opayque_treasury"), merchant.toBuffer()],
       program.programId
