@@ -422,7 +422,7 @@ export default function VaultDashboard() {
             <tbody className="divide-y divide-white/5">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.map((tx, i) => {
-                  const isSettled = ['SETTLED', 'SHIELDED_CONFIRMED', 'CONFIRMED'].includes(
+                  const isSettled = ['SETTLED', 'SHIELDED', 'SHIELDED_CONFIRMED', 'CONFIRMED', 'SUCCESS'].includes(
                     String(tx.status ?? '').toUpperCase()
                   );
                   const isPositive = Number(tx.amount) > 0;
