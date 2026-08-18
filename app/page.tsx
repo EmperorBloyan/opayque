@@ -276,7 +276,10 @@ export default function UnifiedLanding() {
               </div>
 
               <div className="flex gap-3">
-                <Link href="/developer/overview" className="flex-1">
+                <Link
+                  href={`/login?next=${encodeURIComponent("/developer/overview")}`}
+                  className="flex-1"
+                >
                   <button className="w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
                     Dashboard
                   </button>
