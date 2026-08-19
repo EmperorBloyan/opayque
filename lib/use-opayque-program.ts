@@ -5,7 +5,7 @@ import { PublicKey } from '@solana/web3.js';
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useMemo } from 'react';
 
-const PROGRAM_ID = new PublicKey("5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp");
+const PROGRAM_ID = new PublicKey("JAgquymzmdPzGZHM5e71hgsn2skBfWEjk2hoGRfKZFNJ");
 const OPAYQUE_IDL: Idl = {
   version: '0.1.0',
   name: 'opayque',

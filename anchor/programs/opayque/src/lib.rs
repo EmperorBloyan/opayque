@@ -1,12 +1,13 @@
 use anchor_lang::prelude::*;
 
 pub mod instructions;
+pub use instructions::*;
 
 pub use instructions::admin::{initialize_protocol, InitializeProtocol, toggle_circuit_breaker, ToggleCircuitBreaker};
 pub use instructions::merchant::{initialize_merchant_vault, InitializeMerchantVault};
 pub use instructions::payment::{process_payment, register_terminal_nonce, withdraw_vault_funds, ProcessPayment, RegisterTerminalNonce, WithdrawVaultFunds};
 
-declare_id!("5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp");
+declare_id!("JAgquymzmdPzGZHM5e71hgsn2skBfWEjk2hoGRfKZFNJ");
 
 #[program]
 pub mod opayque {

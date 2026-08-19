@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use crate::{ErrorCode, MerchantVault, ProtocolConfig, TerminalNonce, TreasuryAccount};
 
 #[derive(Accounts)]
+#[instruction(terminal_id: String)]
 pub struct RegisterTerminalNonce<'info> {
     #[account(mut)]
     pub merchant_authority: Signer<'info>,

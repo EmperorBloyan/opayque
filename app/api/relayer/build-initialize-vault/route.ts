@@ -13,7 +13,7 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.co
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID ||
-    "5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp"
+    "JAgquymzmdPzGZHM5e71hgsn2skBfWEjk2hoGRfKZFNJ"
 );
 
 export async function POST(req: Request) {
