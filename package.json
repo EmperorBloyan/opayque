@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
-    "@sentry/nextjs": "^10.68.0",
+    "@sentry/nextjs": "8.55.0",
     "@solana-program/memo": "^0.11.2",
     "@solana-program/system": "^0.12.2",
     "@solana-program/token": "^0.12.0",
