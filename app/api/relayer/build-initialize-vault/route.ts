@@ -11,6 +11,10 @@ import idl from "@/lib/idl/opayque.json";
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
+const PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID ||
+    "5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp"
+);
 
 export async function POST(req: Request) {
   try {
@@ -34,10 +38,21 @@ export async function POST(req: Request) {
 
     const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
     const program = new Program(idl as any, provider);
+    const programId = (idl as any)?.address
+      ? new PublicKey((idl as any).address)
+      : PROGRAM_ID;
+    const effectiveProgramId = program.programId ?? programId;
+
+    if (!effectiveProgramId) {
+      return NextResponse.json(
+        { success: false, error: "Invalid IDL: missing program address" },
+        { status: 500 }
+      );
+    }
 
     const [merchantVaultPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("merchant_vault"), merchant.toBuffer()],
-      program.programId
+      effectiveProgramId
     );
 
     const vaultInfo = await connection.getAccountInfo(merchantVaultPda);
@@ -52,12 +67,12 @@ export async function POST(req: Request) {
 
     const [treasuryPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("opayque_treasury"), merchant.toBuffer()],
-      program.programId
+      effectiveProgramId
     );
 
     const [protocolConfigPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("protocol_config")],
-      program.programId
+      effectiveProgramId
     );
 
     const tx = await program.methods

@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
   const isOnboardingPage = pathname === '/onboarding';
   const isLoginRoute = pathname === '/login';
 
-  // 2. Protect routes requiring authentication (Excludes /onboarding and /login)
+  // 2. Protect unauthenticated users and track their intended destination
   const isProtectedRoute = isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute;
 
   // Protect unauthenticated users attempting to access dashboard routes

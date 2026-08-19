@@ -1,15 +1,158 @@
 {
-  "name": "opayque",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+  "address": "5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp",
+  "metadata": {
+    "name": "opayque",
+    "version": "0.1.0",
+    "spec": "0.1.0"
   },
-  "dependencies": {
-    "next": "16.2.4",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  }
+  "instructions": [
+    {
+      "name": "initialize_protocol",
+      "discriminator": [188, 233, 252, 106, 134, 146, 202, 91],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "writable": true,
+          "pda": {
+            "seeds": [{ "kind": "const", "value": [112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102, 105, 103] }]
+          }
+        },
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [{ "name": "admin", "type": "pubkey" }]
+    },
+    {
+      "name": "initialize_merchant_vault",
+      "discriminator": [231, 91, 105, 237, 120, 130, 30, 105],
+      "accounts": [
+        { "name": "merchant_authority", "writable": true, "signer": true },
+        { "name": "payer", "writable": true, "signer": true },
+        {
+          "name": "merchant_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [109, 101, 114, 99, 104, 97, 110, 116, 95, 118, 97, 117, 108, 116] },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        {
+          "name": "opayque_treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [111, 112, 97, 121, 113, 117, 101, 95, 116, 114, 101, 97, 115, 117, 114, 121] },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        { "name": "protocol_config" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "fee_bps", "type": "u64" },
+        { "name": "merchant", "type": "pubkey" },
+        { "name": "token_decimals", "type": "u8" }
+      ]
+    },
+    {
+      "name": "register_terminal_nonce",
+      "discriminator": [43, 188, 122, 4, 77, 215, 90, 164],
+      "accounts": [
+        { "name": "merchant_authority", "writable": true, "signer": true },
+        { "name": "payer", "writable": true, "signer": true },
+        {
+          "name": "terminal_nonce",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [116, 101, 114, 109, 105, 110, 97, 108, 95, 110, 111, 110, 99, 101] },
+              { "kind": "arg", "path": "terminal_id" },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        { "name": "protocol_config" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "terminal_id", "type": "string" },
+        { "name": "nonce", "type": "u64" },
+        { "name": "expires_at", "type": "u64" }
+      ]
+    },
+    {
+      "name": "process_payment",
+      "discriminator": [189, 81, 30, 198, 139, 186, 115, 23],
+      "accounts": [
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "merchant_vault", "writable": true },
+        { "name": "opayque_treasury", "writable": true },
+        { "name": "protocol_config" },
+        { "name": "terminal_nonce", "writable": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "nonce", "type": "u64" },
+        { "name": "memo", "type": "string" }
+      ]
+    },
+    {
+      "name": "withdraw_vault_funds",
+      "discriminator": [230, 233, 148, 2, 238, 220, 211, 165],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "merchant_vault", "writable": true },
+        { "name": "protocol_config" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "approved", "type": "bool" }
+      ]
+    },
+    {
+      "name": "toggle_circuit_breaker",
+      "discriminator": [17, 31, 13, 36, 93, 205, 125, 163],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "protocol_config", "writable": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [{ "name": "paused", "type": "bool" }]
+    }
+  ],
+  "accounts": [
+    { "name": "protocol_config", "discriminator": [207, 91, 250, 28, 152, 179, 215, 209] },
+    { "name": "merchant_vault", "discriminator": [157, 184, 49, 10, 194, 166, 212, 234] },
+    { "name": "treasury_account", "discriminator": [204, 140, 18, 173, 90, 152, 134, 123] },
+    { "name": "terminal_nonce", "discriminator": [206, 170, 127, 76, 222, 107, 181, 252] }
+  ],
+  "types": [],
+  "events": [
+    {
+      "name": "payment_settled",
+      "discriminator": [158, 182, 152, 76, 105, 23, 232, 135],
+      "fields": [
+        { "name": "merchant", "type": "pubkey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "fee", "type": "u64", "index": false },
+        { "name": "merchant_amount", "type": "u64", "index": false },
+        { "name": "nonce", "type": "u64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "invalid_fee", "msg": "invalid fee configuration" },
+    { "code": 6001, "name": "math_overflow", "msg": "math overflow" },
+    { "code": 6002, "name": "nonce_already_used", "msg": "nonce already used" },
+    { "code": 6003, "name": "invalid_nonce", "msg": "invalid nonce" },
+    { "code": 6004, "name": "nonce_expired", "msg": "nonce expired" },
+    { "code": 6005, "name": "circuit_breaker_open", "msg": "circuit breaker open" },
+    { "code": 6006, "name": "withdraw_not_approved", "msg": "withdrawal not approved" },
+    { "code": 6007, "name": "unauthorized_authority", "msg": "unauthorized authority" }
+  ]
 }
