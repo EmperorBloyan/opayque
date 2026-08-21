@@ -176,25 +176,19 @@ export default function OnboardingPage() {
       }
 
       const txBuffer = Buffer.from(data.transaction, "base64");
-      let signedTx: any;
-
-      try {
-        const { VersionedTransaction } = await import("@solana/web3.js");
-        signedTx = await signTransaction(
-          VersionedTransaction.deserialize(txBuffer)
-        );
-      } catch {
-        const { Transaction } = await import("@solana/web3.js");
-        signedTx = await signTransaction(Transaction.from(txBuffer));
-      }
+      const { Transaction } = await import("@solana/web3.js");
+      const signedTx = await signTransaction(Transaction.from(txBuffer));
 
       const sig = await connection.sendRawTransaction(signedTx.serialize(), {
         skipPreflight: false,
         preflightCommitment: "confirmed",
       });
-      const latest = await connection.getLatestBlockhash();
       await connection.confirmTransaction(
-        { signature: sig, ...latest },
+        {
+          signature: sig,
+          blockhash: data.blockhash,
+          lastValidBlockHeight: data.lastValidBlockHeight,
+        },
         "confirmed"
       );
 

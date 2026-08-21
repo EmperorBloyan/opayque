@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       effectiveProgramId
     );
 
-    const tx = await program.methods
+    const tx = await (program.methods as any)
       .initializeMerchantVault(new BN(feeBps), merchant, tokenDecimals)
       .accounts({
         merchantAuthority: merchant,
@@ -87,13 +87,13 @@ export async function POST(req: Request) {
       })
       .transaction();
 
-    // Partial sign with relayer so the merchant only needs to add their signature
-    tx.partialSign(relayerKeypair);
-
-    // Set a recent blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed");
     tx.feePayer = relayerKeypair.publicKey;
+    tx.recentBlockhash = blockhash;
+
+    // Sign only after the blockhash and fee payer are set.
+    tx.partialSign(relayerKeypair);
 
     const serialized = tx.serialize({
       requireAllSignatures: false,
@@ -103,6 +103,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       transaction: serialized.toString("base64"),
+      blockhash,
+      lastValidBlockHeight,
     });
   } catch (error: any) {
     console.error(error);
