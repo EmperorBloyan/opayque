@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import {
   ArrowRight,
   Building2,
@@ -46,7 +46,6 @@ function getRedirectTarget(defaultTarget = "/vault/registry") {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { connection } = useConnection();
   const { connected, publicKey, signMessage, signTransaction } = useWallet();
 
   const [isNavigating, setIsNavigating] = useState(false);
@@ -173,24 +172,39 @@ export default function OnboardingPage() {
             return;
           }
 
-          if (!data.transaction || !data.blockhash || !data.lastValidBlockHeight) {
+          if (
+            !data.transaction ||
+            !data.blockhash ||
+            !data.lastValidBlockHeight ||
+            !data.rpcUrl
+          ) {
             throw new Error("Relayer returned an incomplete transaction");
           }
 
           const txBuffer = Buffer.from(data.transaction, "base64");
-          const { Transaction } = await import("@solana/web3.js");
+          const { Connection, Transaction } = await import("@solana/web3.js");
+          const rpcConnection = new Connection(data.rpcUrl, "finalized");
           const tx = Transaction.from(txBuffer);
           if (!tx.recentBlockhash || tx.recentBlockhash !== data.blockhash) {
             throw new Error("Missing or mismatched transaction blockhash");
           }
+          if (
+            (await rpcConnection.getBlockHeight("finalized")) >
+            data.lastValidBlockHeight
+          ) {
+            throw new Error("Transaction blockhash has expired");
+          }
           const signedTx = await signTransaction(tx);
+          if (signedTx.recentBlockhash !== data.blockhash) {
+            throw new Error("Wallet changed the transaction blockhash");
+          }
 
-          const sig = await connection.sendRawTransaction(signedTx.serialize(), {
+          const sig = await rpcConnection.sendRawTransaction(signedTx.serialize(), {
             skipPreflight: false,
             preflightCommitment: "finalized",
             maxRetries: 3,
           });
-          await connection.confirmTransaction(
+          await rpcConnection.confirmTransaction(
             {
               signature: sig,
               blockhash: data.blockhash,

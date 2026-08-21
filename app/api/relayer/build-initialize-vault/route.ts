@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
     const merchant = new PublicKey(merchantPublicKey);
 
-    const connection = new Connection(RPC_URL, "confirmed");
+    const connection = new Connection(RPC_URL, "finalized");
 
     const wallet = {
       publicKey: relayerKeypair.publicKey,
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       signAllTransactions: async (txs: Transaction[]) => txs,
     } as Wallet;
 
-    const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
+    const provider = new AnchorProvider(connection, wallet, { commitment: "finalized" });
     const program = new Program(idl as any, provider);
     const programId = (idl as any)?.address
       ? new PublicKey((idl as any).address)
@@ -105,6 +105,7 @@ export async function POST(req: Request) {
       transaction: serialized.toString("base64"),
       blockhash,
       lastValidBlockHeight,
+      rpcUrl: RPC_URL,
     });
   } catch (error: any) {
     console.error(error);
