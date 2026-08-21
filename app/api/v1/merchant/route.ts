@@ -27,7 +27,7 @@ function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookie
 }
 
 const MERCHANT_SELECT =
-  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key, auth_user_id";
+  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key, auth_user_id";
 
 function normalizeMerchant(merchant: any) {
   if (!merchant) return null;
@@ -118,6 +118,7 @@ export async function PATCH(request: Request) {
       merchantLogo,
       secondaryEmail,
       settlementWalletAddress,
+      refundWalletAddress,
       websiteUrl,
       webhookUrl,
       teeEnforcementEnabled,
@@ -135,6 +136,9 @@ export async function PATCH(request: Request) {
     if (settlementWalletAddress !== undefined) {
       updates.settlement_wallet_address = settlementWalletAddress;
     }
+    if (refundWalletAddress !== undefined) {
+      updates.refund_wallet_address = refundWalletAddress;
+    }
     if (websiteUrl !== undefined) updates.website_url = websiteUrl;
     if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
     if (teeEnforcementEnabled !== undefined) {
@@ -147,6 +151,7 @@ export async function PATCH(request: Request) {
       merchantLogo !== undefined ||
       secondaryEmail !== undefined ||
       settlementWalletAddress !== undefined ||
+      refundWalletAddress !== undefined ||
       websiteUrl !== undefined ||
       webhookUrl !== undefined
     ) {

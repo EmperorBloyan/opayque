@@ -172,8 +172,11 @@ export function getActiveSession(): TerminalSession | null {
 export function clearActiveSession(): void {
   activeSession = null;
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem(ACTIVE_SESSION_KEY);
-    window.localStorage.removeItem(ACTIVE_MERCHANT_ID_KEY);
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("opayque")) {
+        window.localStorage.removeItem(key);
+      }
+    }
   }
 }
 

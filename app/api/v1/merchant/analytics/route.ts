@@ -13,11 +13,20 @@ export async function GET() {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const { data: merchant, error: merchantError } = await supabase
+    .from('merchants')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (merchantError) return NextResponse.json({ error: merchantError.message }, { status: 500 });
+  if (!merchant?.id) return NextResponse.json({ error: 'Merchant profile not found' }, { status: 404 });
+
   // Fetch recent completed transactions
   const { data: transactions, error } = await supabase
     .from('onchain_transactions')
     .select('amount, created_at, status')
-    .eq('merchant_id', user.id)
+    .eq('merchant_id', merchant.id)
     .eq('status', 'finalized')
     .order('created_at', { ascending: false });
 

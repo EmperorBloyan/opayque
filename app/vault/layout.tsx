@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { createClient } from "@/lib/supabase/client";
 import { clearActiveSession } from "@/lib/crypto/session";
+import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import {
   LucideLayoutDashboard,
   LucideSettings2,
@@ -13,13 +14,16 @@ import {
   LucideShieldCheck,
   LucideShieldAlert,
   LucidePencilLine,
+  Copy,
+  Check,
+  ShieldCheck,
   Lock,
 } from "lucide-react";
 
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signMessage } = useWallet();
   const isStandaloneCheckout = pathname === "/vault/checkout";
 
   const [merchantName, setMerchantName] = useState("Opayque");
@@ -27,6 +31,16 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [draftName, setDraftName] = useState("Opayque");
   const [draftLogo, setDraftLogo] = useState<string | null>(null);
+  const [draftEmail, setDraftEmail] = useState("");
+  const [draftSecondaryEmail, setDraftSecondaryEmail] = useState("");
+  const [draftWebsiteUrl, setDraftWebsiteUrl] = useState("");
+  const [draftWebhookUrl, setDraftWebhookUrl] = useState("");
+  const [settlementWallet, setSettlementWallet] = useState("");
+  const [refundWallet, setRefundWallet] = useState("");
+  const [walletModalPurpose, setWalletModalPurpose] = useState<"settlement" | "refund" | null>(null);
+  const [walletUpdateError, setWalletUpdateError] = useState<string | null>(null);
+  const [walletUpdateLoading, setWalletUpdateLoading] = useState(false);
+  const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
 
   useEffect(() => {
@@ -65,6 +79,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
           setDraftLogo(logoUrl);
           localStorage.setItem("merchant_logo", logoUrl);
         }
+        setDraftEmail(merchant.email ?? "");
+        setDraftSecondaryEmail(merchant.secondary_email ?? "");
+        setDraftWebsiteUrl(merchant.website_url ?? "");
+        setDraftWebhookUrl(merchant.webhook_url ?? "");
+        setSettlementWallet(merchant.settlement_wallet_address ?? "");
+        setRefundWallet(merchant.refund_wallet_address ?? "");
       } catch (error) {
         console.warn("Failed to hydrate vault merchant profile", error);
       }
@@ -119,28 +139,81 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     if (nextLogo) {
       localStorage.setItem("merchant_logo", nextLogo);
     }
+    localStorage.setItem("merchant_email", draftEmail.trim());
+    localStorage.setItem("secondary_email", draftSecondaryEmail.trim());
+    localStorage.setItem("website_url", draftWebsiteUrl.trim());
+    localStorage.setItem("webhook_url", draftWebhookUrl.trim());
 
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("merchant_profile_updated"));
     }
 
-    if (publicKey) {
-      try {
-        await fetch("/api/merchant/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            wallet_address: publicKey.toBase58(),
-            merchant_name: nextName,
-            merchant_logo: nextLogo ?? null,
-          }),
-        });
-      } catch (error) {
-        console.warn("Unable to sync merchant profile to the registry", error);
-      }
+    try {
+      const response = await fetch("/api/v1/merchant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchantName: nextName,
+          merchantLogo: nextLogo ?? null,
+          email: draftEmail.trim() || null,
+          secondaryEmail: draftSecondaryEmail.trim() || null,
+          websiteUrl: draftWebsiteUrl.trim() || null,
+          webhookUrl: draftWebhookUrl.trim() || null,
+        }),
+      });
+      if (!response.ok) throw new Error("Unable to save merchant profile");
+    } catch (error) {
+      console.warn("Unable to sync merchant profile", error);
     }
 
     setIsEditingProfile(false);
+  };
+
+  const copyWallet = async (wallet: string) => {
+    if (!wallet || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(wallet);
+    setCopiedWallet(wallet);
+    window.setTimeout(() => setCopiedWallet(null), 2000);
+  };
+
+  const handleWalletUpdate = async () => {
+    if (!walletModalPurpose || !publicKey) {
+      setWalletUpdateError("Connect the wallet you want to use first.");
+      return;
+    }
+
+    setWalletUpdateLoading(true);
+    setWalletUpdateError(null);
+    try {
+      const newWalletAddress = publicKey.toBase58();
+      const challengeResponse = await fetch("/api/v1/merchant/wallet-challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newWalletAddress, purpose: walletModalPurpose }),
+      });
+      const challenge = await challengeResponse.json().catch(() => ({}));
+      if (!challengeResponse.ok || typeof challenge.message !== "string") {
+        throw new Error(challenge.error || "Unable to create wallet challenge");
+      }
+      if (!signMessage) throw new Error("This wallet cannot sign messages");
+      const signature = await signMessage(new TextEncoder().encode(challenge.message));
+      const bytes = btoa(Array.from(signature).map((byte) => String.fromCharCode(byte)).join(""));
+      const updateResponse = await fetch("/api/v1/merchant/update-wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newWalletAddress, message: challenge.message, signature: bytes, nonce: challenge.nonce, purpose: walletModalPurpose }),
+      });
+      const update = await updateResponse.json().catch(() => ({}));
+      if (!updateResponse.ok) throw new Error(update.error || "Unable to update wallet");
+      if (walletModalPurpose === "refund") setRefundWallet(newWalletAddress);
+      else setSettlementWallet(newWalletAddress);
+      localStorage.setItem(walletModalPurpose === "refund" ? "refund_wallet_address" : "settlement_wallet_address", newWalletAddress);
+      setWalletModalPurpose(null);
+    } catch (error) {
+      setWalletUpdateError(error instanceof Error ? error.message : "Wallet update failed");
+    } finally {
+      setWalletUpdateLoading(false);
+    }
   };
 
   const handleVaultEntrance = () => {
@@ -339,6 +412,41 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   />
                 </div>
 
+                {[
+                  { label: "Email", value: draftEmail, setter: setDraftEmail, type: "email" },
+                  { label: "Secondary email", value: draftSecondaryEmail, setter: setDraftSecondaryEmail, type: "email" },
+                  { label: "Website URL", value: draftWebsiteUrl, setter: setDraftWebsiteUrl, type: "url" },
+                  { label: "Webhook URL", value: draftWebhookUrl, setter: setDraftWebhookUrl, type: "url" },
+                ].map(({ label, value, setter, type }) => (
+                  <div key={label} className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+                    <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">{label}</label>
+                    <input
+                      type={type}
+                      value={value}
+                      onChange={(event) => setter(event.target.value)}
+                      className="w-full rounded-[1.8rem] border border-white/10 bg-zinc-900/70 px-5 py-3 text-sm text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                    />
+                  </div>
+                ))}
+
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
+                  <div className="flex items-center gap-3">
+                    <p className="min-w-0 flex-1 truncate font-mono text-sm text-purple-200">{settlementWallet || "Not configured"}</p>
+                    <button type="button" onClick={() => void copyWallet(settlementWallet)} disabled={!settlementWallet} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[10px] uppercase disabled:opacity-40">
+                      {copiedWallet === settlementWallet ? <Check size={12} /> : <Copy size={12} />} Copy
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("settlement"); }} className="rounded-full bg-purple-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">Update settlement</button>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Refund wallet</p>
+                  <p className="truncate font-mono text-sm text-purple-200">{refundWallet || "Not configured"}</p>
+                  <p className="text-[10px] text-zinc-500">Used as the signing source when issuing refunds. Does not need a separate on-chain vault.</p>
+                  <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("refund"); }} className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">{refundWallet ? "Update refund wallet" : "Connect refund wallet"}</button>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => void handleSaveProfile()}
@@ -347,6 +455,26 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   Save Profile
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {walletModalPurpose && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4" role="presentation">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" role="dialog" aria-modal="true">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">{walletModalPurpose === "refund" ? "Refund wallet" : "Settlement wallet"}</p>
+                  <h2 className="mt-2 text-2xl font-black text-white">Connect and sign</h2>
+                </div>
+                <button type="button" onClick={() => setWalletModalPurpose(null)} className="text-sm text-zinc-400">Close</button>
+              </div>
+              <WalletConnectPanel className="!h-11 !w-full !rounded-xl !bg-white !text-black !text-[10px] !font-black !uppercase !tracking-[0.2em]" />
+              <p className="mt-4 truncate font-mono text-sm text-white">{publicKey?.toBase58() || "Connect a wallet to continue"}</p>
+              {walletUpdateError && <p className="mt-3 text-sm text-red-300">{walletUpdateError}</p>}
+              <button type="button" onClick={() => void handleWalletUpdate()} disabled={walletUpdateLoading || !publicKey || !signMessage} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] disabled:opacity-50">
+                <ShieldCheck size={14} /> {walletUpdateLoading ? "Confirming..." : "Sign & Confirm"}
+              </button>
             </div>
           </div>
         )}

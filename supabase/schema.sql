@@ -19,6 +19,8 @@ create table if not exists merchants (
   merchant_name text not null,
   merchant_logo text,
   secondary_email text,
+  settlement_wallet_address text,
+  refund_wallet_address text,
   api_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

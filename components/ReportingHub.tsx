@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getAuthenticatedMerchantId } from "@/lib/auth/authenticatedMerchant";
 import { 
   LucideFileText, 
   LucideTable, 
@@ -12,16 +14,29 @@ import {
 export default function ReportingHub({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const getTxData = () => {
-    if (typeof window !== "undefined") {
-      return JSON.parse(localStorage.getItem("opayque_tx") || "[]");
-    }
-    return [];
+  const getTxData = async () => {
+    const merchantId = await getAuthenticatedMerchantId();
+    if (!merchantId) return [];
+
+    const { data, error } = await createSupabaseBrowserClient()
+      .from("transactions")
+      .select("id, amount, created_at, status")
+      .eq("merchant_id", merchantId)
+      .order("created_at", { ascending: false });
+
+    if (error || !Array.isArray(data)) return [];
+    return data.map((row: any) => ({
+      id: String(row.id),
+      staff: "System",
+      amount: Number(row.amount ?? 0),
+      time: row.created_at ?? new Date().toISOString(),
+      status: String(row.status ?? "pending"),
+    }));
   };
 
   // FUNCTIONAL AUDIT: CSV Export
-  const exportCSV = () => {
-    const txs = getTxData();
+  const exportCSV = async () => {
+    const txs = await getTxData();
     if (txs.length === 0) return alert("No transaction data to export.");
 
     let csv = "TX_ID,RECIPIENT,AMOUNT_USDC,TIMESTAMP,PROTOCOL_STATUS\n";

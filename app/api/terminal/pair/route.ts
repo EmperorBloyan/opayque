@@ -10,15 +10,38 @@ interface PairTerminalRequest {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PairTerminalRequest;
-    const merchantId = body.merchant_id?.trim();
     const terminalLabel = body.terminal_label?.trim();
 
-    if (!merchantId || !terminalLabel) {
-      return NextResponse.json({ success: false, error: "merchant_id and terminal_label are required" }, { status: 400 });
+    if (!terminalLabel) {
+      return NextResponse.json({ success: false, error: "terminal_label is required" }, { status: 400 });
     }
 
+    const supabase = await createSupabaseServerClient(request);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: merchant, error: merchantError } = await supabase
+      .from("merchants")
+      .select("id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (merchantError) {
+      return NextResponse.json({ success: false, error: merchantError.message }, { status: 500 });
+    }
+
+    if (!merchant?.id) {
+      return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
+    }
+
+    const merchantId = merchant.id;
     const deviceToken = randomUUID();
-    const supabase = await createSupabaseServerClient();
 
     try {
       const { data, error } = await supabase

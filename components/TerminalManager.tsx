@@ -1001,6 +1001,7 @@ export default function TerminalManager({
       const { error } = await supabase
         .from("terminals")
         .update({ status: "revoked", last_active: new Date().toISOString() })
+        .eq("merchant_id", resolvedMerchantId)
         .eq("id", id);
 
       if (error) throw error;

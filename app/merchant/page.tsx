@@ -4,13 +4,14 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getActiveSession, getActiveMerchantId } from '@/lib/crypto/session';
+import { getActiveSession } from '@/lib/crypto/session';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { getAssetMintAddress } from '@/lib/solana/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 
 const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 
@@ -142,13 +143,14 @@ export default function MerchantDashboard() {
   // Supabase realtime subscription for merchant transactions
   useEffect(() => {
     if (!showVault) return;
-    const merchantId = getActiveMerchantId();
-    if (!merchantId) return;
+    const merchantIdPromise = getAuthenticatedMerchantId();
 
     const supabase = createSupabaseBrowserClient();
 
     // initial load of recent transactions from Supabase to seed UI
     (async () => {
+      const merchantId = await merchantIdPromise;
+      if (!merchantId) return;
       try {
         const { data, error } = await supabase
           .from('transactions')
@@ -178,9 +180,7 @@ export default function MerchantDashboard() {
       } catch (err) {
         console.warn('Failed to seed transactions from Supabase', err);
       }
-    })();
-
-    const channel = supabase
+      const channel = supabase
       .channel(`merchant-transactions-${merchantId}`)
       .on(
         'postgres_changes',
@@ -219,6 +219,7 @@ export default function MerchantDashboard() {
       .subscribe();
 
     supabaseChannelRef.current = channel;
+    })();
 
     return () => {
       if (supabaseChannelRef.current) {

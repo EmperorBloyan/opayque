@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -18,20 +17,8 @@ import {
   Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
-
-const WalletMultiButtonNoSSR = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then(
-      (mod) => mod.WalletMultiButton
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-14 w-full animate-pulse rounded-2xl bg-zinc-800/30" />
-    ),
-  }
-);
+import { bindAuthenticatedMerchantSession, clearActiveSession } from "@/lib/crypto/session";
+import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 
 function getRedirectTarget(defaultTarget = "/vault/registry") {
   if (typeof window === "undefined") return defaultTarget;
@@ -287,26 +274,44 @@ export default function OnboardingPage() {
 
       if (!userId) throw new Error("Authentication did not create a user session.");
 
-      const { data: upsertedMerchant, error: dbError } = await supabase
-        .from("merchants")
-        .upsert(
-          {
-            auth_user_id: userId,
-            email,
-            merchant_name: companyName.trim(),
-            merchant_logo: logoPreview ?? null,
-            settlement_wallet_address: walletAddress.trim(),
-            webhook_url: webhookUrl.trim() || null,
-            onboarding_status: "completed",
-            api_access_status: "active",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "auth_user_id" }
-        )
-        .select()
-        .single();
+      clearActiveSession();
 
-      if (dbError) throw dbError;
+      const merchantInput = {
+        auth_user_id: userId,
+        email,
+        merchant_name: companyName.trim(),
+        merchant_logo: logoPreview ?? null,
+        wallet_address: walletAddress.trim(),
+        settlement_wallet_address: walletAddress.trim(),
+        webhook_url: webhookUrl.trim() || null,
+        onboarding_status: "completed",
+        api_access_status: "active",
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: walletMerchant, error: walletLookupError } = await supabase
+        .from("merchants")
+        .select("id, auth_user_id")
+        .eq("wallet_address", walletAddress.trim())
+        .maybeSingle();
+
+      if (walletLookupError) throw walletLookupError;
+      if (walletMerchant?.auth_user_id && walletMerchant.auth_user_id !== userId) {
+        throw new Error("This wallet is already linked to another merchant account. Sign in with that account to reuse its merchant profile.");
+      }
+
+      const merchantWrite = walletMerchant?.id
+        ? supabase.from("merchants").update(merchantInput).eq("id", walletMerchant.id)
+        : supabase.from("merchants").upsert(merchantInput, { onConflict: "auth_user_id" });
+
+      const { data: upsertedMerchant, error: dbError } = await merchantWrite.select().single();
+
+      if (dbError) {
+        if (dbError.code === "23505") {
+          throw new Error("This wallet is already linked to a merchant profile. Sign in with that account to reuse the same merchant row.");
+        }
+        throw dbError;
+      }
 
       if (upsertedMerchant?.id) {
         bindAuthenticatedMerchantSession({
@@ -491,7 +496,7 @@ export default function OnboardingPage() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-center">
-                        <WalletMultiButtonNoSSR className="!h-11 !w-full !rounded-xl !bg-white !text-black !text-[10px] !font-black !uppercase !tracking-[0.2em] hover:!bg-zinc-200" />
+                        <WalletConnectPanel className="!h-11 !w-full !rounded-xl !bg-white !text-black !text-[10px] !font-black !uppercase !tracking-[0.2em] hover:!bg-zinc-200" />
                       </div>
                     )}
                   </div>

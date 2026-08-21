@@ -7,6 +7,7 @@ import { Bell, LucideEdit3, X } from "lucide-react";
 import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
+import { getAuthenticatedMerchantId } from "@/lib/auth/authenticatedMerchant";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
 
@@ -107,22 +108,28 @@ export default function TerminalPage() {
       const supabase = createSupabaseBrowserClient();
       const windowNow = Date.now();
       const cutoff = new Date(windowNow - 24 * 60 * 60 * 1000).toISOString();
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId) {
+        setRecentActivity([]);
+        return;
+      }
       const effectiveTerminalId = terminalId;
       if (!effectiveTerminalId) {
-        setRecentActivity(readLocalActivity());
+        setRecentActivity([]);
         return;
       }
 
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
+        .eq("merchant_id", merchantId)
         .eq("terminal_id", effectiveTerminalId)
         .gte("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(20);
 
       if (error || !Array.isArray(data)) {
-        setRecentActivity(readLocalActivity());
+        setRecentActivity([]);
         return;
       }
 
@@ -141,7 +148,7 @@ export default function TerminalPage() {
       persistLocalActivity(merged);
     } catch (error) {
       console.warn("Failed to hydrate recent terminal activity", error);
-      setRecentActivity(readLocalActivity());
+      setRecentActivity([]);
     }
   }, [activeSession?.walletAddress, persistLocalActivity, readLocalActivity, terminalId]);
 
@@ -347,7 +354,8 @@ export default function TerminalPage() {
     if (!isAmountValid) return;
     try {
       const supabase = createSupabaseClient();
-      const merchantId = activeSession?.merchantId ?? null;
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId) throw new Error("Authenticated merchant not found");
       const { data, error } = await supabase
         .from("transactions")
         .insert({
@@ -440,7 +448,14 @@ export default function TerminalPage() {
           const supabase = createSupabaseBrowserClient();
           (async () => {
             try {
-              const { data, error } = await supabase.from("terminals").select("*").eq("id", storedId).single();
+              const merchantId = await getAuthenticatedMerchantId();
+              if (!merchantId) return;
+              const { data, error } = await supabase
+                .from("terminals")
+                .select("*")
+                .eq("merchant_id", merchantId)
+                .eq("id", storedId)
+                .single();
               if (!error && data) {
                 if (!storedToken || String(data.device_token) === String(storedToken)) {
                   setTerminalId(storedId);
@@ -468,42 +483,48 @@ export default function TerminalPage() {
     }
 
     const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`transactions:${transactionId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "transactions", filter: `id=eq.${transactionId}` },
-        (payload) => {
-          const record = payload.new as TransactionRecord | null;
-          if (!record) return;
-          const nextActivityItem = {
-            id: String(record.id ?? transactionId),
-            status: String(record.status ?? "pending").toUpperCase(),
-            amount: Number(record.amount ?? 0),
-            tokenSymbol: String((record as any).token_symbol ?? asset),
-            time: (record as any).created_at ?? new Date().toISOString(),
-            walletAddress: activeSession?.walletAddress ?? null,
-            txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
-          };
-          const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
-          setRecentActivity(persistLocalActivity(merged));
-          if (record.status === "settled") {
-            setPaymentStatus("SETTLED");
-            setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
-            setIsPaid(true);
-            setToast("Transaction settled on-chain");
-            requestAnimationFrame(() => {
-              successRef.current?.focus();
-            });
-          } else if (record.status) {
-            setToast(`Transaction status: ${record.status}`);
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    void (async () => {
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId) return;
+      channel = supabase
+        .channel(`transactions:${merchantId}:${transactionId}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "transactions", filter: `merchant_id=eq.${merchantId}` },
+          (payload) => {
+            const record = payload.new as TransactionRecord | null;
+            if (!record || String(record.id) !== transactionId) return;
+            const nextActivityItem = {
+              id: String(record.id ?? transactionId),
+              status: String(record.status ?? "pending").toUpperCase(),
+              amount: Number(record.amount ?? 0),
+              tokenSymbol: String((record as any).token_symbol ?? asset),
+              time: (record as any).created_at ?? new Date().toISOString(),
+              walletAddress: activeSession?.walletAddress ?? null,
+              txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
+            };
+            const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
+            setRecentActivity(persistLocalActivity(merged));
+            if (record.status === "settled") {
+              setPaymentStatus("SETTLED");
+              setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
+              setIsPaid(true);
+              setToast("Transaction settled on-chain");
+              requestAnimationFrame(() => {
+                successRef.current?.focus();
+              });
+            } else if (record.status) {
+              setToast(`Transaction status: ${record.status}`);
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    })();
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
 
@@ -515,8 +536,15 @@ export default function TerminalPage() {
     (async () => {
       try {
         const stored = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id") : null;
+        const merchantId = await getAuthenticatedMerchantId();
+        if (!merchantId) return;
         if (stored) {
-          const { data: storedRow, error: err } = await supabase.from("transactions").select("*").eq("id", stored).single();
+          const { data: storedRow, error: err } = await supabase
+            .from("transactions")
+            .select("*")
+            .eq("merchant_id", merchantId)
+            .eq("id", stored)
+            .single();
           if (!err && storedRow) {
             if (String(storedRow.status) === "settled") {
               setPaymentStatus("SETTLED");
@@ -538,6 +566,7 @@ export default function TerminalPage() {
         const { data, error } = await supabase
           .from("transactions")
           .select("*")
+          .eq("merchant_id", merchantId)
           .eq("terminal_id", terminalId)
           .order("created_at", { ascending: false })
           .limit(1);
@@ -575,9 +604,12 @@ export default function TerminalPage() {
     const restoreLatestTransaction = async () => {
       try {
         const supabase = createSupabaseBrowserClient();
+        const merchantId = await getAuthenticatedMerchantId();
+        if (!merchantId) return;
         const { data, error } = await supabase
           .from("transactions")
           .select("*")
+          .eq("merchant_id", merchantId)
           .eq("terminal_id", terminalId)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -602,36 +634,44 @@ export default function TerminalPage() {
       }
     };
 
-    void restoreLatestTransaction();
+    let channel: ReturnType<ReturnType<typeof createSupabaseBrowserClient>["channel"]> | null = null;
+    let cancelled = false;
 
-    const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`terminal-${terminalId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "transactions", filter: `terminal_id=eq.${terminalId}` },
-        (payload) => {
-          const rec = payload.new as TransactionRecord | null;
-          if (!rec) return;
-          if (rec.status === "settled") {
-            setPaymentStatus("SETTLED");
-            setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
-            setIsPaid(true);
-            setStep("PAYING");
-            setToast("Transaction settled on-chain");
-            requestAnimationFrame(() => {
-              successRef.current?.focus();
-            });
-          } else {
-            setPaymentStatus(String(rec.status ?? "PENDING").toUpperCase());
-            setIsPaid(false);
+    void (async () => {
+      await restoreLatestTransaction();
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId || cancelled) return;
+
+      const supabase = createSupabaseBrowserClient();
+      channel = supabase
+        .channel(`terminal-${merchantId}-${terminalId}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "transactions", filter: `merchant_id=eq.${merchantId}` },
+          (payload) => {
+            const rec = payload.new as TransactionRecord | null;
+            if (!rec || String(rec.terminal_id) !== terminalId) return;
+            if (rec.status === "settled") {
+              setPaymentStatus("SETTLED");
+              setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
+              setIsPaid(true);
+              setStep("PAYING");
+              setToast("Transaction settled on-chain");
+              requestAnimationFrame(() => {
+                successRef.current?.focus();
+              });
+            } else {
+              setPaymentStatus(String(rec.status ?? "PENDING").toUpperCase());
+              setIsPaid(false);
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    })();
 
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) void createSupabaseBrowserClient().removeChannel(channel);
     };
   }, [terminalId]);
 
@@ -639,7 +679,14 @@ export default function TerminalPage() {
     try {
       if (terminalId) {
         const supabase = createSupabaseBrowserClient();
-        await supabase.from("terminals").update({ status: "revoked", last_active: new Date().toISOString() }).eq("id", terminalId);
+        const merchantId = await getAuthenticatedMerchantId();
+        if (merchantId) {
+          await supabase
+            .from("terminals")
+            .update({ status: "revoked", last_active: new Date().toISOString() })
+            .eq("merchant_id", merchantId)
+            .eq("id", terminalId);
+        }
       }
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("opayque_terminal_id");

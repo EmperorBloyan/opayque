@@ -9,8 +9,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    // TODO: Replace with real DB query later
-    const pending = [{ merchantId: "merch_test", amount: 1250, currency: "USD", bankAccountId: "bank1" }];
+    const pending: Array<{ merchantId: string; amount: number; currency: string; bankAccountId: string }> = [];
     let successCount = 0;
     const results: Array<{ merchantId: string; success: boolean; error?: string }> = [];
 

@@ -6,6 +6,7 @@ import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
+import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
   AlertCircle,
   ArrowLeft,
@@ -107,7 +108,6 @@ export default function ApiKeysPage() {
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
       const localSecondary = window.localStorage.getItem("secondary_email") || "";
-      const localWallet = window.localStorage.getItem("settlement_wallet_address") || "";
       const localWebsite = window.localStorage.getItem("website_url") || "";
       const localWebhook = window.localStorage.getItem("webhook_url") || "";
 
@@ -115,7 +115,6 @@ export default function ApiKeysPage() {
       if (localName) setMerchantName(localName);
       if (localLogo) setMerchantLogo(localLogo);
       if (localSecondary) setSecondaryEmail(localSecondary);
-      if (localWallet) setSettlementWalletAddress(localWallet);
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
 
@@ -332,7 +331,6 @@ export default function ApiKeysPage() {
       window.localStorage.setItem("merchant_name", merchantName.trim());
       window.localStorage.setItem("merchant_logo", merchantLogo.trim());
       window.localStorage.setItem("secondary_email", secondaryEmail.trim());
-      window.localStorage.setItem("settlement_wallet_address", settlementWalletAddress.trim());
       window.localStorage.setItem("website_url", websiteUrl.trim());
       window.localStorage.setItem("webhook_url", webhookUrl.trim());
     }
@@ -346,7 +344,6 @@ export default function ApiKeysPage() {
         merchantName: merchantName.trim() || null,
         merchantLogo: merchantLogo.trim() || null,
         secondaryEmail: secondaryEmail.trim() || null,
-        settlementWalletAddress: settlementWalletAddress.trim() || null,
         websiteUrl: websiteUrl.trim() || null,
         webhookUrl: webhookUrl.trim() || null,
       };
@@ -358,7 +355,6 @@ export default function ApiKeysPage() {
           merchant_name: payload.merchantName,
           merchant_logo: payload.merchantLogo,
           secondary_email: payload.secondaryEmail,
-          settlement_wallet_address: payload.settlementWalletAddress,
           website_url: payload.websiteUrl,
           webhook_url: payload.webhookUrl,
           api_access_status: "active",
@@ -397,7 +393,6 @@ export default function ApiKeysPage() {
         merchant_name: payload.merchantName,
         merchant_logo: payload.merchantLogo,
         secondary_email: payload.secondaryEmail,
-        settlement_wallet_address: payload.settlementWalletAddress,
         website_url: payload.websiteUrl,
         webhook_url: payload.webhookUrl,
       }) as "pending" | "active" | "revoked";
@@ -568,15 +563,10 @@ export default function ApiKeysPage() {
                   />
                 </label>
 
-                <label className="space-y-2">
-                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Settlement wallet</span>
-                  <input
-                    value={settlementWalletAddress}
-                    onChange={(event) => setSettlementWalletAddress(event.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
-                    placeholder="Solana wallet address"
-                  />
-                </label>
+                <SettlementWalletSection
+                  currentWallet={settlementWalletAddress}
+                  onWalletUpdated={setSettlementWalletAddress}
+                />
               </div>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
