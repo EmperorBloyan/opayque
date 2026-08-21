@@ -5,7 +5,7 @@ import { PublicKey } from '@solana/web3.js';
 import { AnchorProvider, Program, type Idl } from '@coral-xyz/anchor';
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
 
-const PROGRAM_ID = new PublicKey("JAgquymzmdPzGZHM5e71hgsn2skBfWEjk2hoGRfKZFNJ");
+const PROGRAM_ID = new PublicKey("9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL");
 const FALLBACK_IDL: Idl = {
   version: '0.1.0',
   name: 'opayque',
