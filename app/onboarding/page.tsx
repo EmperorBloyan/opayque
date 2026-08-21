@@ -140,59 +140,74 @@ export default function OnboardingPage() {
     setErrorMessage(null);
 
     try {
-      const res = await fetch("/api/relayer/build-initialize-vault", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merchantPublicKey: publicKey.toBase58(),
-          feeBps: 0,
-          tokenDecimals: 6,
-        }),
-      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const res = await fetch("/api/relayer/build-initialize-vault", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              merchantPublicKey: publicKey.toBase58(),
+              feeBps: 0,
+              tokenDecimals: 6,
+            }),
+          });
 
-      const text = await res.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        throw new Error(
-          text?.slice(0, 200) || "Invalid response from vault setup API"
-        );
+          const text = await res.text();
+          let data: any = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            throw new Error(
+              text?.slice(0, 200) || "Invalid response from vault setup API"
+            );
+          }
+
+          if (!res.ok || !data.success) {
+            throw new Error(
+              data.error || "Failed to build vault setup transaction"
+            );
+          }
+
+          if (data.alreadyExists) {
+            setVaultReady(true);
+            return;
+          }
+
+          if (!data.transaction || !data.blockhash || !data.lastValidBlockHeight) {
+            throw new Error("Relayer returned an incomplete transaction");
+          }
+
+          const txBuffer = Buffer.from(data.transaction, "base64");
+          const { Transaction } = await import("@solana/web3.js");
+          const tx = Transaction.from(txBuffer);
+          if (!tx.recentBlockhash || tx.recentBlockhash !== data.blockhash) {
+            throw new Error("Missing or mismatched transaction blockhash");
+          }
+          const signedTx = await signTransaction(tx);
+
+          const sig = await connection.sendRawTransaction(signedTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: "finalized",
+            maxRetries: 3,
+          });
+          await connection.confirmTransaction(
+            {
+              signature: sig,
+              blockhash: data.blockhash,
+              lastValidBlockHeight: data.lastValidBlockHeight,
+            },
+            "finalized"
+          );
+
+          setVaultReady(true);
+          return;
+        } catch (error) {
+          if (attempt === 0 && /blockhash|expired|not found/i.test(String(error))) {
+            continue;
+          }
+          throw error;
+        }
       }
-
-      if (!res.ok || !data.success) {
-        throw new Error(
-          data.error || "Failed to build vault setup transaction"
-        );
-      }
-
-      if (data.alreadyExists) {
-        setVaultReady(true);
-        return;
-      }
-
-      if (!data.transaction) {
-        throw new Error("No transaction returned from relayer");
-      }
-
-      const txBuffer = Buffer.from(data.transaction, "base64");
-      const { Transaction } = await import("@solana/web3.js");
-      const signedTx = await signTransaction(Transaction.from(txBuffer));
-
-      const sig = await connection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
-      await connection.confirmTransaction(
-        {
-          signature: sig,
-          blockhash: data.blockhash,
-          lastValidBlockHeight: data.lastValidBlockHeight,
-        },
-        "confirmed"
-      );
-
-      setVaultReady(true);
     } catch (e: any) {
       console.error("Vault init failed", e);
       setErrorMessage(e?.message || "Vault initialization failed");

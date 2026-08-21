@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       .transaction();
 
     const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash("confirmed");
+      await connection.getLatestBlockhash("finalized");
     tx.feePayer = relayerKeypair.publicKey;
     tx.recentBlockhash = blockhash;
 
