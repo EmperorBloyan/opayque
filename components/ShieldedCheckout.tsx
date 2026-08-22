@@ -118,7 +118,6 @@ export default function ShieldedCheckout({
     setSuccessSignature(null);
 
     try {
-      // buildShieldedTransfer may return a serialized tx, object, or simulation payload
       const built = await buildShieldedTransfer(
         publicKey.toBase58(),
         safeMerchantPubkey,
@@ -127,40 +126,22 @@ export default function ShieldedCheckout({
 
       let signature: string | null = null;
 
-      // Attempt real send if a transaction payload is returned
-      if (built?.transaction) {
-        const raw = built.transaction;
+      const rpc =
+        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+        "https://api.devnet.solana.com";
+      const connection = new Connection(rpc, "confirmed");
 
-        // If base64 string
-        if (typeof raw === "string") {
-          const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-          const tx = VersionedTransaction.deserialize(bytes);
-
-          if (signTransaction) {
-            const signed = await signTransaction(tx as any);
-            const rpc =
-              process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-              "https://api.devnet.solana.com";
-            const connection = new Connection(rpc, "confirmed");
-            signature = await connection.sendRawTransaction(signed.serialize());
-            await connection.confirmTransaction(signature, "confirmed");
-          } else if (sendTransaction) {
-            const rpc =
-              process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-              "https://api.devnet.solana.com";
-            const connection = new Connection(rpc, "confirmed");
-            signature = await sendTransaction(tx as any, connection);
-            await connection.confirmTransaction(signature, "confirmed");
-          }
-        }
+      if (built instanceof VersionedTransaction && signTransaction) {
+        const signed = await signTransaction(built);
+        signature = await connection.sendRawTransaction(signed.serialize());
+        await connection.confirmTransaction(signature, "confirmed");
+      } else if (built instanceof VersionedTransaction && sendTransaction) {
+        signature = await sendTransaction(built, connection);
+        await connection.confirmTransaction(signature, "confirmed");
       }
 
-      // Fallback demo signature if API only acknowledges init
       if (!signature) {
-        signature =
-          built?.signature ||
-          built?.txSignature ||
-          `shielded_${Date.now().toString(36)}`;
+        throw new Error("Transaction was not signed or submitted by the connected wallet.");
       }
 
       // Persist lightweight activity for dashboards

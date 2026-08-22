@@ -43,23 +43,11 @@ function CheckoutContent() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950 p-6">
+    <main className="relative flex min-h-[100dvh] flex-col items-center overflow-hidden bg-zinc-950 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6">
       {/* Ambient Visuals (visible through component backdrop) */}
       <div className="absolute left-1/2 top-1/2 -z-10 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-600/5 blur-[120px]" />
 
-      <div className="mb-6 text-center duration-1000 animate-in fade-in zoom-in">
-        <h1 className="mb-4 text-[11px] font-black italic uppercase tracking-[0.5em] text-zinc-700">
-          {name}
-        </h1>
-
-        <p className="text-4xl font-black text-white">
-          {safeFiat.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
-          <span className="text-lg text-zinc-400">{currency}</span>
-        </p>
-        <p className="mt-2 font-mono text-sm text-purple-300">
-          ≈ {safeUsdc.toFixed(2)} {token}
-        </p>
-
+      <div className="mb-4 text-center duration-1000 animate-in fade-in zoom-in">
         <div className="mt-4 flex items-center justify-center gap-2">
           <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
           <span className="text-[8px] font-black uppercase tracking-[0.3em] text-zinc-500">

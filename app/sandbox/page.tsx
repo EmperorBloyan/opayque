@@ -15,7 +15,7 @@ import {
   Globe
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import OpayqueCheckout from '@/components/OpayqueCheckout';
+import ShieldedCheckout from '@/components/ShieldedCheckout';
 import { useEnvironment } from '@/lib/context/EnvironmentContext';
 
 function getSupabaseClient() {
@@ -140,6 +140,18 @@ export default function SandboxPage() {
     }
   };
 
+  const launchRealCheckout = () => {
+    if (!merchantWallet) {
+      addLog('Settlement wallet missing. Configure it first.', 'warn');
+      return;
+    }
+
+    const amountToUse = amount > 0 ? amount : 15;
+    setAmount(amountToUse);
+    setIsCheckoutOpen(true);
+    addLog(`Opened real checkout: /checkout?address=...&amount=${amountToUse}`, 'success');
+  };
+
   return (
     <main className="relative min-h-screen bg-black text-white font-mono overflow-hidden">
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08),transparent_70%)] pointer-events-none" />
@@ -245,7 +257,7 @@ export default function SandboxPage() {
 
               <div className="pt-2 grid gap-4 sm:grid-cols-2">
                 <button
-                  onClick={() => setIsCheckoutOpen(true)}
+                  onClick={launchRealCheckout}
                   disabled={isLoading || !merchantWallet}
                   className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -301,33 +313,19 @@ export default function SandboxPage() {
         </div>
       </div>
 
-      {isCheckoutOpen && (
-        <OpayqueCheckout
-          apiKey={apiKey}
-          orderId={orderId}
-          amountUsdc={amount}
-          merchantWallet={merchantWallet}
-          onSuccess={async (hash: string) => {
-            addLog(`Tx Confirmed on Solana [${network}]! Hash: ${hash}`, 'success');
-
-            const supabase = getSupabaseClient();
-            if (orderId && supabase) {
-              await supabase.from('onchain_transactions').insert({
-                checkout_session_id: orderId,
-                signature: hash,
-                amount: amount,
-                status: 'COMPLETED'
-              });
-              addLog('Saved transaction signature to onchain_transactions table.', 'success');
-            }
-
-            setIsCheckoutOpen(false);
-          }}
-          onClose={() => {
-            addLog('Checkout modal dismissed by user.', 'warn');
-            setIsCheckoutOpen(false);
-          }}
-        />
+      {isCheckoutOpen && merchantWallet && (
+        <div className="relative mx-auto mt-8 flex w-full max-w-5xl justify-center">
+          <ShieldedCheckout
+            amount={amount > 0 ? amount : 15}
+            merchantPubkey={merchantWallet}
+            recipientName="Sandbox Merchant"
+            endpointName="Sandbox Merchant"
+            endpointCategory="Sandbox"
+            displayCurrency="USD"
+            displayFiatAmount={amount > 0 ? amount : 15}
+            settlementToken="USDC"
+          />
+        </div>
       )}
     </main>
   );

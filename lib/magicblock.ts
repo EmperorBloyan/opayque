@@ -19,7 +19,7 @@ export async function createShieldedPaymentInstruction(
     connection,
     sender,
     recipient,
-    amount / 1_000_000,
+    amount,
     mint
   );
 }
