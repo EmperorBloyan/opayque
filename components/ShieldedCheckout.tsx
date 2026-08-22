@@ -11,15 +11,32 @@ import { appendLocalActivity } from "@/lib/activity";
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
 interface ShieldedCheckoutProps {
-  amount: number; // settlement amount in USDC
+  amount: number;
   merchantPubkey: string;
   endpointName?: string;
   endpointCategory?: string;
   allowCustomAmount?: boolean;
   recipientName?: string;
-  displayCurrency?: string; // e.g. NGN, USD
-  displayFiatAmount?: number; // cashier fiat amount
-  settlementToken?: string; // USDC / USDT / SOL
+  displayCurrency?: string;
+  displayFiatAmount?: number;
+  settlementToken?: string;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s. Check RPC /api/transfer.`));
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
 }
 
 export default function ShieldedCheckout({
@@ -66,7 +83,6 @@ export default function ShieldedCheckout({
 
   const isLocked = status === "success" || status === "processing";
 
-  // Success countdown → close back toward wallet/native context
   useEffect(() => {
     if (status !== "success" || countdown === null) return;
 
@@ -77,7 +93,6 @@ export default function ShieldedCheckout({
         // ignore
       }
       try {
-        // Fallback if window.close is blocked
         window.location.href = "about:blank";
       } catch {
         // ignore
@@ -118,35 +133,68 @@ export default function ShieldedCheckout({
     setSuccessSignature(null);
 
     try {
-      const built = await buildShieldedTransfer(
-        publicKey.toBase58(),
-        safeMerchantPubkey,
-        safeAmount
+      const built = await withTimeout(
+        buildShieldedTransfer(
+          publicKey.toBase58(),
+          safeMerchantPubkey,
+          safeAmount
+        ),
+        25000,
+        "Shielded transfer build"
       );
 
       let signature: string | null = null;
 
       const rpc =
         process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+        process.env.NEXT_PUBLIC_RPC_URL ||
         "https://api.devnet.solana.com";
       const connection = new Connection(rpc, "confirmed");
 
-      if (built instanceof VersionedTransaction && signTransaction) {
-        const signed = await signTransaction(built);
-        signature = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(signature, "confirmed");
-      } else if (built instanceof VersionedTransaction && sendTransaction) {
-        signature = await sendTransaction(built, connection);
-        await connection.confirmTransaction(signature, "confirmed");
+      // buildShieldedTransfer returns VersionedTransaction
+      if (built instanceof VersionedTransaction) {
+        if (signTransaction) {
+          const signed = await withTimeout(
+            signTransaction(built as any),
+            60000,
+            "Wallet signature"
+          );
+          signature = await withTimeout(
+            connection.sendRawTransaction(
+              (signed as VersionedTransaction).serialize()
+            ),
+            30000,
+            "Send transaction"
+          );
+          await withTimeout(
+            connection.confirmTransaction(signature, "confirmed"),
+            45000,
+            "Confirm transaction"
+          );
+        } else if (sendTransaction) {
+          signature = await withTimeout(
+            sendTransaction(built as any, connection),
+            60000,
+            "Send transaction"
+          );
+          await withTimeout(
+            connection.confirmTransaction(signature, "confirmed"),
+            45000,
+            "Confirm transaction"
+          );
+        } else {
+          throw new Error("Wallet cannot sign or send transactions.");
+        }
+      } else {
+        throw new Error("Invalid transaction payload from transfer API.");
       }
 
       if (!signature) {
-        throw new Error("Transaction was not signed or submitted by the connected wallet.");
+        throw new Error("Transaction was not signed or submitted.");
       }
 
-      // Persist lightweight activity for dashboards
       appendLocalActivity({
-        id: signature || `EP-${Date.now()}`,
+        id: signature,
         staff: recipientName || endpointName || "Registry Endpoint",
         category: endpointCategory || "Registry",
         amount: safeAmount,
@@ -188,7 +236,6 @@ export default function ShieldedCheckout({
           )}
         </div>
 
-        {/* Amount display */}
         <div className="rounded-2xl border border-zinc-200 bg-zinc-100 p-5 dark:border-zinc-800 dark:bg-zinc-900/70">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             Amount Due
@@ -223,7 +270,6 @@ export default function ShieldedCheckout({
           )}
         </div>
 
-        {/* Success state (non-clickable pay flow) */}
         {status === "success" ? (
           <div
             className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6"
@@ -269,6 +315,8 @@ export default function ShieldedCheckout({
                     <LucideLoader2 className="animate-spin" size={16} />
                     Shielding...
                   </>
+                ) : status === "error" ? (
+                  "Try Again"
                 ) : (
                   "Pay Privately"
                 )}
