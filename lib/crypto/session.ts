@@ -25,9 +25,18 @@ export interface CreateTerminalSessionInput {
   walletSignature: ArrayBuffer | Uint8Array;
 }
 
+export interface TerminalDeviceCredential {
+  terminalId: string;
+  merchantId: string;
+  deviceToken: string;
+  merchantWallet: string;
+  pairedAt: number;
+}
+
 let activeSession: TerminalSession | null = null;
 const ACTIVE_MERCHANT_ID_KEY = "opayque.activeMerchantId";
 const ACTIVE_SESSION_KEY = "opayque.activeSession";
+const TERMINAL_DEVICE_KEY = "opayque.device";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -173,10 +182,41 @@ export function clearActiveSession(): void {
   activeSession = null;
   if (typeof window !== "undefined") {
     for (const key of Object.keys(window.localStorage)) {
-      if (key.startsWith("opayque")) {
+      if (key.startsWith("opayque") && key !== TERMINAL_DEVICE_KEY) {
         window.localStorage.removeItem(key);
       }
     }
+  }
+}
+
+export function saveTerminalDeviceCredential(credential: TerminalDeviceCredential): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(TERMINAL_DEVICE_KEY, JSON.stringify(credential));
+}
+
+export function loadTerminalDeviceCredential(): TerminalDeviceCredential | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TERMINAL_DEVICE_KEY);
+    if (!raw) return null;
+    const credential = JSON.parse(raw) as Partial<TerminalDeviceCredential>;
+    if (
+      typeof credential.terminalId !== "string" ||
+      typeof credential.merchantId !== "string" ||
+      typeof credential.deviceToken !== "string" ||
+      typeof credential.merchantWallet !== "string"
+    ) {
+      return null;
+    }
+    return credential as TerminalDeviceCredential;
+  } catch {
+    return null;
+  }
+}
+
+export function clearTerminalDeviceCredential(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(TERMINAL_DEVICE_KEY);
   }
 }
 

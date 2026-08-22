@@ -4,7 +4,7 @@ import { Component, useState, useEffect, useCallback, useRef, useMemo, type Chan
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Bell, LucideEdit3, X } from "lucide-react";
-import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
+import { clearTerminalDeviceCredential, createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, loadTerminalDeviceCredential, saveTerminalDeviceCredential, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
 import { getAuthenticatedMerchantId } from "@/lib/auth/authenticatedMerchant";
@@ -153,7 +153,7 @@ export default function TerminalPage() {
   }, [activeSession?.walletAddress, persistLocalActivity, readLocalActivity, terminalId]);
 
   useEffect(() => {
-    if (!activeSession) {
+    if (!activeSession && !loadTerminalDeviceCredential()) {
       setToast("Ready to pair a terminal. Enter the fleet code to continue.");
     }
   }, [activeSession]);
@@ -176,9 +176,12 @@ export default function TerminalPage() {
   // Fixed buildUri — uses toUsdc for settlement
   const buildUri = useCallback(() => {
     try {
+      const device = loadTerminalDeviceCredential();
       const recipient =
-        typeof activeSession?.walletAddress === "string"
-          ? activeSession.walletAddress.trim()
+        typeof device?.merchantWallet === "string"
+          ? device.merchantWallet.trim()
+          : typeof activeSession?.walletAddress === "string"
+            ? activeSession.walletAddress.trim()
           : "";
 
       const amountValue = lockedAmount || amount || "";
@@ -313,33 +316,24 @@ export default function TerminalPage() {
         ? payload.terminalLabel.trim()
         : createDefaultTerminalLabelLocal();
 
-      setActiveSession(session);
-
-      try {
-        const terminalLabel = createDefaultTerminalLabelLocal();
-        const resp = await fetch(`/api/terminal/pair`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: resolvedTerminalLabel }),
+      const pairedTerminalId = typeof payload?.terminalId === "string" ? payload.terminalId : null;
+      const pairedDeviceToken = typeof payload?.deviceToken === "string" ? payload.deviceToken : null;
+      if (pairedTerminalId && pairedDeviceToken) {
+        window.localStorage.setItem("opayque_terminal_id", pairedTerminalId);
+        window.localStorage.setItem("opayque_terminal_token", pairedDeviceToken);
+        window.localStorage.setItem("opayque_terminal_label", resolvedTerminalLabel);
+        saveTerminalDeviceCredential({
+          terminalId: pairedTerminalId,
+          merchantId: resolvedMerchantId,
+          deviceToken: pairedDeviceToken,
+          merchantWallet: pairedWalletAddress,
+          pairedAt: Date.now(),
         });
-
-        const payload = await resp.json().catch(() => null);
-        if (resp.ok && payload?.success && payload?.data?.terminal) {
-          const t = payload.data.terminal as any;
-          const deviceToken = payload.data.device_token ?? null;
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("opayque_terminal_id", String(t.id));
-            if (deviceToken) window.localStorage.setItem("opayque_terminal_token", String(deviceToken));
-            window.localStorage.setItem("opayque_terminal_label", String(t.terminal_label ?? terminalLabel));
-          }
-          setTerminalId(String(t.id));
-          setTerminalToken(deviceToken ?? null);
-        } else {
-          console.warn("Terminal creation returned no terminal, continuing without local pairing.", payload);
-        }
-      } catch (err) {
-        console.error("Failed to create terminal record", err);
+        setTerminalId(pairedTerminalId);
+        setTerminalToken(pairedDeviceToken);
       }
+
+      setActiveSession(session);
 
       setStep("POS");
       setToast("Terminal paired successfully");
@@ -448,23 +442,25 @@ export default function TerminalPage() {
           const supabase = createSupabaseBrowserClient();
           (async () => {
             try {
-              const merchantId = await getAuthenticatedMerchantId();
-              if (!merchantId) return;
-              const { data, error } = await supabase
-                .from("terminals")
-                .select("*")
-                .eq("merchant_id", merchantId)
-                .eq("id", storedId)
-                .single();
-              if (!error && data) {
-                if (!storedToken || String(data.device_token) === String(storedToken)) {
-                  setTerminalId(storedId);
-                  setTerminalToken(storedToken);
-                  setStep("POS");
-                } else {
-                  window.localStorage.removeItem("opayque_terminal_id");
-                  window.localStorage.removeItem("opayque_terminal_token");
-                }
+              if (!storedToken) return;
+              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}&deviceToken=${encodeURIComponent(storedToken)}`);
+              const payload = await response.json().catch(() => null);
+              if (response.ok && payload?.success) {
+                saveTerminalDeviceCredential({
+                  terminalId: String(payload.terminalId),
+                  merchantId: String(payload.merchantId),
+                  deviceToken: storedToken,
+                  merchantWallet: String(payload.merchantWallet),
+                  pairedAt: loadTerminalDeviceCredential()?.pairedAt ?? Date.now(),
+                });
+                setTerminalId(storedId);
+                setTerminalToken(storedToken);
+                setMerchantName(String(payload.merchantName || "Opayque Merchant"));
+                setAvatarPreview(payload.merchantLogo || null);
+                setStep("POS");
+              } else {
+                window.localStorage.removeItem("opayque_terminal_id");
+                window.localStorage.removeItem("opayque_terminal_token");
               }
             } catch (err) {
               console.warn("Failed to validate stored terminal", err);
@@ -692,6 +688,7 @@ export default function TerminalPage() {
         window.localStorage.removeItem("opayque_terminal_id");
         window.localStorage.removeItem("opayque_terminal_token");
         window.localStorage.removeItem("opayque_terminal_label");
+        clearTerminalDeviceCredential();
       }
       setTerminalId(null);
       setTerminalToken(null);

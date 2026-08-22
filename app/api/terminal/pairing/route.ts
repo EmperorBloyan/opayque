@@ -212,6 +212,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         code,
+        terminalId,
+        deviceToken: code,
         merchantId: resolvedMerchantId,
         walletAddress: merchantWalletAddress,
         merchantName: merchantData?.merchant_name ?? null,
