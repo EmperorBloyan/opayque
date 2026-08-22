@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
@@ -15,7 +14,11 @@ function getSavedMerchantName() {
 
 function getSavedMerchantLogo() {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("merchant_logo")?.trim() || window.localStorage.getItem("merchant_avatar")?.trim() || null;
+  return (
+    window.localStorage.getItem("merchant_logo")?.trim() ||
+    window.localStorage.getItem("merchant_avatar")?.trim() ||
+    null
+  );
 }
 
 function getRedirectTarget(defaultTarget: string) {
@@ -49,16 +52,25 @@ function LoginContent() {
   }, []);
 
   const infoText = useMemo(
-    () => "Enter your company password to unlock the developer hub and continue managing your merchant session.",
+    () =>
+      "Enter your company password to unlock the developer hub and continue managing your merchant session.",
     []
   );
 
   const goToDestination = (path: string) => {
     if (isNavigating) return;
     setIsNavigating(true);
-    router.push(path);
-    // Reset after brief delay to allow for re-attempts if navigation fails
-    setTimeout(() => setIsNavigating(false), 1000);
+    try {
+      if (typeof window !== "undefined") {
+        window.location.assign(path);
+        return;
+      }
+      router.push(path);
+    } catch {
+      router.push(path);
+    } finally {
+      setTimeout(() => setIsNavigating(false), 1500);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -69,29 +81,43 @@ function LoginContent() {
 
     try {
       const supabase = createClient();
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signInError) throw signInError;
 
       if (data?.user) {
+        let bound = false;
+
         try {
           const merchantRes = await fetch("/api/v1/merchant", {
             credentials: "include",
           });
+
           if (merchantRes.ok) {
             const payload = await merchantRes.json();
             const merchant = payload?.merchant;
+
             if (merchant?.id) {
               bindAuthenticatedMerchantSession({
                 merchantId: merchant.id,
                 walletAddress: merchant.settlement_wallet_address || null,
               });
+              bound = true;
 
               if (typeof window !== "undefined") {
                 if (merchant.merchant_name) {
-                  window.localStorage.setItem("merchant_name", merchant.merchant_name);
+                  window.localStorage.setItem(
+                    "merchant_name",
+                    merchant.merchant_name
+                  );
                 }
                 if (merchant.merchant_logo) {
-                  window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+                  window.localStorage.setItem(
+                    "merchant_logo",
+                    merchant.merchant_logo
+                  );
                 }
                 if (merchant.email) {
                   window.localStorage.setItem("merchant_email", merchant.email);
@@ -107,14 +133,28 @@ function LoginContent() {
             }
           }
         } catch (merchantError) {
-          console.warn("Failed to hydrate merchant profile after login", merchantError);
+          console.warn(
+            "Failed to hydrate merchant profile after login",
+            merchantError
+          );
         }
 
         const next = searchParams.get("next");
-        const destination = next && next.startsWith("/") ? next : getRedirectTarget("/vault/registry");
+        const destination =
+          next && next.startsWith("/")
+            ? next
+            : getRedirectTarget("/vault/registry");
 
         if (typeof window !== "undefined") {
           window.localStorage.removeItem("opayque_next_route");
+          if (!bound) {
+            console.warn(
+              "Login succeeded but merchant session was not bound. Check /api/v1/merchant."
+            );
+          }
+          // Hard navigation so mobile doesn't soft-fail and stay on login
+          window.location.assign(destination);
+          return;
         }
 
         router.push(destination);
@@ -133,7 +173,6 @@ function LoginContent() {
 
   return (
     <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-6 font-sans">
-      {/* Close Button in top right */}
       <button
         type="button"
         onClick={() => goToDestination("/")}
@@ -146,8 +185,12 @@ function LoginContent() {
 
       <div className="w-full max-w-2xl my-10">
         <div className="mb-10 space-y-4 text-center">
-          <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Access Control Center</p>
-          <h1 className="text-5xl font-black uppercase tracking-tighter text-white">Secure Hub Unlock</h1>
+          <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">
+            Access Control Center
+          </p>
+          <h1 className="text-5xl font-black uppercase tracking-tighter text-white">
+            Secure Hub Unlock
+          </h1>
           <p className="mx-auto max-w-2xl text-sm leading-7 text-zinc-400">
             Re-enter your credentials to restore access to your developer workspace.
           </p>
@@ -157,14 +200,24 @@ function LoginContent() {
           <div className="flex flex-col items-center gap-5 rounded-[2.5rem] border border-white/10 bg-zinc-950/90 p-6 text-center shadow-xl shadow-black/30">
             <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 overflow-hidden shadow-[0_0_30px_rgba(168,85,247,0.25)]">
               {merchantLogo ? (
-                <img src={merchantLogo} alt={`${merchantName} logo`} className="h-full w-full object-cover" />
+                <img
+                  src={merchantLogo}
+                  alt={`${merchantName} logo`}
+                  className="h-full w-full object-cover"
+                />
               ) : (
-                <span className="text-4xl font-black text-white">{merchantInitial}</span>
+                <span className="text-4xl font-black text-white">
+                  {merchantInitial}
+                </span>
               )}
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Merchant Identity</p>
-              <h2 className="mt-3 text-3xl font-black uppercase tracking-tight text-white">{merchantName}</h2>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">
+                Merchant Identity
+              </p>
+              <h2 className="mt-3 text-3xl font-black uppercase tracking-tight text-white">
+                {merchantName}
+              </h2>
             </div>
           </div>
 
@@ -217,14 +270,14 @@ function LoginContent() {
                 </div>
               )}
 
-              {/* Action Buttons Row */}
               <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-                {/* Create Account Link (Bottom-Left) */}
                 <button
                   type="button"
                   onClick={() => {
                     const nextTarget = getRedirectTarget("/vault/registry");
-                    goToDestination(`/onboarding?next=${encodeURIComponent(nextTarget)}`);
+                    goToDestination(
+                      `/onboarding?next=${encodeURIComponent(nextTarget)}`
+                    );
                   }}
                   disabled={isNavigating}
                   className="flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
@@ -233,7 +286,6 @@ function LoginContent() {
                   <span>Create Account</span>
                 </button>
 
-                {/* Unlock Hub Primary Action */}
                 <button
                   type="submit"
                   disabled={isLoading || isNavigating}
@@ -253,7 +305,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-black text-white flex items-center justify-center">
+          Loading…
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );
