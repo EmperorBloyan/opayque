@@ -17,7 +17,10 @@ import {
   Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { bindAuthenticatedMerchantSession, clearActiveSession } from "@/lib/crypto/session";
+import {
+  bindAuthenticatedMerchantSession,
+  clearActiveSession,
+} from "@/lib/crypto/session";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 
 function getRedirectTarget(defaultTarget = "/vault/registry") {
@@ -70,13 +73,43 @@ export default function OnboardingPage() {
     if (isNavigating) return;
     setIsNavigating(true);
     try {
-      // Hard navigation — more reliable than soft router on mobile
       if (typeof window !== "undefined") {
         window.location.assign(path);
         return;
       }
       router.push(path);
     } catch {
+      router.push(path);
+    } finally {
+      setTimeout(() => setIsNavigating(false), 1500);
+    }
+  };
+
+  /** Clear session so middleware does not bounce /login away */
+  const handleGoToLogin = async () => {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    setErrorMessage(null);
+
+    const nextPath = getRedirectTarget("/vault/registry");
+
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      clearActiveSession();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("opayque_next_route", nextPath);
+      }
+    } catch (err) {
+      console.warn("Sign-out before login failed", err);
+    }
+
+    const path = `/login?force=1&next=${encodeURIComponent(nextPath)}`;
+    try {
+      if (typeof window !== "undefined") {
+        window.location.assign(path);
+        return;
+      }
       router.push(path);
     } finally {
       setTimeout(() => setIsNavigating(false), 1500);
@@ -196,11 +229,14 @@ export default function OnboardingPage() {
             throw new Error("Wallet changed the transaction blockhash");
           }
 
-          const sig = await rpcConnection.sendRawTransaction(signedTx.serialize(), {
-            skipPreflight: false,
-            preflightCommitment: "finalized",
-            maxRetries: 3,
-          });
+          const sig = await rpcConnection.sendRawTransaction(
+            signedTx.serialize(),
+            {
+              skipPreflight: false,
+              preflightCommitment: "finalized",
+              maxRetries: 3,
+            }
+          );
           await rpcConnection.confirmTransaction(
             {
               signature: sig,
@@ -213,7 +249,10 @@ export default function OnboardingPage() {
           setVaultReady(true);
           return;
         } catch (error) {
-          if (attempt === 0 && /blockhash|expired|not found/i.test(String(error))) {
+          if (
+            attempt === 0 &&
+            /blockhash|expired|not found/i.test(String(error))
+          ) {
             continue;
           }
           throw error;
@@ -282,7 +321,9 @@ export default function OnboardingPage() {
         userId = secondSignIn.user?.id ?? userId;
       }
 
-      if (!userId) throw new Error("Authentication did not create a user session.");
+      if (!userId) {
+        throw new Error("Authentication did not create a user session.");
+      }
 
       clearActiveSession();
 
@@ -306,19 +347,33 @@ export default function OnboardingPage() {
         .maybeSingle();
 
       if (walletLookupError) throw walletLookupError;
-      if (walletMerchant?.auth_user_id && walletMerchant.auth_user_id !== userId) {
-        throw new Error("This wallet is already linked to another merchant account. Sign in with that account to reuse its merchant profile.");
+      if (
+        walletMerchant?.auth_user_id &&
+        walletMerchant.auth_user_id !== userId
+      ) {
+        throw new Error(
+          "This wallet is already linked to another merchant account. Sign in with that account to reuse its merchant profile."
+        );
       }
 
       const merchantWrite = walletMerchant?.id
-        ? supabase.from("merchants").update(merchantInput).eq("id", walletMerchant.id)
-        : supabase.from("merchants").upsert(merchantInput, { onConflict: "auth_user_id" });
+        ? supabase
+            .from("merchants")
+            .update(merchantInput)
+            .eq("id", walletMerchant.id)
+        : supabase
+            .from("merchants")
+            .upsert(merchantInput, { onConflict: "auth_user_id" });
 
-      const { data: upsertedMerchant, error: dbError } = await merchantWrite.select().single();
+      const { data: upsertedMerchant, error: dbError } = await merchantWrite
+        .select()
+        .single();
 
       if (dbError) {
         if (dbError.code === "23505") {
-          throw new Error("This wallet is already linked to a merchant profile. Sign in with that account to reuse the same merchant row.");
+          throw new Error(
+            "This wallet is already linked to a merchant profile. Sign in with that account to reuse the same merchant row."
+          );
         }
         throw dbError;
       }
@@ -442,8 +497,8 @@ export default function OnboardingPage() {
               Set up your control center
             </h1>
             <p className="mt-2 text-xs text-zinc-400">
-              Connect wallet, sign ownership, initialize gasless vault, then create
-              your account.
+              Connect wallet, sign ownership, initialize gasless vault, then
+              create your account.
             </p>
           </div>
 
@@ -608,15 +663,7 @@ export default function OnboardingPage() {
               <div className="flex flex-col items-center gap-4 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => {
-                    const nextTarget = getRedirectTarget("/vault/registry");
-                    const path = `/login?next=${encodeURIComponent(nextTarget)}`;
-                    if (typeof window !== "undefined") {
-                      window.location.assign(path);
-                    } else {
-                      goToDestination(path);
-                    }
-                  }}
+                  onClick={() => void handleGoToLogin()}
                   disabled={isNavigating}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-white/10 hover:text-white sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -627,10 +674,7 @@ export default function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={
-                    isLoading ||
-                    isNavigating ||
-                    !walletSigned ||
-                    !vaultReady
+                    isLoading || isNavigating || !walletSigned || !vaultReady
                   }
                   className="flex w-full flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
