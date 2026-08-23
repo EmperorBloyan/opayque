@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-} from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 const PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID ||
-    "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
+  process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID || "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
 );
 
 export async function POST(req: Request) {
@@ -21,14 +14,15 @@ export async function POST(req: Request) {
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = await req.json();
 
     if (!merchantPublicKey || !RELAYER_SECRET) {
-      return NextResponse.json({ success: false, error: "Missing data" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Missing data: Ensure Relayer Key is set." }, { status: 400 });
     }
 
     const secretKey = Uint8Array.from(JSON.parse(RELAYER_SECRET));
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
     const merchant = new PublicKey(merchantPublicKey);
 
-    const connection = new Connection(RPC_URL, "finalized");
+    // FIX: Change to "confirmed" for instant response
+    const connection = new Connection(RPC_URL, "confirmed");
 
     const wallet = {
       publicKey: relayerKeypair.publicKey,
@@ -36,18 +30,14 @@ export async function POST(req: Request) {
       signAllTransactions: async (txs: Transaction[]) => txs,
     } as Wallet;
 
-    const provider = new AnchorProvider(connection, wallet, { commitment: "finalized" });
+    // FIX: Change to "confirmed"
+    const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
     const program = new Program(idl as any, provider);
-    const programId = (idl as any)?.address
-      ? new PublicKey((idl as any).address)
-      : PROGRAM_ID;
+    const programId = (idl as any)?.address ? new PublicKey((idl as any).address) : PROGRAM_ID;
     const effectiveProgramId = program.programId ?? programId;
 
     if (!effectiveProgramId) {
-      return NextResponse.json(
-        { success: false, error: "Invalid IDL: missing program address" },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: "Invalid IDL" }, { status: 500 });
     }
 
     const [merchantVaultPda] = PublicKey.findProgramAddressSync(
@@ -60,7 +50,6 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         alreadyExists: true,
-        message: "Merchant vault already initialized",
         merchantVault: merchantVaultPda.toBase58(),
       });
     }
@@ -87,12 +76,11 @@ export async function POST(req: Request) {
       })
       .transaction();
 
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash("finalized");
+    // FIX: Change to "confirmed" to ensure Phantom gets a fresh blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    
     tx.feePayer = relayerKeypair.publicKey;
     tx.recentBlockhash = blockhash;
-
-    // Sign only after the blockhash and fee payer are set.
     tx.partialSign(relayerKeypair);
 
     const serialized = tx.serialize({
@@ -105,13 +93,9 @@ export async function POST(req: Request) {
       transaction: serialized.toString("base64"),
       blockhash,
       lastValidBlockHeight,
-      rpcUrl: RPC_URL,
     });
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to build transaction" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
