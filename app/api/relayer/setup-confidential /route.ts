@@ -6,7 +6,7 @@ import {
   SystemProgram,
   Transaction,
 } from "@solana/web3.js";
-import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
+import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const connection = new Connection(RPC_URL, "confirmed");
     const merchant = new PublicKey(merchantPublicKey);
 
-    // Wallet adapter for the relayer
+    // Wallet adapter interface for the relayer
     const wallet = {
       publicKey: relayerKeypair.publicKey,
       signTransaction: async (tx: Transaction) => {
@@ -65,6 +65,17 @@ export async function POST(req: Request) {
       program.programId
     );
 
+    // Guard: Check if vault already exists
+    const vaultInfo = await connection.getAccountInfo(merchantVaultPda);
+    if (vaultInfo) {
+      return NextResponse.json({
+        success: true,
+        alreadyExists: true,
+        message: "Merchant vault already initialized",
+        merchantVault: merchantVaultPda.toBase58(),
+      });
+    }
+
     const [treasuryPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("opayque_treasury"), merchant.toBuffer()],
       program.programId
@@ -75,16 +86,16 @@ export async function POST(req: Request) {
       program.programId
     );
 
-    // Build the transaction
+    // Build instruction
     const tx = await program.methods
       .initializeMerchantVault(
-        new (await import("@coral-xyz/anchor")).BN(feeBps),
+        new BN(feeBps),
         merchant,
         tokenDecimals
       )
       .accounts({
-        merchantAuthority: merchant,          // the merchant wallet
-        payer: relayerKeypair.publicKey,      // relayer pays the fees
+        merchantAuthority: merchant,      // merchant wallet address
+        payer: relayerKeypair.publicKey,  // relayer pays transaction & rent fees
         merchantVault: merchantVaultPda,
         opayqueTreasury: treasuryPda,
         protocolConfig: protocolConfigPda,
@@ -92,12 +103,28 @@ export async function POST(req: Request) {
       })
       .transaction();
 
-    // Send with relayer as signer
+    // Attach fresh blockhash and fee payer
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed");
+    
+    tx.feePayer = relayerKeypair.publicKey;
+    tx.recentBlockhash = blockhash;
+
+    // Send transaction signed by relayer
     const signature = await connection.sendTransaction(tx, [relayerKeypair], {
       skipPreflight: false,
+      preflightCommitment: "confirmed",
     });
 
-    await connection.confirmTransaction(signature, "confirmed");
+    // Wait for confirmation
+    await connection.confirmTransaction(
+      {
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      "confirmed"
+    );
 
     return NextResponse.json({
       success: true,
