@@ -153,7 +153,18 @@ export default function ShieldedCheckout({
 
       // buildShieldedTransfer returns VersionedTransaction
       if (built.transaction instanceof VersionedTransaction) {
-        if (signTransaction) {
+        if (sendTransaction) {
+          signature = await withTimeout(
+            sendTransaction(built.transaction as any, connection),
+            60000,
+            "Wallet transaction"
+          );
+          await withTimeout(connection.confirmTransaction({
+            signature,
+            blockhash: built.blockhash || built.transaction.message.recentBlockhash,
+            lastValidBlockHeight: built.lastValidBlockHeight,
+          }, "confirmed"), 15000, "Confirm transaction");
+        } else if (signTransaction) {
           const signed = await withTimeout(
             signTransaction(built.transaction as any),
             60000,
@@ -169,17 +180,6 @@ export default function ShieldedCheckout({
           await withTimeout(connection.confirmTransaction({
             signature,
             blockhash: built.blockhash || signed.message.recentBlockhash,
-            lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Confirm transaction");
-        } else if (sendTransaction) {
-          signature = await withTimeout(
-            sendTransaction(built.transaction as any, connection),
-            60000,
-            "Send transaction"
-          );
-          await withTimeout(connection.confirmTransaction({
-            signature,
-            blockhash: built.blockhash || built.transaction.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
           }, "confirmed"), 15000, "Confirm transaction");
         } else {
