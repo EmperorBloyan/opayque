@@ -328,13 +328,15 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
               }`}
             >
               <LucideLayoutDashboard size={14} /> Dashboard
-            </Link>
-
-            <Link
-              href="/vault/registry"
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                pathname.startsWith("/vault/registry")
-                  ? "bg-white text-black shadow-xl shadow-white/5"
+                  {merchantFetchError === "unauthorized" ? (
+                    <Link href="/login?next=%2Fvault%2Fdashboard" className="text-purple-300 underline underline-offset-2 hover:text-purple-200">
+                      Log in
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => window.location.reload()} className="text-purple-300 underline underline-offset-2 hover:text-purple-200">
+                      Retry
+                    </button>
+                  )}
                   : "text-zinc-500 hover:text-white hover:bg-white/5"
               }`}
             >
@@ -482,6 +484,41 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         <main className="relative">{children}</main>
 
         <footer className="mt-20 pt-8 border-t border-white/5 flex justify-between items-center opacity-30">
+          <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
+            Powered by Solana TEE Infrastructure
+          </p>
+          <div className="flex gap-4">
+            <div
+              className={`w-2 h-2 rounded-full transition-colors duration-500 ${
+                connected ? "bg-green-500 animate-pulse" : "bg-zinc-700"
+              }`}
+            />
+            <div
+              className={`w-2 h-2 rounded-full transition-colors duration-500 ${
+                connected ? "bg-purple-500" : "bg-zinc-700"
+              }`}
+            />
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+              className={`w-2 h-2 rounded-full transition-colors duration-500 ${
+                connected ? "bg-green-500 animate-pulse" : "bg-zinc-700"
+              }`}
+            />
+            <div
+              className={`w-2 h-2 rounded-full transition-colors duration-500 ${
+                connected ? "bg-purple-500" : "bg-zinc-700"
+              }`}
+            />
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
           <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
             Powered by Solana TEE Infrastructure
           </p>

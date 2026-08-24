@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { Connection, SendTransactionError, VersionedTransaction } from "@solana/web3.js";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
@@ -129,7 +129,7 @@ export default function ShieldedCheckout({
     }
 
     setStatus("processing");
-    setMessage("Shielding transaction through TEE...");
+    setMessage("Confirming payment...");
     setSuccessSignature(null);
 
     try {
@@ -146,8 +146,8 @@ export default function ShieldedCheckout({
       let signature: string | null = null;
 
       const rpc =
-        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
         process.env.NEXT_PUBLIC_RPC_URL ||
+        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
         "https://api.devnet.solana.com";
       const connection = new Connection(rpc, "confirmed");
 
@@ -208,9 +208,17 @@ export default function ShieldedCheckout({
       setMessage("Payment confirmed. Returning to wallet...");
       setCountdown(5);
     } catch (error: any) {
-      console.error("Shielded payment failed:", error);
+      let errorMessage = error?.message || "Payment failed. Please try again.";
+      let transactionLogs: string[] | null = null;
+      if (error instanceof SendTransactionError) {
+        transactionLogs = await error.getLogs(connection).catch(() => null);
+        if (transactionLogs?.length) {
+          errorMessage = `${errorMessage} ${transactionLogs.join(" ")}`;
+        }
+      }
+      console.error("Shielded payment failed:", error, { logs: transactionLogs });
       setStatus("error");
-      setMessage(error?.message || "Payment failed. Please try again.");
+      setMessage(errorMessage);
     }
   };
 
@@ -313,7 +321,7 @@ export default function ShieldedCheckout({
                 {status === "processing" ? (
                   <>
                     <LucideLoader2 className="animate-spin" size={16} />
-                    Shielding...
+                    Confirming...
                   </>
                 ) : status === "error" ? (
                   "Try Again"

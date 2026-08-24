@@ -202,18 +202,18 @@ export default function OnboardingPage() {
             return;
           }
 
-          if (
-            !data.transaction ||
-            !data.blockhash ||
-            !data.lastValidBlockHeight ||
-            !data.rpcUrl
-          ) {
+          if (!data.transaction || !data.blockhash || !Number.isFinite(Number(data.lastValidBlockHeight))) {
             throw new Error("Relayer returned an incomplete transaction");
           }
 
           const txBuffer = Buffer.from(data.transaction, "base64");
           const { Connection, Transaction } = await import("@solana/web3.js");
-          const rpcConnection = new Connection(data.rpcUrl, "finalized");
+          const rpcUrl =
+            (typeof data.rpcUrl === "string" && data.rpcUrl.trim()) ||
+            process.env.NEXT_PUBLIC_RPC_URL ||
+            process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+            "https://api.devnet.solana.com";
+          const rpcConnection = new Connection(rpcUrl, "confirmed");
           const tx = Transaction.from(txBuffer);
           if (!tx.recentBlockhash || tx.recentBlockhash !== data.blockhash) {
             throw new Error("Missing or mismatched transaction blockhash");
@@ -233,7 +233,7 @@ export default function OnboardingPage() {
             signedTx.serialize(),
             {
               skipPreflight: false,
-              preflightCommitment: "finalized",
+              preflightCommitment: "confirmed",
               maxRetries: 3,
             }
           );
@@ -243,7 +243,7 @@ export default function OnboardingPage() {
               blockhash: data.blockhash,
               lastValidBlockHeight: data.lastValidBlockHeight,
             },
-            "finalized"
+            "confirmed"
           );
 
           setVaultReady(true);

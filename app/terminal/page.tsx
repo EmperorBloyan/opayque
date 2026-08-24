@@ -6,8 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Bell, LucideEdit3, X } from "lucide-react";
 import { clearTerminalDeviceCredential, createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, loadTerminalDeviceCredential, saveTerminalDeviceCredential, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
-import { getAuthenticatedMerchantId } from "@/lib/auth/authenticatedMerchant";
+import { assertTerminalReady, resolveTerminalContext } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
 
@@ -77,6 +76,7 @@ export default function TerminalPage() {
   const [lockedAmount, setLockedAmount] = useState<string>("");
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Correct currency hooks
   const { currency, setCurrency, rates, convert, toUsdc } = useCurrency();
@@ -84,6 +84,10 @@ export default function TerminalPage() {
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
+  const terminalContext = resolveTerminalContext({
+    device: loadTerminalDeviceCredential(),
+    session: activeSession,
+  });
   const router = useRouter();
 
   const persistLocalActivity = useCallback((items: any[]) => {
@@ -108,13 +112,8 @@ export default function TerminalPage() {
       const supabase = createSupabaseBrowserClient();
       const windowNow = Date.now();
       const cutoff = new Date(windowNow - 24 * 60 * 60 * 1000).toISOString();
-      const merchantId = await getAuthenticatedMerchantId();
-      if (!merchantId) {
-        setRecentActivity([]);
-        return;
-      }
-      const effectiveTerminalId = terminalId;
-      if (!effectiveTerminalId) {
+      const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+      if (context.status !== "ready" || !context.terminalId) {
         setRecentActivity([]);
         return;
       }
@@ -122,8 +121,8 @@ export default function TerminalPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
-        .eq("merchant_id", merchantId)
-        .eq("terminal_id", effectiveTerminalId)
+        .eq("merchant_id", context.merchantId)
+        .eq("terminal_id", context.terminalId)
         .gte("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -139,7 +138,7 @@ export default function TerminalPage() {
         amount: Number(row.amount ?? 0),
         tokenSymbol: String(row.token_symbol ?? "USDC"),
         time: row.created_at ?? new Date().toISOString(),
-        walletAddress: row.wallet_address ?? activeSession?.walletAddress ?? null,
+        walletAddress: row.wallet_address ?? context.merchantWallet,
         txHash: row.tx_hash ?? row.signature ?? null,
       }));
 
@@ -150,7 +149,7 @@ export default function TerminalPage() {
       console.warn("Failed to hydrate recent terminal activity", error);
       setRecentActivity([]);
     }
-  }, [activeSession?.walletAddress, persistLocalActivity, readLocalActivity, terminalId]);
+  }, [persistLocalActivity, readLocalActivity]);
 
   useEffect(() => {
     if (!activeSession && !loadTerminalDeviceCredential()) {
@@ -176,13 +175,11 @@ export default function TerminalPage() {
   // Fixed buildUri — uses toUsdc for settlement
   const buildUri = useCallback(() => {
     try {
-      const device = loadTerminalDeviceCredential();
-      const recipient =
-        typeof device?.merchantWallet === "string"
-          ? device.merchantWallet.trim()
-          : typeof activeSession?.walletAddress === "string"
-            ? activeSession.walletAddress.trim()
-          : "";
+      const context = resolveTerminalContext({
+        device: loadTerminalDeviceCredential(),
+        session: getActiveSession(),
+      });
+      const recipient = context.status === "ready" ? context.merchantWallet : "";
 
       const amountValue = lockedAmount || amount || "";
       const fiatAmount = Number.parseFloat(String(amountValue).trim());
@@ -212,7 +209,6 @@ export default function TerminalPage() {
       return "";
     }
   }, [
-    activeSession?.walletAddress,
     amount,
     lockedAmount,
     merchantName,
@@ -345,26 +341,27 @@ export default function TerminalPage() {
   };
 
   const generateNewPayment = async () => {
-    if (!isAmountValid) return;
+    if (!isAmountValid || isGenerating) return;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    setIsGenerating(true);
     try {
-      const supabase = createSupabaseClient();
-      const merchantId = await getAuthenticatedMerchantId();
-      if (!merchantId) throw new Error("Authenticated merchant not found");
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert({
-          merchant_id: merchantId,
-          terminal_id: terminalId ?? null,
-          signature: null,
-          token_symbol: asset,
+      assertTerminalReady(terminalContext);
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 12_000);
+      const response = await fetch("/api/terminal/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          terminalId: terminalContext.terminalId,
+          deviceToken: terminalContext.deviceToken,
           amount: numericAmount,
-          status: "pending",
-        })
-        .select()
-        .single();
-
-      if (error || !data) {
-        throw new Error(error?.message || "Failed to create pending transaction");
+          tokenSymbol: asset,
+        }),
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success || !data?.id) {
+        throw new Error(data?.error || "Unable to create payment");
       }
 
       const pendingRecord = data as TransactionRecord & { tx_hash?: string | null; wallet_address?: string | null; token_symbol?: string | null; created_at?: string };
@@ -374,7 +371,7 @@ export default function TerminalPage() {
         amount: Number(pendingRecord.amount ?? numericAmount),
         tokenSymbol: String(pendingRecord.token_symbol ?? asset),
         time: pendingRecord.created_at ?? new Date().toISOString(),
-        walletAddress: activeSession?.walletAddress ?? null,
+        walletAddress: terminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,
       }, ...readLocalActivity()];
       setRecentActivity(persistLocalActivity(nextActivity));
@@ -392,7 +389,10 @@ export default function TerminalPage() {
       setPaymentStatus("PENDING");
       setToast("Pending transaction created");
     } catch (err) {
-      setToast(err instanceof Error ? err.message : "Failed to create transaction");
+      setToast(err instanceof DOMException && err.name === "AbortError" ? "Payment request timed out. Try again." : err instanceof Error ? err.message : "Unable to create payment");
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      setIsGenerating(false);
     }
   };
 
@@ -445,7 +445,14 @@ export default function TerminalPage() {
               if (!storedToken) return;
               const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}&deviceToken=${encodeURIComponent(storedToken)}`);
               const payload = await response.json().catch(() => null);
-              if (response.ok && payload?.success) {
+              if (
+                response.ok &&
+                payload?.success &&
+                typeof payload.merchantId === "string" &&
+                isRealMerchantId(payload.merchantId) &&
+                typeof payload.merchantWallet === "string" &&
+                payload.merchantWallet.trim()
+              ) {
                 saveTerminalDeviceCredential({
                   terminalId: String(payload.terminalId),
                   merchantId: String(payload.merchantId),
@@ -474,6 +481,10 @@ export default function TerminalPage() {
   }, [activeSession]);
 
   useEffect(() => {
+    if (terminalId) void hydrateRecentActivity();
+  }, [hydrateRecentActivity, terminalId]);
+
+  useEffect(() => {
     if (!transactionId) {
       return;
     }
@@ -482,8 +493,9 @@ export default function TerminalPage() {
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     void (async () => {
-      const merchantId = await getAuthenticatedMerchantId();
-      if (!merchantId) return;
+      const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+      if (context.status !== "ready") return;
+      const merchantId = context.merchantId;
       channel = supabase
         .channel(`transactions:${merchantId}:${transactionId}`)
         .on(
@@ -498,7 +510,7 @@ export default function TerminalPage() {
               amount: Number(record.amount ?? 0),
               tokenSymbol: String((record as any).token_symbol ?? asset),
               time: (record as any).created_at ?? new Date().toISOString(),
-              walletAddress: activeSession?.walletAddress ?? null,
+              walletAddress: context.merchantWallet,
               txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
             };
             const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
@@ -532,8 +544,9 @@ export default function TerminalPage() {
     (async () => {
       try {
         const stored = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id") : null;
-        const merchantId = await getAuthenticatedMerchantId();
-        if (!merchantId) return;
+        const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+        if (context.status !== "ready") return;
+        const merchantId = context.merchantId;
         if (stored) {
           const { data: storedRow, error: err } = await supabase
             .from("transactions")
@@ -600,8 +613,9 @@ export default function TerminalPage() {
     const restoreLatestTransaction = async () => {
       try {
         const supabase = createSupabaseBrowserClient();
-        const merchantId = await getAuthenticatedMerchantId();
-        if (!merchantId) return;
+        const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+        if (context.status !== "ready") return;
+        const merchantId = context.merchantId;
         const { data, error } = await supabase
           .from("transactions")
           .select("*")
@@ -635,8 +649,9 @@ export default function TerminalPage() {
 
     void (async () => {
       await restoreLatestTransaction();
-      const merchantId = await getAuthenticatedMerchantId();
-      if (!merchantId || cancelled) return;
+      const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+      if (context.status !== "ready" || cancelled) return;
+      const merchantId = context.merchantId;
 
       const supabase = createSupabaseBrowserClient();
       channel = supabase
@@ -672,18 +687,23 @@ export default function TerminalPage() {
   }, [terminalId]);
 
   const unpairTerminal = async () => {
+    let remoteError: string | null = null;
     try {
-      if (terminalId) {
-        const supabase = createSupabaseBrowserClient();
-        const merchantId = await getAuthenticatedMerchantId();
-        if (merchantId) {
-          await supabase
-            .from("terminals")
-            .update({ status: "revoked", last_active: new Date().toISOString() })
-            .eq("merchant_id", merchantId)
-            .eq("id", terminalId);
+      const device = loadTerminalDeviceCredential();
+      if (device?.terminalId && device.deviceToken) {
+        const response = await fetch("/api/terminal/unpair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ terminalId: device.terminalId, deviceToken: device.deviceToken }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          remoteError = payload?.error || "Unable to revoke terminal remotely";
         }
       }
+    } catch (err) {
+      remoteError = err instanceof Error ? err.message : "Unable to revoke terminal remotely";
+    } finally {
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("opayque_terminal_id");
         window.localStorage.removeItem("opayque_terminal_token");
@@ -693,9 +713,7 @@ export default function TerminalPage() {
       setTerminalId(null);
       setTerminalToken(null);
       setStep("PAIRING");
-      setToast("Terminal unpaired");
-    } catch (err) {
-      console.error("Failed to unpair terminal", err);
+      setToast(remoteError ? `Terminal removed locally. ${remoteError}` : "Terminal unpaired");
     }
   };
 
@@ -816,10 +834,10 @@ export default function TerminalPage() {
             />
             <button
               onClick={handleGenerateQR}
-              disabled={!isAmountValid}
+              disabled={!isAmountValid || terminalContext.status !== "ready" || isGenerating}
               className="w-full py-8 bg-purple-600 rounded-[2.2rem] font-black text-2xl shadow-2xl disabled:opacity-20 uppercase tracking-tighter"
             >
-              Generate QR
+              {isGenerating ? "Creating..." : "Generate QR"}
             </button>
           </div>
         )}

@@ -93,6 +93,7 @@ export async function POST(req: Request) {
       transaction: serialized.toString("base64"),
       blockhash,
       lastValidBlockHeight,
+      rpcUrl: RPC_URL,
     });
   } catch (error: any) {
     console.error(error);

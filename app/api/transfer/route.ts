@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     );
 
     const instructions = [ataInstruction, ...bundle.instructions, ...bundle.cleanupInstructions];
-    const { blockhash } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const messageV0 = new TransactionMessage({
       payerKey: senderPubkey,
       recentBlockhash: blockhash,
@@ -91,6 +91,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       transaction: serializedTx,
+      blockhash,
+      lastValidBlockHeight,
+      rpcUrl: RPC_ENDPOINT,
     });
   } catch (error: unknown) {
     console.error('Error constructing transaction:', error);
