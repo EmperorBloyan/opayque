@@ -11,7 +11,6 @@ import {
 } from '@solana/spl-token';
 import {
   createShieldedPaymentInstruction,
-  USDC_MINT,
 } from '@/lib/magicblock';
 import { getAssetMintAddress } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';

@@ -152,7 +152,7 @@ export default function ShieldedCheckout({
       );
       const requiredUsdcBaseUnits = BigInt(Math.ceil(safeAmount * 1_000_000));
       if (solLamports < 5_000) {
-        throw new Error("Insufficient SOL for network fees. Add Devnet SOL to this wallet.");
+        throw new Error(`Insufficient SOL for network fees. Add ${isDevnet ? "Devnet" : "Mainnet"} SOL to this wallet.`);
       }
       if (usdcBaseUnits < requiredUsdcBaseUnits) {
         throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);
