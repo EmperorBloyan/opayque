@@ -170,7 +170,7 @@ export default function ShieldedCheckout({
             signature,
             blockhash: built.blockhash || signed.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 30000, "Confirm transaction");
+          }, "confirmed"), 15000, "Confirm transaction");
         } else if (sendTransaction) {
           signature = await withTimeout(
             sendTransaction(built.transaction as any, connection),
@@ -181,7 +181,7 @@ export default function ShieldedCheckout({
             signature,
             blockhash: built.blockhash || built.transaction.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 30000, "Confirm transaction");
+          }, "confirmed"), 15000, "Confirm transaction");
         } else {
           throw new Error("Wallet cannot sign or send transactions.");
         }
