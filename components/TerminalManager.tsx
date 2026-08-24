@@ -992,21 +992,27 @@ export default function TerminalManager({
   };
 
   const disconnectTerminal = async (id: string) => {
-    if (!confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
+    const terminal = safeTerminals.find((item) => item.id === id);
+    if (!terminal || !confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
       return;
     }
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("terminals")
-        .update({ status: "revoked", last_active: new Date().toISOString() })
-        .eq("merchant_id", resolvedMerchantId)
-        .eq("id", id);
-
-      if (error) throw error;
+      const response = await fetch("/api/terminal/unpair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ terminalId: terminal.id, deviceToken: terminal.accessCode }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || "Unable to revoke terminal");
+      }
+      setToast("Terminal revoked");
     } catch (error) {
       console.error("Failed to revoke terminal in Supabase", error);
+      setToast(error instanceof Error ? error.message : "Unable to revoke terminal");
+      setTimeout(() => setToast(null), 3000);
+      return;
     }
 
     // Optimistic local update

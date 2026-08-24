@@ -290,17 +290,10 @@ export default function RegistryPage() {
           </section>
 
           <section>
-            <div className="mb-6 ml-4 flex items-center justify-between pr-2">
+            <div className="mb-6 ml-4 pr-2">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 Hardware Fleet
               </h2>
-              <button
-                type="button"
-                onClick={() => void loadTerminalData(resolvedMerchantId)}
-                className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-400 hover:text-purple-300"
-              >
-                Refresh
-              </button>
             </div>
             <TerminalManager
               terminals={terminals}
