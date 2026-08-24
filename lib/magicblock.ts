@@ -93,7 +93,7 @@ export async function buildShieldedTransfer(
   sender: string,
   recipient: string,
   amount: number
-): Promise<VersionedTransaction> {
+): Promise<{ transaction: VersionedTransaction; blockhash: string; lastValidBlockHeight: number; rpcUrl?: string }> {
   const response = await fetchWithTimeout(
     "/api/transfer",
     {
@@ -128,9 +128,12 @@ export async function buildShieldedTransfer(
   }
 
   try {
-    return VersionedTransaction.deserialize(
-      base64ToUint8Array(data.transaction)
-    );
+    return {
+      transaction: VersionedTransaction.deserialize(base64ToUint8Array(data.transaction)),
+      blockhash: typeof data.blockhash === "string" ? data.blockhash : "",
+      lastValidBlockHeight: Number(data.lastValidBlockHeight),
+      rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+    };
   } catch (err) {
     console.error("Failed to deserialize transaction:", err, data);
     throw new Error("Invalid transaction payload from transfer API.");

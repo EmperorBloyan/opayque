@@ -145,17 +145,17 @@ export default function ShieldedCheckout({
 
       let signature: string | null = null;
 
-      const rpc =
+      const rpc = built.rpcUrl ||
         process.env.NEXT_PUBLIC_RPC_URL ||
         process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
         "https://api.devnet.solana.com";
       const connection = new Connection(rpc, "confirmed");
 
       // buildShieldedTransfer returns VersionedTransaction
-      if (built instanceof VersionedTransaction) {
+      if (built.transaction instanceof VersionedTransaction) {
         if (signTransaction) {
           const signed = await withTimeout(
-            signTransaction(built as any),
+            signTransaction(built.transaction as any),
             60000,
             "Wallet signature"
           );
@@ -166,22 +166,22 @@ export default function ShieldedCheckout({
             30000,
             "Send transaction"
           );
-          await withTimeout(
-            connection.confirmTransaction(signature, "confirmed"),
-            45000,
-            "Confirm transaction"
-          );
+          await withTimeout(connection.confirmTransaction({
+            signature,
+            blockhash: built.blockhash || signed.message.recentBlockhash,
+            lastValidBlockHeight: built.lastValidBlockHeight,
+          }, "confirmed"), 30000, "Confirm transaction");
         } else if (sendTransaction) {
           signature = await withTimeout(
-            sendTransaction(built as any, connection),
+            sendTransaction(built.transaction as any, connection),
             60000,
             "Send transaction"
           );
-          await withTimeout(
-            connection.confirmTransaction(signature, "confirmed"),
-            45000,
-            "Confirm transaction"
-          );
+          await withTimeout(connection.confirmTransaction({
+            signature,
+            blockhash: built.blockhash || built.transaction.message.recentBlockhash,
+            lastValidBlockHeight: built.lastValidBlockHeight,
+          }, "confirmed"), 30000, "Confirm transaction");
         } else {
           throw new Error("Wallet cannot sign or send transactions.");
         }
