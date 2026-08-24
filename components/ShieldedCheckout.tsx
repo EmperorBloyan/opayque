@@ -3,10 +3,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, SendTransactionError, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, SendTransactionError, VersionedTransaction } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
+import { getAssetMintAddress } from "@/lib/solana/constants";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -25,7 +27,7 @@ interface ShieldedCheckoutProps {
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s. Check RPC /api/transfer.`));
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s.`));
     }, ms);
     promise
       .then((value) => {
@@ -132,7 +134,30 @@ export default function ShieldedCheckout({
     setMessage("Confirming payment...");
     setSuccessSignature(null);
 
+    let paymentConnection: Connection | null = null;
     try {
+      const rpc = process.env.NEXT_PUBLIC_RPC_URL ||
+        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+        "https://api.devnet.solana.com";
+      const connection = new Connection(rpc, "confirmed");
+      const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+      const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
+      const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
+        connection.getBalance(publicKey, "confirmed"),
+        connection.getParsedTokenAccountsByOwner(publicKey, { mint }),
+      ]), 10000, "Wallet balance check");
+      const usdcBaseUnits = tokenAccounts.value.reduce(
+        (total, account) => total + BigInt(account.account.data.parsed?.info?.tokenAmount?.amount ?? "0"),
+        0n
+      );
+      const requiredUsdcBaseUnits = BigInt(Math.ceil(safeAmount * 1_000_000));
+      if (solLamports < 5_000) {
+        throw new Error("Insufficient SOL for network fees. Add Devnet SOL to this wallet.");
+      }
+      if (usdcBaseUnits < requiredUsdcBaseUnits) {
+        throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);
+      }
+
       const built = await withTimeout(
         buildShieldedTransfer(
           publicKey.toBase58(),
@@ -145,43 +170,39 @@ export default function ShieldedCheckout({
 
       let signature: string | null = null;
 
-      const rpc = built.rpcUrl ||
-        process.env.NEXT_PUBLIC_RPC_URL ||
-        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-        "https://api.devnet.solana.com";
-      const connection = new Connection(rpc, "confirmed");
+      paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
 
       // buildShieldedTransfer returns VersionedTransaction
       if (built.transaction instanceof VersionedTransaction) {
         if (sendTransaction) {
           signature = await withTimeout(
-            sendTransaction(built.transaction as any, connection),
-            60000,
+            sendTransaction(built.transaction as any, paymentConnection),
+            30000,
             "Wallet transaction"
           );
-          await withTimeout(connection.confirmTransaction({
+          await withTimeout(paymentConnection.confirmTransaction({
             signature,
             blockhash: built.blockhash || built.transaction.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Confirm transaction");
+          }, "confirmed"), 15000, "Payment confirmation");
         } else if (signTransaction) {
           const signed = await withTimeout(
             signTransaction(built.transaction as any),
-            60000,
+            30000,
             "Wallet signature"
           );
           signature = await withTimeout(
-            connection.sendRawTransaction(
+            paymentConnection.sendRawTransaction(
               (signed as VersionedTransaction).serialize()
             ),
             30000,
             "Send transaction"
           );
-          await withTimeout(connection.confirmTransaction({
+          await withTimeout(paymentConnection.confirmTransaction({
             signature,
             blockhash: built.blockhash || signed.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Confirm transaction");
+          }, "confirmed"), 15000, "Payment confirmation");
         } else {
           throw new Error("Wallet cannot sign or send transactions.");
         }
@@ -211,7 +232,7 @@ export default function ShieldedCheckout({
       let errorMessage = error?.message || "Payment failed. Please try again.";
       let transactionLogs: string[] | null = null;
       if (error instanceof SendTransactionError) {
-        transactionLogs = await error.getLogs(connection).catch(() => null);
+        transactionLogs = paymentConnection ? await error.getLogs(paymentConnection).catch(() => null) : null;
         if (transactionLogs?.length) {
           errorMessage = `${errorMessage} ${transactionLogs.join(" ")}`;
         }

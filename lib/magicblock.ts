@@ -10,7 +10,8 @@ export const TEE_RPC =
 const RPC_ENDPOINT =
   process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 const connection = new Connection(RPC_ENDPOINT, "confirmed");
-export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", true));
+const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", isDevnet));
 
 export async function createShieldedPaymentInstruction(
   sender: PublicKey,

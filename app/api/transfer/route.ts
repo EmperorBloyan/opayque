@@ -13,10 +13,12 @@ import {
   createShieldedPaymentInstruction,
   USDC_MINT,
 } from '@/lib/magicblock';
+import { getAssetMintAddress } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== 'mainnet-beta';
 
 export async function POST(request: Request) {
   try {
@@ -38,7 +40,9 @@ export async function POST(request: Request) {
 
     const senderPubkey = new PublicKey(sender);
     const recipientPubkey = new PublicKey(recipient);
-    const mintPubkey = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint) : USDC_MINT;
+    const mintPubkey = typeof mint === 'string' && mint.length > 0
+      ? new PublicKey(mint)
+      : new PublicKey(getAssetMintAddress('USDC', isDevnet));
 
     // The API accepts human-readable token amounts, e.g. 15 means 15 USDC.
     const bundle = await createShieldedPaymentInstruction(
