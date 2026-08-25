@@ -171,12 +171,24 @@ export default function ShieldedCheckout({
       let signature: string | null = null;
 
       paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
+      const latestBlockhash = await withTimeout(
+        paymentConnection.getLatestBlockhash("confirmed"),
+        10000,
+        "Latest blockhash refresh"
+      );
+      built.transaction.message.recentBlockhash = latestBlockhash.blockhash;
+      built.blockhash = latestBlockhash.blockhash;
+      built.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
       // buildShieldedTransfer returns VersionedTransaction
       if (built.transaction instanceof VersionedTransaction) {
         if (sendTransaction) {
           signature = await withTimeout(
-            sendTransaction(built.transaction as any, paymentConnection),
+            sendTransaction(built.transaction as any, paymentConnection, {
+              skipPreflight: false,
+              preflightCommitment: "confirmed",
+              maxRetries: 3,
+            }),
             30000,
             "Wallet transaction"
           );
