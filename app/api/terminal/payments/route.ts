@@ -9,8 +9,9 @@ export async function POST(request: Request) {
     const deviceToken = typeof body?.deviceToken === "string" ? body.deviceToken.trim() : "";
     const amount = Number(body?.amount);
     const tokenSymbol = typeof body?.tokenSymbol === "string" ? body.tokenSymbol.trim().toUpperCase() : "";
+    const normalizedAmount = Number(amount.toFixed(6));
 
-    if (!terminalId || !deviceToken || !Number.isFinite(amount) || amount <= 0 || amount >= 1_000_000 || !["USDC", "USDT", "SOL"].includes(tokenSymbol)) {
+    if (!terminalId || !deviceToken || !Number.isFinite(normalizedAmount) || normalizedAmount <= 0 || normalizedAmount >= 1_000_000 || tokenSymbol !== "USDC") {
       return NextResponse.json({ success: false, error: "Valid terminal payment details are required" }, { status: 400 });
     }
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
         terminal_id: terminal.id,
         signature: null,
         token_symbol: tokenSymbol,
-        amount,
+        amount: normalizedAmount,
         status: "pending",
       })
       .select()

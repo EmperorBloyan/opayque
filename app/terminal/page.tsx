@@ -74,6 +74,7 @@ export default function TerminalPage() {
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState<string>("");
+  const [lockedUsdcAmount, setLockedUsdcAmount] = useState<string>("");
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -188,15 +189,21 @@ export default function TerminalPage() {
         return "";
       }
 
-      // Correct conversion: local fiat → USDC for settlement
-      const usdcAmount = toUsdc(fiatAmount, currency);
+      // A resumed transaction is already denominated in USDC. New payments use
+      // the current display-currency rate exactly once.
+      const usdcAmount = lockedUsdcAmount
+        ? Number(lockedUsdcAmount)
+        : toUsdc(fiatAmount, currency);
+      if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
+        return "";
+      }
 
       const origin =
         typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
 
       const checkoutUrl = new URL("/checkout", origin);
       checkoutUrl.searchParams.set("address", recipient);
-      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(2)); // USDC settlement amount
+      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(6)); // USDC settlement amount
       checkoutUrl.searchParams.set("fiat_amount", fiatAmount.toFixed(2));
       checkoutUrl.searchParams.set("currency", currency || "USD");
       checkoutUrl.searchParams.set("token", asset || "USDC");
@@ -211,6 +218,7 @@ export default function TerminalPage() {
   }, [
     amount,
     lockedAmount,
+    lockedUsdcAmount,
     merchantName,
     currency,
     asset,
@@ -348,10 +356,11 @@ export default function TerminalPage() {
     }
 
     const settlementAmount = toUsdc(numericAmount, currency);
-    if (!Number.isFinite(settlementAmount) || settlementAmount <= 0) {
-      setToast("Unable to calculate the USDC settlement amount");
+    if (!Number.isFinite(settlementAmount) || settlementAmount <= 0 || settlementAmount >= 1_000_000) {
+      setToast(`FX rate unavailable for ${currency}. Refresh rates and try again.`);
       return;
     }
+    const normalizedSettlementAmount = Number(settlementAmount.toFixed(6));
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     setIsGenerating(true);
@@ -365,7 +374,7 @@ export default function TerminalPage() {
         body: JSON.stringify({
           terminalId: terminalContext.terminalId,
           deviceToken: terminalContext.deviceToken,
-          amount: settlementAmount,
+          amount: normalizedSettlementAmount,
           tokenSymbol: "USDC",
         }),
         signal: controller.signal,
@@ -379,8 +388,10 @@ export default function TerminalPage() {
       const nextActivity = [{
         id: String(pendingRecord.id),
         status: "PENDING",
-        amount: Number(pendingRecord.amount ?? settlementAmount),
+        amount: Number(pendingRecord.amount ?? normalizedSettlementAmount),
         tokenSymbol: String(pendingRecord.token_symbol ?? "USDC"),
+        fiatAmount: numericAmount,
+        displayCurrency: currency,
         time: pendingRecord.created_at ?? new Date().toISOString(),
         walletAddress: terminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,
@@ -396,6 +407,7 @@ export default function TerminalPage() {
         }
       } catch {}
       setLockedAmount(numericAmount.toFixed(2));
+      setLockedUsdcAmount(normalizedSettlementAmount.toFixed(6));
       setStep("PAYING");
       setPaymentStatus("PENDING");
       setToast("Pending transaction created");
@@ -421,7 +433,8 @@ export default function TerminalPage() {
     }
 
     setTransactionId(String(transaction.id));
-    setLockedAmount(transactionAmount.toFixed(2));
+    setLockedAmount(Number(transaction.fiatAmount ?? transactionAmount).toFixed(2));
+    setLockedUsdcAmount(transactionAmount.toFixed(6));
     setAmount(transactionAmount.toFixed(2));
     setPaymentStatus("PENDING");
     setLatestTxHash(null);
@@ -734,6 +747,7 @@ export default function TerminalPage() {
                 setStep("POS");
                 setIsPaid(false);
                 setLockedAmount("");
+                setLockedUsdcAmount("");
                 setAmount("");
                 setTransactionId(null);
                 setPaymentStatus(null);
@@ -807,6 +821,7 @@ export default function TerminalPage() {
                 setLatestTxHash(null);
                 setTransactionId(null);
                 setLockedAmount("");
+                setLockedUsdcAmount("");
                 setAmount("");
                 setStep("POS");
                 setToast("Ready for a new payment");

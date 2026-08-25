@@ -75,9 +75,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         USD: 1,
         USDC: 1,
         ...incoming,
-        NGN: incoming.NGN || FALLBACK_RATES.NGN,
-        GHS: incoming.GHS || FALLBACK_RATES.GHS,
-        KES: incoming.KES || FALLBACK_RATES.KES,
+        NGN: Number(incoming.NGN) > 0 ? Number(incoming.NGN) : FALLBACK_RATES.NGN,
+        GHS: Number(incoming.GHS) > 0 ? Number(incoming.GHS) : FALLBACK_RATES.GHS,
+        KES: Number(incoming.KES) > 0 ? Number(incoming.KES) : FALLBACK_RATES.KES,
       });
     } catch (err: any) {
       console.warn("FX rate fetch failed, using fallback", err);
@@ -119,7 +119,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       if (code === "USD" || code === "USDC") return amount;
 
       const rate = Number(rates[code] ?? 0);
-      if (!rate || rate <= 0) return amount; // safe fallback
+      if (!rate || rate <= 0) return Number.NaN;
 
       return amount / rate;
     },
