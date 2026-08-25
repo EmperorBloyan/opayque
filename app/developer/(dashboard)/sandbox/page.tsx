@@ -40,6 +40,52 @@ function readSandboxKey() {
   }
 }
 
+async function resolveTestApiKey(): Promise<string> {
+  const cached = readSandboxKey();
+  if (cached.startsWith("osk_test_")) return cached;
+
+  try {
+    const response = await fetch("/api/v1/keys", { credentials: "include" });
+    const payload = await response.json().catch(() => ({}));
+    const keys = Array.isArray(payload?.keys) ? payload.keys : [];
+    const testKey = keys.find((key: any) => {
+      const secret = key?.rawSecretKey || key?.secret || key?.api_key || "";
+      const environment = String(key?.environment || "").toLowerCase();
+      return String(secret).startsWith("osk_test_") || environment === "devnet" || environment === "test";
+    });
+    const secret = String(testKey?.rawSecretKey || testKey?.secret || testKey?.api_key || "");
+    if (secret.startsWith("osk_test_")) {
+      const existing = JSON.parse(window.localStorage.getItem("opayque_api_keys") || "[]");
+      const entry = {
+        id: String(testKey.id || "api-test-key"),
+        publishable: `osk_test_pub_${String(testKey.id || "").slice(0, 8)}`,
+        secret,
+        createdAt: testKey.created_at || new Date().toISOString(),
+        lastUsed: "never",
+        environment: "devnet" as const,
+      };
+      window.localStorage.setItem(
+        "opayque_api_keys",
+        JSON.stringify(Array.isArray(existing) ? [entry, ...existing.filter((item: any) => item.id !== entry.id)] : [entry])
+      );
+      return secret;
+    }
+  } catch {
+    // Fall through to the merchant profile.
+  }
+
+  try {
+    const response = await fetch("/api/v1/merchant", { credentials: "include" });
+    const payload = await response.json().catch(() => ({}));
+    const secret = payload?.merchant?.api_key;
+    if (typeof secret === "string" && secret.startsWith("osk_test_")) return secret;
+  } catch {
+    // The caller will show the missing-key state.
+  }
+
+  return "";
+}
+
 export default function DeveloperSandbox() {
   const router = useRouter();
   const [merchant, setMerchant] = useState<MerchantProfile | null>(null);
@@ -80,7 +126,10 @@ export default function DeveloperSandbox() {
         addLog("Settlement wallet is not configured.", "error");
       }
 
-      const loadedKey = readSandboxKey();
+      if (loadedMerchant.settlement_wallet_address?.trim()) {
+        window.localStorage.setItem("settlement_wallet_address", loadedMerchant.settlement_wallet_address.trim());
+      }
+      const loadedKey = await resolveTestApiKey();
       setApiKey(loadedKey);
       addLog(loadedKey ? `Test key present: ${maskApiKey(loadedKey)}` : "No test API key found.", loadedKey ? "success" : "error");
     } catch (loadError) {
@@ -94,6 +143,16 @@ export default function DeveloperSandbox() {
 
   useEffect(() => {
     void loadMerchant();
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => void loadMerchant();
+    window.addEventListener("merchant_profile_updated", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("merchant_profile_updated", refresh);
+      window.removeEventListener("storage", refresh);
+    };
   }, []);
 
   const wallet = merchant?.settlement_wallet_address?.trim() || "";

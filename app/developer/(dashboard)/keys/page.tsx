@@ -6,6 +6,7 @@ import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
   AlertCircle,
@@ -110,6 +111,7 @@ export default function ApiKeysPage() {
       const localSecondary = window.localStorage.getItem("secondary_email") || "";
       const localWebsite = window.localStorage.getItem("website_url") || "";
       const localWebhook = window.localStorage.getItem("webhook_url") || "";
+      const localSettlementWallet = window.localStorage.getItem("settlement_wallet_address") || "";
 
       if (localEmail) setMerchantEmail(localEmail);
       if (localName) setMerchantName(localName);
@@ -117,6 +119,7 @@ export default function ApiKeysPage() {
       if (localSecondary) setSecondaryEmail(localSecondary);
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
+      if (localSettlementWallet) setSettlementWalletAddress(localSettlementWallet);
 
       const cachedKeys = window.localStorage.getItem("opayque_api_keys");
       if (cachedKeys) {
@@ -139,7 +142,7 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("api_key, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .select("id, api_key, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
             .eq("auth_user_id", user.id)
             .maybeSingle();
 
@@ -159,6 +162,12 @@ export default function ApiKeysPage() {
           }
 
           if (merchantData) {
+            if (merchantData.id) {
+              bindAuthenticatedMerchantSession({
+                merchantId: merchantData.id,
+                walletAddress: merchantData.settlement_wallet_address || null,
+              });
+            }
             const effectiveStatus = computeEffectiveMerchantStatus(merchantData) as "pending" | "active" | "revoked";
             setMerchantApiAccessStatus(effectiveStatus);
             if (effectiveStatus === "active") {
@@ -176,7 +185,10 @@ export default function ApiKeysPage() {
               window.localStorage.setItem("merchant_logo", merchantData.merchant_logo);
             }
             if (merchantData.secondary_email) setSecondaryEmail(merchantData.secondary_email);
-            if (merchantData.settlement_wallet_address) setSettlementWalletAddress(merchantData.settlement_wallet_address);
+            if (merchantData.settlement_wallet_address) {
+              setSettlementWalletAddress(merchantData.settlement_wallet_address);
+              window.localStorage.setItem("settlement_wallet_address", merchantData.settlement_wallet_address);
+            }
             if (merchantData.website_url) setWebsiteUrl(merchantData.website_url);
             if (merchantData.webhook_url) setWebhookUrl(merchantData.webhook_url);
           }
@@ -186,6 +198,12 @@ export default function ApiKeysPage() {
           const payload = await merchantRes.json();
           const merchant = payload?.merchant;
           if (merchant) {
+            if (merchant.id) {
+              bindAuthenticatedMerchantSession({
+                merchantId: merchant.id,
+                walletAddress: merchant.settlement_wallet_address || null,
+              });
+            }
             const effectiveStatus = computeEffectiveMerchantStatus(merchant) as "pending" | "active" | "revoked";
             setMerchantApiAccessStatus(effectiveStatus);
             window.localStorage.setItem("merchant_api_access_status", effectiveStatus === "active" ? "active" : "pending");
@@ -199,7 +217,10 @@ export default function ApiKeysPage() {
               window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
             }
             if (merchant.secondary_email) setSecondaryEmail(merchant.secondary_email);
-            if (merchant.settlement_wallet_address) setSettlementWalletAddress(merchant.settlement_wallet_address);
+            if (merchant.settlement_wallet_address) {
+              setSettlementWalletAddress(merchant.settlement_wallet_address);
+              window.localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+            }
             if (merchant.website_url) setWebsiteUrl(merchant.website_url);
             if (merchant.webhook_url) setWebhookUrl(merchant.webhook_url);
           }
@@ -409,9 +430,15 @@ export default function ApiKeysPage() {
         if (updated.merchant_name) setMerchantName(updated.merchant_name);
         if (updated.merchant_logo) setMerchantLogo(updated.merchant_logo);
         if (updated.secondary_email) setSecondaryEmail(updated.secondary_email);
-        if (updated.settlement_wallet_address) setSettlementWalletAddress(updated.settlement_wallet_address);
+        if (updated.settlement_wallet_address) {
+          setSettlementWalletAddress(updated.settlement_wallet_address);
+          window.localStorage.setItem("settlement_wallet_address", updated.settlement_wallet_address);
+        }
         if (updated.website_url) setWebsiteUrl(updated.website_url);
         if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("merchant_profile_updated"));
       }
     } catch (error: any) {
       console.error("Supabase update failed", error);

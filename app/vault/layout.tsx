@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { createClient } from "@/lib/supabase/client";
 import { clearActiveSession } from "@/lib/crypto/session";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import {
   LucideLayoutDashboard,
@@ -43,6 +44,46 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
 
+  const hydrateMerchantProfile = async () => {
+    try {
+      const res = await fetch("/api/v1/merchant", { credentials: "include" });
+      if (!res.ok) return;
+
+      const payload = await res.json();
+      const merchant = payload?.merchant;
+      if (!merchant) return;
+      if (merchant.id) {
+        bindAuthenticatedMerchantSession({
+          merchantId: merchant.id,
+          walletAddress: merchant.settlement_wallet_address || null,
+        });
+      }
+      if (merchant.merchant_name) {
+        const name = merchant.merchant_name;
+        setMerchantName(name);
+        setDraftName(name);
+        localStorage.setItem("merchant_name", name);
+      }
+      if (merchant.merchant_logo) {
+        const logoUrl = merchant.merchant_logo;
+        setLogo(logoUrl);
+        setDraftLogo(logoUrl);
+        localStorage.setItem("merchant_logo", logoUrl);
+      }
+      setDraftEmail(merchant.email ?? "");
+      setDraftSecondaryEmail(merchant.secondary_email ?? "");
+      setDraftWebsiteUrl(merchant.website_url ?? "");
+      setDraftWebhookUrl(merchant.webhook_url ?? "");
+      setSettlementWallet(merchant.settlement_wallet_address ?? "");
+      setRefundWallet(merchant.refund_wallet_address ?? "");
+      if (merchant.settlement_wallet_address) {
+        localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+      }
+    } catch (error) {
+      console.warn("Failed to hydrate vault merchant profile", error);
+    }
+  };
+
   useEffect(() => {
     const savedLogo = localStorage.getItem("merchant_logo");
     const savedName = localStorage.getItem("merchant_name");
@@ -56,39 +97,6 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       setMerchantName(savedName);
       setDraftName(savedName);
     }
-
-    const hydrateMerchantProfile = async () => {
-      try {
-        const res = await fetch("/api/v1/merchant");
-        if (!res.ok) return;
-
-        const payload = await res.json();
-        const merchant = payload?.merchant;
-        if (!merchant) return;
-
-        if (merchant.merchant_name) {
-          const name = merchant.merchant_name;
-          setMerchantName(name);
-          setDraftName(name);
-          localStorage.setItem("merchant_name", name);
-        }
-
-        if (merchant.merchant_logo) {
-          const logoUrl = merchant.merchant_logo;
-          setLogo(logoUrl);
-          setDraftLogo(logoUrl);
-          localStorage.setItem("merchant_logo", logoUrl);
-        }
-        setDraftEmail(merchant.email ?? "");
-        setDraftSecondaryEmail(merchant.secondary_email ?? "");
-        setDraftWebsiteUrl(merchant.website_url ?? "");
-        setDraftWebhookUrl(merchant.webhook_url ?? "");
-        setSettlementWallet(merchant.settlement_wallet_address ?? "");
-        setRefundWallet(merchant.refund_wallet_address ?? "");
-      } catch (error) {
-        console.warn("Failed to hydrate vault merchant profile", error);
-      }
-    };
 
     void hydrateMerchantProfile();
   }, []);
@@ -106,6 +114,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         setLogo(localLogo);
         setDraftLogo(localLogo);
       }
+      const localSettlementWallet = window.localStorage.getItem("settlement_wallet_address");
+      if (localSettlementWallet) setSettlementWallet(localSettlementWallet);
+      void hydrateMerchantProfile();
     };
 
     window.addEventListener("storage", handleProfileUpdate);
@@ -253,9 +264,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     router.push("/login?next=%2Fvault%2Fregistry");
   };
 
-  const addressContent = publicKey
-    ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
-    : "Not Connected";
+  const displayVaultId = settlementWallet.trim() || publicKey?.toBase58() || "";
+  const addressContent = displayVaultId
+    ? `${displayVaultId.slice(0, 4)}...${displayVaultId.slice(-4)}`
+    : "No settlement wallet";
 
   if (isStandaloneCheckout) {
     return <>{children}</>;

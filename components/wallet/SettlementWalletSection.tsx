@@ -94,6 +94,7 @@ export default function SettlementWalletSection({
 
       window.localStorage.setItem("settlement_wallet_address", newWalletAddress);
       onWalletUpdated(newWalletAddress);
+      window.dispatchEvent(new Event("merchant_profile_updated"));
       setMessage("Settlement wallet updated.");
       setIsModalOpen(false);
     } catch (caughtError) {

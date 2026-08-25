@@ -26,6 +26,7 @@ export default function VaultDashboard() {
   const [refundLoading, setRefundLoading] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
   const [refundWallet, setRefundWallet] = useState<string | null>(null);
+  const [merchantReady, setMerchantReady] = useState(false);
 
   // Copy Feedback State
   const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
@@ -95,9 +96,11 @@ export default function VaultDashboard() {
       void (async () => {
         const merchantId = await getAuthenticatedMerchantId();
         if (!merchantId) {
+          setMerchantReady(false);
           setTransactions([]);
           return;
         }
+        setMerchantReady(true);
 
         const { data: merchant } = await supabase
           .from("merchants")
@@ -362,7 +365,7 @@ export default function VaultDashboard() {
         
         <button 
           onClick={handleSettlement}
-          disabled={privateBalance <= 0 || flushLoading || !connected}
+          disabled={privateBalance <= 0 || flushLoading || !merchantReady}
           className="px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
         >
           {flushLoading ? "Saving Demo Settlement..." : "Execute Demo L1 Settlement"}
