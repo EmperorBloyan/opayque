@@ -77,8 +77,8 @@ export function generatePaymentURL(options: PaymentUrlOptions): string {
     }
 
     const fields = {
-      recipient: recipientValue,
-      amount,
+      recipient: new PublicKey(recipientValue) as any,
+      amount: amount.toNumber(),
       label: options.label?.trim() || undefined,
       message: options.message?.trim() || undefined,
       memo: options.reference?.trim() || undefined,
@@ -88,7 +88,7 @@ export function generatePaymentURL(options: PaymentUrlOptions): string {
       splTokenMint
         ? {
             ...fields,
-            splToken: splTokenMint,
+            splToken: new PublicKey(splTokenMint) as any,
           }
         : fields
     ).toString();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -27,8 +28,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!transaction) {
       return NextResponse.json({ success: false, error: "Terminal transaction not found" }, { status: 404 });
     }
+    const auth = await requireTerminalDevice(request, String(transaction.terminal_id || ""));
+    if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    if (transaction.terminal_id !== auth.terminal.id) {
+      return NextResponse.json({ success: false, error: "Terminal is not authorized for this payment" }, { status: 403 });
+    }
 
-    if (transaction.status !== "pending") {
+    if (!["created", "pending_signature", "submitted"].includes(transaction.status)) {
       return NextResponse.json({ success: false, error: "Terminal transaction is no longer pending" }, { status: 409 });
     }
 
@@ -70,9 +76,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     const { data: updated, error: updateError } = await supabase
       .from("transactions")
-      .update({ signature, status: "settled", updated_at: new Date().toISOString() })
+      .update({ signature, status: "confirmed", updated_at: new Date().toISOString() })
       .eq("id", transactionId)
-      .eq("status", "pending")
+      .in("status", ["created", "pending_signature", "submitted"])
       .select("id, status, signature")
       .maybeSingle();
 
@@ -81,7 +87,15 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     if (!updated) {
-      return NextResponse.json({ success: false, error: "Terminal transaction was settled by another request" }, { status: 409 });
+      const { data: existing } = await supabase
+        .from("transactions")
+        .select("id, status, signature")
+        .eq("id", transactionId)
+        .maybeSingle();
+      if (existing?.status === "confirmed" && existing.signature === signature) {
+        return NextResponse.json({ success: true, transaction: existing });
+      }
+      return NextResponse.json({ success: false, error: "Terminal transaction was updated by another request" }, { status: 409 });
     }
 
     return NextResponse.json({ success: true, transaction: updated });

@@ -16,7 +16,11 @@ type CurrencyContextValue = {
   setCurrency: (code: string) => void;
   rates: RatesMap;
   loading: boolean;
+  isLoadingRates: boolean;
   error: string | null;
+  asOf: string | null;
+  source: string;
+  stale: boolean;
   convert: (usdAmount: number) => { value: number; formatted: string };
   toUsdc: (fiatAmount: number, fromCurrency?: string) => number;
   refreshRates: () => Promise<void>;
@@ -43,6 +47,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [rates, setRates] = useState<RatesMap>(FALLBACK_RATES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [source, setSource] = useState("fallback");
+  const [stale, setStale] = useState(true);
 
   const setCurrency = useCallback((code: string) => {
     const next = (code || "USD").toUpperCase();
@@ -59,13 +66,6 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       // Prefer your own API if it exists
       let res = await fetch("/api/v1/rates", { cache: "no-store" });
       
-      if (!res.ok) {
-        // Fallback to public provider
-        res = await fetch("https://api.frankfurter.app/latest?from=USD", {
-          cache: "no-store",
-        });
-      }
-
       if (!res.ok) throw new Error(`Rate provider failed (${res.status})`);
 
       const data = await res.json();
@@ -79,10 +79,16 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         GHS: Number(incoming.GHS) > 0 ? Number(incoming.GHS) : FALLBACK_RATES.GHS,
         KES: Number(incoming.KES) > 0 ? Number(incoming.KES) : FALLBACK_RATES.KES,
       });
+      setAsOf(typeof data.asOf === "string" ? data.asOf : new Date().toISOString());
+      setSource(typeof data.source === "string" ? data.source : "provider");
+      setStale(Boolean(data.stale));
+      if (data.stale) setError("Approximate or stale rates");
     } catch (err: any) {
       console.warn("FX rate fetch failed, using fallback", err);
       setError(err?.message || "Failed to fetch rates");
       setRates((prev) => ({ ...FALLBACK_RATES, ...prev }));
+      setSource("fallback");
+      setStale(true);
     } finally {
       setLoading(false);
     }
@@ -121,7 +127,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       const rate = Number(rates[code] ?? 0);
       if (!rate || rate <= 0) return Number.NaN;
 
-      return amount / rate;
+      return Math.round((amount / rate) * 1_000_000) / 1_000_000;
     },
     [currency, rates]
   );
@@ -132,7 +138,11 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       setCurrency,
       rates,
       loading,
+      isLoadingRates: loading,
       error,
+      asOf,
+      source,
+      stale,
       convert,
       toUsdc,
       refreshRates,

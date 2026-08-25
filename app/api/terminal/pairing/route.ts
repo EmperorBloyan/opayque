@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { randomBytes } from "node:crypto";
+import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
 
 function isValidMerchantId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -33,12 +35,21 @@ export async function POST(request: Request) {
     const walletAddress = typeof body?.wallet_address === "string" ? body.wallet_address.trim() : null;
     const code = typeof body?.code === "string" ? body.code.toUpperCase() : null;
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient(request);
 
     if (action === "create") {
-      if (!isValidMerchantId(merchantId) || merchantId === "merchant-vault") {
-        return NextResponse.json({ success: false, error: "Valid merchant wallet context required. Use vault registry to generate codes." }, { status: 400 });
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      const { data: ownedMerchant, error: merchantLookupError } = await supabase
+        .from("merchants")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (merchantLookupError || !ownedMerchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
+      if (isValidMerchantId(merchantId) && merchantId !== ownedMerchant.id) {
+        return NextResponse.json({ success: false, error: "Merchant does not belong to the authenticated session" }, { status: 403 });
       }
+      const ownedMerchantId = ownedMerchant.id;
 
       const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
       const pairingCode = createPairingCode();
@@ -49,7 +60,7 @@ export async function POST(request: Request) {
         const { error: merchantUpdateError } = await supabase
           .from("merchants")
           .update({ wallet_address: normalizedWalletAddress, updated_at: new Date().toISOString() })
-          .eq("id", merchantId);
+          .eq("id", ownedMerchantId);
 
         if (merchantUpdateError) {
           console.warn("Failed to link merchant wallet to pairing record", merchantUpdateError);
@@ -58,7 +69,7 @@ export async function POST(request: Request) {
 
       const { error } = await supabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
-        merchant_id: merchantId,
+        merchant_id: ownedMerchantId,
         status: "PENDING",
         expires_at: expiresAt,
         terminal_label: terminalLabel,
@@ -145,15 +156,18 @@ export async function POST(request: Request) {
       }
 
       // Mark pairing code as used
-      const { error: updateError } = await supabase
+      const { data: usedCode, error: updateError } = await supabase
         .from("terminal_pairing_codes")
         .update({ status: "USED", merchant_id: resolvedMerchantId })
-        .eq("code", code);
+        .eq("code", code)
+        .eq("status", "PENDING")
+        .select("code")
+        .maybeSingle();
 
-      if (updateError) {
+      if (updateError || !usedCode) {
         return NextResponse.json(
-          { success: false, error: updateError.message },
-          { status: 500 }
+          { success: false, error: updateError?.message || "PAIRING CODE REJECTED" },
+          { status: updateError ? 500 : 409 }
         );
       }
 
@@ -172,11 +186,12 @@ export async function POST(request: Request) {
       };
 
       // Optional enrichment (may not exist on every schema)
+      const deviceToken = randomBytes(32).toString("base64url");
       const richUpdate = {
         ...coreUpdate,
         last_active: nowIso,
         is_active: true,
-        device_token: code,
+        device_token_hash: hashDeviceToken(deviceToken),
       };
 
       const richInsert = {
@@ -188,7 +203,7 @@ export async function POST(request: Request) {
         created_at: nowIso,
         last_active: nowIso,
         is_active: true,
-        device_token: code,
+        device_token_hash: hashDeviceToken(deviceToken),
       };
 
       let { error: terminalInsertError } = await supabase
@@ -204,6 +219,7 @@ export async function POST(request: Request) {
           terminal_label: terminalLabel,
           status: "online",
           created_at: nowIso,
+          device_token_hash: hashDeviceToken(deviceToken),
         });
         terminalInsertError = retry.error;
       }
@@ -216,7 +232,7 @@ export async function POST(request: Request) {
         success: true,
         code,
         terminalId,
-        deviceToken: code,
+        deviceToken,
         merchantId: resolvedMerchantId,
         walletAddress: merchantWalletAddress,
         merchantName: merchantData?.merchant_name ?? null,

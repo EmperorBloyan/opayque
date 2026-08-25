@@ -94,7 +94,7 @@ export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { connected, publicKey, signMessage, signTransaction, signAndSendTransaction, connect } = useWallet();
+  const { connected, publicKey, signMessage, signTransaction, connect } = useWallet();
   const router = useRouter();
   const mobileWalletContext = getMobileWalletContext();
 
@@ -107,7 +107,7 @@ export default function UnifiedLanding() {
 
   const handleVaultEntrance = async () => {
     const canSignMessage = Boolean(signMessage);
-    const canSignTransaction = Boolean(signTransaction || signAndSendTransaction);
+    const canSignTransaction = Boolean(signTransaction);
     const canPerformConfidentialSetup = canSignMessage || canSignTransaction;
 
     if (!connected || !publicKey) {
@@ -148,7 +148,7 @@ export default function UnifiedLanding() {
       const merchantId = await registerMerchant(publicKey.toBase58());
       const challenge = createSessionChallenge();
       const message = new TextEncoder().encode(challenge.nonce);
-      const signature = canSignMessage ? await signMessage(message) : new Uint8Array();
+      const signature = signMessage ? await signMessage(message) : new Uint8Array();
       const session = await createTerminalSession({
         merchantId,
         walletAddress: publicKey.toBase58(),
@@ -158,7 +158,7 @@ export default function UnifiedLanding() {
 
       const mint = new PublicKey(getAssetMintAddress("USDC", true));
       const confidentialSummary = await configureConfidentialAccount(
-        { publicKey, signMessage, signTransaction, signAndSendTransaction },
+        { publicKey, signMessage, signTransaction },
         mint
       );
 

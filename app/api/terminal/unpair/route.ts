@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request) {
   try {
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
       .from("terminals")
       .select("id, status, merchant_id")
       .eq("id", terminalId)
-      .eq("device_token", deviceToken)
+      .eq("device_token_hash", hashDeviceToken(deviceToken))
       .maybeSingle();
 
     if (lookupError) {
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
       .update({ status: "revoked", last_active: new Date().toISOString() })
       .eq("id", terminal.id)
       .eq("merchant_id", merchant.id)
-      .eq("device_token", deviceToken)
+      .eq("device_token_hash", hashDeviceToken(deviceToken))
       .select("id")
       .maybeSingle();
 

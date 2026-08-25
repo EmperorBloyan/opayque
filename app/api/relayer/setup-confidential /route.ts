@@ -34,6 +34,10 @@ export async function POST(req: Request) {
 
     const ownership = await getOwnedMerchantForWallet(req, merchantPublicKey);
     if ("error" in ownership) return NextResponse.json({ success: false, error: ownership.error }, { status: ownership.status });
+    const userRateLimit = await strictLimit(`relayer:setup:user:${ownership.user.id}`, true);
+    if (!userRateLimit.allowed) {
+      return NextResponse.json({ success: false, error: userRateLimit.error || "Too many initialization requests" }, { status: userRateLimit.error ? 503 : 429, headers: { "Retry-After": String(userRateLimit.retryAfterSeconds) } });
+    }
     if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000 || !Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 18) {
       return NextResponse.json({ success: false, error: "Invalid vault fee or token decimals" }, { status: 400 });
     }
@@ -101,7 +105,7 @@ export async function POST(req: Request) {
     );
 
     // Build instruction
-    const tx = await program.methods
+    const tx = await (program.methods as any)
       .initializeMerchantVault(
         new BN(feeBps),
         merchant,
@@ -147,12 +151,12 @@ export async function POST(req: Request) {
       merchantVault: merchantVaultPda.toBase58(),
       treasury: treasuryPda.toBase58(),
     });
-  } catch (error: any) {
-    console.error("Relayer error:", error);
+  } catch (error: unknown) {
+    console.error("Relayer error:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to initialize merchant vault",
+        error: "Failed to initialize merchant vault",
       },
       { status: 500 }
     );

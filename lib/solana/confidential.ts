@@ -7,7 +7,7 @@ import {
 } from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
 
-type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction" | "signAndSendTransaction">;
+type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction">;
 
 export interface ConfidentialAccountConfig {
   accountAddress: string;
@@ -39,7 +39,7 @@ export async function configureConfidentialAccount(
     };
   }
 
-  const canSignTransaction = Boolean(wallet.signTransaction || wallet.signAndSendTransaction);
+  const canSignTransaction = Boolean(wallet.signTransaction);
   const canSignMessage = Boolean(wallet.signMessage);
 
   if (!canSignTransaction && !canSignMessage) {
@@ -56,7 +56,7 @@ export async function configureConfidentialAccount(
         accountAddress: wallet.publicKey.toBase58(),
         supported: true,
       },
-      message: "Confidential account is ready for TEE-shielded operations.",
+      message: "Wallet is ready; private transfers require the MagicBlock payment path.",
       instructionCount: 1,
     };
   } catch (error) {
@@ -73,7 +73,7 @@ export async function createPublicPaymentInstruction(
   recipient: PublicKey,
   amount: number,
   mint: PublicKey
-): Promise<ConfidentialTransferInstructionBundle> {
+): Promise<PublicTransferInstructionBundle> {
   const instructions: TransactionInstruction[] = [];
   const cleanupInstructions: TransactionInstruction[] = [];
 
@@ -107,7 +107,7 @@ export async function createPublicPaymentInstruction(
       cleanupInstructions,
       summary: {
         status: "error",
-        message: error instanceof Error ? error.message : "Failed to generate shielded payment instructions.",
+          message: error instanceof Error ? error.message : "Failed to generate public payment instructions.",
       },
     };
   }
@@ -125,7 +125,7 @@ export async function applyPendingBalance(
     };
   }
 
-  if (!wallet.signMessage && !wallet.signTransaction && !wallet.signAndSendTransaction) {
+  if (!wallet.signMessage && !wallet.signTransaction) {
     return {
       status: "unsupported",
       message: "Wallet does not support signing.",

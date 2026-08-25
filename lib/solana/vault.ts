@@ -12,11 +12,11 @@ export interface ShieldingResult {
 
 export async function shieldTokens(
   connection: Connection,
-  wallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
+  wallet: Pick<WalletContextState, "publicKey" | "signTransaction">,
   sourceTokenMint: string,
   amount: number
 ): Promise<ShieldingResult> {
-  if (!wallet.publicKey || !(wallet.signTransaction || (wallet as any).signAndSendTransaction)) {
+  if (!wallet.publicKey || !wallet.signTransaction) {
     return {
       status: "unsupported",
       message: "Connect a wallet that can sign transactions before shielding tokens.",
@@ -53,10 +53,10 @@ export async function shieldTokens(
 
 export async function unshieldTokens(
   connection: Connection,
-  merchantWallet: Pick<WalletContextState, "publicKey" | "signTransaction" | "signAndSendTransaction">,
+  merchantWallet: Pick<WalletContextState, "publicKey" | "signTransaction">,
   oTokenAmount: number
 ): Promise<ShieldingResult> {
-  if (!merchantWallet.publicKey || !(merchantWallet.signTransaction || (merchantWallet as any).signAndSendTransaction)) {
+  if (!merchantWallet.publicKey || !merchantWallet.signTransaction) {
     return {
       status: "unsupported",
       message: "The merchant wallet must be able to sign withdrawal transactions.",

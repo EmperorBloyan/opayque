@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   try {
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = await req.json();
 
-    const rateLimit = await strictLimit(`relayer:init:${getClientAddress(req)}`, true);
+    const rateLimit = await strictLimit(`relayer:init:ip:${getClientAddress(req)}`, true);
     if (!rateLimit.allowed) {
       return NextResponse.json({ success: false, error: rateLimit.error || "Too many initialization requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     }
@@ -27,6 +27,10 @@ export async function POST(req: Request) {
 
     const ownership = await getOwnedMerchantForWallet(req, merchantPublicKey);
     if ("error" in ownership) return NextResponse.json({ success: false, error: ownership.error }, { status: ownership.status });
+    const userRateLimit = await strictLimit(`relayer:init:user:${ownership.user.id}`, true);
+    if (!userRateLimit.allowed) {
+      return NextResponse.json({ success: false, error: userRateLimit.error || "Too many initialization requests" }, { status: userRateLimit.error ? 503 : 429, headers: { "Retry-After": String(userRateLimit.retryAfterSeconds) } });
+    }
     if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000 || !Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 18) {
       return NextResponse.json({ success: false, error: "Invalid vault fee or token decimals" }, { status: 400 });
     }
@@ -43,7 +47,6 @@ export async function POST(req: Request) {
       signAllTransactions: async (txs: Transaction[]) => txs,
     } as Wallet;
 
-    // FIX: Change to "confirmed"
     const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
     const program = new Program(idl as any, provider);
     const programId = (idl as any)?.address ? new PublicKey((idl as any).address) : PROGRAM_ID;
@@ -108,8 +111,8 @@ export async function POST(req: Request) {
       rpcUrl: RPC_URL,
       network: RPC_URL.includes("mainnet") ? "mainnet-beta" : RPC_URL.includes("testnet") ? "testnet" : "devnet",
     });
-  } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Vault initialization failed", error instanceof Error ? error.message : "unknown error");
+    return NextResponse.json({ success: false, error: "Unable to initialize vault" }, { status: 500 });
   }
 }

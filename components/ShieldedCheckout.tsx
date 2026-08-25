@@ -9,6 +9,7 @@ import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-rea
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { sendPayment } from "@/lib/solana/sendPayment";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -183,7 +184,11 @@ export default function ShieldedCheckout({
       }
 
       if (built.transaction instanceof VersionedTransaction || built.transaction instanceof Transaction) {
-        if (signTransaction) {
+        if (signTransaction && built.transaction instanceof VersionedTransaction) {
+          setMessage("Approve in your wallet...");
+          signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
+          setMessage("Payment confirmed on Solana.");
+        } else if (signTransaction) {
           const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
           if (built.transaction instanceof VersionedTransaction) {
             built.transaction.message.recentBlockhash = freshBlockhash.blockhash;

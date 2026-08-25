@@ -1,31 +1,23 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isRealMerchantId } from "@/lib/terminal/guards";
+import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const terminalId = typeof body?.terminalId === "string" ? body.terminalId.trim() : "";
-    const deviceToken = typeof body?.deviceToken === "string" ? body.deviceToken.trim() : "";
     const amount = Number(body?.amount);
     const tokenSymbol = typeof body?.tokenSymbol === "string" ? body.tokenSymbol.trim().toUpperCase() : "";
     const normalizedAmount = Number(amount.toFixed(6));
 
-    if (!terminalId || !deviceToken || !Number.isFinite(normalizedAmount) || normalizedAmount <= 0 || normalizedAmount >= 1_000_000 || tokenSymbol !== "USDC") {
+    if (!terminalId || !Number.isFinite(normalizedAmount) || normalizedAmount <= 0 || normalizedAmount >= 1_000_000 || tokenSymbol !== "USDC") {
       return NextResponse.json({ success: false, error: "Valid terminal payment details are required" }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient(request);
-    const { data: terminal, error: terminalError } = await supabase
-      .from("terminals")
-      .select("id, merchant_id, device_token, status")
-      .eq("id", terminalId)
-      .eq("device_token", deviceToken)
-      .maybeSingle();
-
-    if (terminalError) {
-      return NextResponse.json({ success: false, error: terminalError.message }, { status: 500 });
-    }
+    const auth = await requireTerminalDevice(request, terminalId);
+    if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    const { terminal, supabase } = auth;
 
     if (!terminal || terminal.status === "revoked" || !isRealMerchantId(terminal.merchant_id)) {
       return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
@@ -39,7 +31,7 @@ export async function POST(request: Request) {
         signature: null,
         token_symbol: tokenSymbol,
         amount: normalizedAmount,
-        status: "pending",
+        status: "created",
       })
       .select()
       .single();

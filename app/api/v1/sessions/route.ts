@@ -52,20 +52,6 @@ async function authenticateMerchantApiKey(authHeader: string | null) {
     };
   }
 
-  // Legacy fallback: raw key stored on merchants.api_key
-  const { data: legacyMerchant, error: legacyError } = await supabase
-    .from("merchants")
-    .select("id")
-    .eq("api_key", rawKey)
-    .maybeSingle();
-
-  if (!legacyError && legacyMerchant?.id) {
-    return {
-      merchantId: legacyMerchant.id as string,
-      environment: "sandbox",
-    };
-  }
-
   return { error: "Invalid API Key" } as const;
 }
 

@@ -88,10 +88,15 @@
       "discriminator": [189, 81, 30, 198, 139, 186, 115, 23],
       "accounts": [
         { "name": "payer", "writable": true, "signer": true },
+        { "name": "payer_token_account", "writable": true },
+        { "name": "mint" },
+        { "name": "merchant_token_account", "writable": true },
+        { "name": "treasury_token_account", "writable": true },
         { "name": "merchant_vault", "writable": true },
         { "name": "opayque_treasury", "writable": true },
         { "name": "protocol_config" },
         { "name": "terminal_nonce", "writable": true },
+        { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
         { "name": "system_program", "address": "11111111111111111111111111111111" }
       ],
       "args": [
@@ -106,12 +111,15 @@
       "accounts": [
         { "name": "authority", "writable": true, "signer": true },
         { "name": "merchant_vault", "writable": true },
+        { "name": "merchant_token_account", "writable": true },
+        { "name": "destination_token_account", "writable": true },
+        { "name": "mint" },
         { "name": "protocol_config" },
+        { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
         { "name": "system_program", "address": "11111111111111111111111111111111" }
       ],
       "args": [
-        { "name": "amount", "type": "u64" },
-        { "name": "approved", "type": "bool" }
+        { "name": "amount", "type": "u64" }
       ]
     },
     {
@@ -214,12 +222,12 @@
   ],
   "errors": [
     { "code": 6000, "name": "invalid_fee", "msg": "invalid fee configuration" },
-    { "code": 6001, "name": "math_overflow", "msg": "math overflow" },
-    { "code": 6002, "name": "nonce_already_used", "msg": "nonce already used" },
-    { "code": 6003, "name": "invalid_nonce", "msg": "invalid nonce" },
-    { "code": 6004, "name": "nonce_expired", "msg": "nonce expired" },
-    { "code": 6005, "name": "circuit_breaker_open", "msg": "circuit breaker open" },
-    { "code": 6006, "name": "withdraw_not_approved", "msg": "withdrawal not approved" },
+    { "code": 6001, "name": "invalid_string_length", "msg": "string exceeds the maximum length" },
+    { "code": 6002, "name": "math_overflow", "msg": "math overflow" },
+    { "code": 6003, "name": "nonce_already_used", "msg": "nonce already used" },
+    { "code": 6004, "name": "invalid_nonce", "msg": "invalid nonce" },
+    { "code": 6005, "name": "nonce_expired", "msg": "nonce expired" },
+    { "code": 6006, "name": "circuit_breaker_open", "msg": "circuit breaker open" },
     { "code": 6007, "name": "unauthorized_authority", "msg": "unauthorized authority" }
   ]
 }

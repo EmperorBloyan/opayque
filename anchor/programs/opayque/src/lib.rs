@@ -39,8 +39,8 @@ pub mod opayque {
         instructions::payment::process_payment(ctx, amount, nonce, memo)
     }
 
-    pub fn withdraw_vault_funds(ctx: Context<WithdrawVaultFunds>, amount: u64, approved: bool) -> Result<()> {
-        instructions::payment::withdraw_vault_funds(ctx, amount, approved)
+    pub fn withdraw_vault_funds(ctx: Context<WithdrawVaultFunds>, amount: u64) -> Result<()> {
+        instructions::payment::withdraw_vault_funds(ctx, amount)
     }
 
     pub fn toggle_circuit_breaker(ctx: Context<ToggleCircuitBreaker>, paused: bool) -> Result<()> {
@@ -98,7 +98,9 @@ pub struct TerminalNonce {
 }
 
 impl TerminalNonce {
-    pub const LEN: usize = 32 + 4 + 8 + 8 + 1 + 1 + 4;
+    pub const MAX_TERMINAL_ID_LEN: usize = 32;
+    pub const MAX_MEMO_LEN: usize = 64;
+    pub const LEN: usize = 32 + 4 + Self::MAX_TERMINAL_ID_LEN + 8 + 8 + 1 + 1 + 4 + Self::MAX_MEMO_LEN;
 }
 
 #[event]
@@ -114,6 +116,8 @@ pub struct PaymentSettled {
 pub enum ErrorCode {
     #[msg("invalid fee configuration")]
     InvalidFee,
+    #[msg("string exceeds the maximum length")]
+    InvalidStringLength,
     #[msg("math overflow")]
     MathOverflow,
     #[msg("nonce already used")]
@@ -124,8 +128,6 @@ pub enum ErrorCode {
     NonceExpired,
     #[msg("circuit breaker open")]
     CircuitBreakerOpen,
-    #[msg("withdrawal not approved")]
-    WithdrawNotApproved,
     #[msg("unauthorized authority")]
     UnauthorizedAuthority,
 }

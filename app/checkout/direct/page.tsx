@@ -11,7 +11,7 @@ function DirectCheckoutContent() {
   const titleParam = searchParams.get("title") || "Payment";
 
   const amountUsdc = parseFloat(amountParam);
-  const { currency, setCurrency, rates, convert, isLoadingRates } = useCurrency();
+  const { currency, setCurrency, rates, convert, isLoadingRates, asOf, stale, source } = useCurrency();
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
 
   const converted = convert(amountUsdc);
@@ -63,6 +63,9 @@ function DirectCheckoutContent() {
               {isLoadingRates ? "Loading..." : converted.formatted}
             </span>
           </div>
+          <p className={`mt-3 text-[11px] ${stale ? "text-amber-300" : "text-slate-500"}`}>
+            {stale ? "Approximate rate" : `Rate source: ${source}`} {asOf ? `· as of ${new Date(asOf).toLocaleString()}` : ""}
+          </p>
         </div>
 
         {/* Currency Selector Dropdown */}

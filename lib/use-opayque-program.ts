@@ -20,7 +20,7 @@ export function useOpayqueProgram() {
       commitment: 'confirmed',
     });
 
-    return new Program(OPAYQUE_IDL, PROGRAM_ID, provider);
+    return new Program(OPAYQUE_IDL, provider);
   }, [connection, wallet]);
 
   return { program };

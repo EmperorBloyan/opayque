@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { randomUUID } from "crypto";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
 
 interface PairTerminalRequest {
   merchant_id?: string;
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
         .insert({
           merchant_id: merchantId,
           terminal_label: terminalLabel,
-          device_token: deviceToken,
+          device_token_hash: hashDeviceToken(deviceToken),
           status: "online",
         })
         .select()

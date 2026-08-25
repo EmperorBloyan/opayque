@@ -32,7 +32,7 @@ export async function POST(request: Request) {
         signature: body.signature ?? null,
         token_symbol: body.token_symbol ?? "SOL",
         amount: Number(body.amount ?? 0),
-        status: body.status ?? "confirmed",
+        status: ["created", "pending_signature", "submitted", "confirmed", "failed", "expired"].includes(body.status ?? "") ? body.status : "submitted",
         payload_hash: payloadHash,
       })
       .select()

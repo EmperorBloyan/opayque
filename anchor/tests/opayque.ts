@@ -122,7 +122,7 @@ describe("opayque program", () => {
 
     await expect(
       program.methods
-        .withdrawVaultFunds(new BN(1_000_000), false)
+        .withdrawVaultFunds(new BN(1_000_000))
         .accounts({
           authority: rogue.publicKey,
           merchantVault: merchantVaultPda,
@@ -131,6 +131,6 @@ describe("opayque program", () => {
         })
         .signers([rogue])
         .rpc()
-    ).to.be.rejectedWith(/authority|approval/i);
+    ).to.be.rejectedWith(/authority|constraint/i);
   });
 });

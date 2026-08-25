@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
 
     if (session.status === 'completed') {
-      return NextResponse.json({ message: 'Session already completed' });
+      return NextResponse.json({ success: true, status: 'completed', message: 'Session already completed' });
     }
 
     const expectedMerchantWallet = session.merchants?.settlement_wallet_address;
@@ -56,8 +56,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'On-chain verification failed', details: verification.reason }, { status: 400 });
     }
 
-    // 3. Log the On-Chain Transaction
-    await supabaseAdmin.from('onchain_transactions').insert([{
+    // Make retries idempotent by signature before changing the checkout state.
+    const { data: existingTransaction } = await supabaseAdmin
+      .from('onchain_transactions')
+      .select('id, signature')
+      .eq('signature', transactionSignature)
+      .maybeSingle();
+    if (!existingTransaction) {
+      await supabaseAdmin.from('onchain_transactions').insert([{
       checkout_session_id: session.id,
       merchant_id: session.merchant_id,
       signature: transactionSignature,
@@ -66,13 +72,15 @@ export async function POST(request: Request) {
       amount: Number(session.amount_token ?? session.amount),
       fee_lamports: verification.fee,
       status: 'finalized'
-    }]);
+      }]);
+    }
 
     // 4. Mark Session as Completed
     await supabaseAdmin
       .from('checkout_sessions')
       .update({ status: 'completed', updated_at: new Date().toISOString() })
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .in('status', ['created', 'pending', 'pending_signature', 'submitted']);
 
     // 5. Dispatch Webhook to the Merchant
     await dispatchWebhookEvent({
@@ -92,8 +100,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, status: 'completed' });
-  } catch (error: any) {
-    console.error('Verification Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error('Verification Error:', error instanceof Error ? error.message : 'unknown error');
+    return NextResponse.json({ error: 'Unable to verify payment' }, { status: 500 });
   }
 }

@@ -275,7 +275,7 @@ export default function TerminalManager({
 
   const fleetChannelRef = useRef<any | null>(null);
 
-  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();
 
   const networkIsDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
@@ -354,7 +354,7 @@ export default function TerminalManager({
         return {
           id: row.id,
           label: row.terminal_label || row.label || "Terminal Node",
-          status: row.status === "online" ? "online" : "offline",
+          status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
           lastSeen: new Date(when).getTime(),
           accessCode: row.device_token || row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
@@ -638,48 +638,19 @@ export default function TerminalManager({
     }
 
     const swapTx = VersionedTransaction.deserialize(fromBase64(swapTransactionBase64));
-    const tipInstruction = SystemProgram.transfer({
-      fromPubkey: publicKey,
-      toPubkey: JITO_TIP_ACCOUNT,
-      lamports: 100_000,
-    });
-
-    const blockhashInfo = await connection.getLatestBlockhash("finalized");
-    const messageV0 = new TransactionMessage({
-      payerKey: publicKey,
-      recentBlockhash: blockhashInfo.blockhash,
-      instructions: [...swapTx.message.instructions, tipInstruction],
-      addressLookupTableAccounts: swapTx.message.addressLookupTableAccounts ?? [],
-    }).compileToV0Message();
-
-    return new VersionedTransaction(messageV0);
+    return swapTx;
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, quoteInputAmount, selectedTokenMint, usdcMintAddress]);
 
   const submitSwapPayment = useCallback(async () => {
-    if (!(signTransaction || signAndSendTransaction) || !connection) {
+    if (!signTransaction || !connection) {
       throw new Error("Wallet must support transaction signing");
     }
 
     const transaction = await buildSwapTransaction();
     let serialized: Uint8Array;
 
-    if (signAndSendTransaction) {
-      const res = await signAndSendTransaction(transaction as any);
-      if (res && (res as any).signature) {
-        try {
-          const signed = await (transaction as any).serialize?.() ?? null;
-          serialized = signed || new Uint8Array();
-        } catch {
-          serialized = new Uint8Array();
-        }
-      } else {
-        const signed = await signTransaction!(transaction as any);
-        serialized = signed.serialize();
-      }
-    } else {
-      const signed = await signTransaction!(transaction as any);
-      serialized = signed.serialize();
-    }
+    const signed = await signTransaction(transaction as any);
+    serialized = signed.serialize();
     const encoded = toBase64(serialized);
 
     try {
@@ -695,10 +666,10 @@ export default function TerminalManager({
     const signature = await connection.sendRawTransaction(serialized, { skipPreflight: true, maxRetries: 5 });
     await connection.confirmTransaction(signature, "confirmed");
     return signature;
-  }, [buildSwapTransaction, connection, signTransaction, signAndSendTransaction]);
+  }, [buildSwapTransaction, connection, signTransaction]);
 
   const handleDirectUsdcPay = useCallback(async () => {
-    if (!publicKey || !connection || !(signTransaction || signAndSendTransaction) || !merchantWallet) {
+    if (!publicKey || !connection || !signTransaction || !merchantWallet) {
       throw new Error("Wallet connection is required");
     }
 
@@ -709,16 +680,11 @@ export default function TerminalManager({
 
     const tx = new Transaction().add(transferIx);
     let signature: string;
-    if (signAndSendTransaction) {
-      const res = await signAndSendTransaction(tx as any);
-      signature = (res && (res as any).signature) || String(res);
-    } else {
-      const signedTx = await signTransaction!(tx as any);
-      signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
-    }
+    const signedTx = await signTransaction(tx as any);
+    signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
     await connection.confirmTransaction(signature, "confirmed");
     return signature;
-  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, signAndSendTransaction, usdcMintAddress]);
+  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
     if (!isCheckoutMode) return;

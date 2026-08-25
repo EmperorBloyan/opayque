@@ -22,9 +22,20 @@ create table if not exists merchants (
   settlement_wallet_address text,
   refund_wallet_address text,
   preferred_currency text not null default 'USD',
-  api_key text,
+  screening_status text not null default 'pending' check (screening_status in ('pending', 'approved', 'rejected', 'review')),
+  risk_score text,
+  provider_ref text,
+  screened_at timestamptz,
+  screening_country text,
+  screening_business_name text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+  ,screening_status text not null default 'pending' check (screening_status in ('pending', 'approved', 'rejected', 'review'))
+  ,risk_score text
+  ,provider_ref text
+  ,screened_at timestamptz
+  ,screening_country text
+  ,screening_business_name text
 );
 
 create table if not exists api_keys (
@@ -33,6 +44,10 @@ create table if not exists api_keys (
   environment text not null check (environment in ('mainnet', 'sandbox')),
   prefix text not null,
   key_hash text not null,
+  status text not null default 'active' check (status in ('active', 'revoked')),
+  revoked_at timestamptz,
+  status text not null default 'active' check (status in ('active', 'revoked')),
+  revoked_at timestamptz,
   created_at timestamptz not null default now(),
   last_used_at timestamptz
 );
@@ -52,7 +67,7 @@ create table if not exists terminals (
   id uuid primary key default gen_random_uuid(),
   merchant_id uuid not null references merchants(id) on delete cascade,
   terminal_label text not null,
-  device_token text not null unique,
+  device_token_hash text unique,
   label text,
   status text not null default 'offline',
   last_active timestamptz not null default now(),
@@ -68,7 +83,7 @@ create table if not exists transactions (
   signature text,
   token_symbol text not null,
   amount numeric not null default 0,
-  status text not null default 'pending',
+  status text not null default 'created' check (status in ('created', 'pending_signature', 'submitted', 'confirmed', 'failed', 'expired')),
   payload_hash text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -157,6 +172,20 @@ create policy "Merchant owners can manage terminals"
 
 create policy "Merchant owners can manage transactions"
   on transactions
+  for all
+  using (
+    merchant_id in (
+      select id from merchants where auth_user_id = auth.uid()
+    )
+  )
+  with check (
+    merchant_id in (
+      select id from merchants where auth_user_id = auth.uid()
+    )
+  );
+
+create policy "Merchant owners can manage pairing codes"
+  on terminal_pairing_codes
   for all
   using (
     merchant_id in (

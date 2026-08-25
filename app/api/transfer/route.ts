@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       if (!sessionIntent.error) intent = sessionIntent.data;
     }
 
-    if (!intent || !["pending", "created", "pending_signature", "submitted"].includes(String(intent.status || "pending").toLowerCase())) {
+    if (!intent || !["created", "pending_signature", "submitted"].includes(String(intent.status || "created").toLowerCase())) {
       return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
     }
 

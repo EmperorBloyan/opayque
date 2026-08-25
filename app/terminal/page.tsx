@@ -6,7 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Bell, LucideEdit3, X } from "lucide-react";
 import { clearTerminalDeviceCredential, createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, loadTerminalDeviceCredential, saveTerminalDeviceCredential, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { assertTerminalReady, resolveTerminalContext } from "@/lib/terminal/guards";
+import { assertTerminalReady, isRealMerchantId, resolveTerminalContext } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
 

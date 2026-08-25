@@ -23,11 +23,11 @@ In markets such as Nigeria, India, and other high-velocity commerce corridors, t
 
 The Solution
 
-Opayque provides a Shielded Vault model:
+Opayque provides a privacy-oriented Vault model:
 
 Merchants operate a private control surface (vault, registry, terminals, API keys).
 Customers pay through a shielded checkout path (TEE-assisted transfer construction).
-Settlement lands to merchant-controlled wallets; operational state is not broadcast as a live public P&L.
+Settlement can use the MagicBlock private transfer path when the provider returns a valid private transaction; public Solana transfers remain publicly observable.
 
 Core idea: business accounting privacy with cryptographic settlement integrity.
 
@@ -195,11 +195,25 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
+Distributed rate limiting (required for transfer, relayer, and pairing APIs)
+UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
+
 MagicBlock / payments (if used in your deployment)
 NEXT_PUBLIC_MAGICBLOCK_API=https://payments.magicblock.app
 MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
+
+Auth matrix and product boundaries
+
+Public pages include landing, login, checkout, and pay links. Vault, developer, and onboarding pages require a Supabase merchant session. Terminal payment operations require the `x-terminal-token` device credential; fleet pairing and revocation require the merchant session. Cron routes require `CRON_SECRET`, while `/api/v1/*` uses hashed publishable or secret API keys according to endpoint scope.
+
+Compliance screening is demo-only unless a real provider is configured. It is disabled in production by default and must not be described as KYB. Fiat settlement is also disabled unless `OFFRAMP_API_URL` and `OFFRAMP_API_KEY` are configured; the cron reports `not_configured` rather than claiming work was processed.
+
+Supabase schema
+
+Apply `supabase/schema.sql` in the Supabase SQL Editor for a fresh project, then apply every file in `supabase/migrations/` in filename order. Server routes that need privileged writes use `SUPABASE_SERVICE_ROLE_KEY`; browser and authenticated merchant flows use the user session and remain subject to RLS. Never expose the service-role key or store raw API keys.
 
 Run
 

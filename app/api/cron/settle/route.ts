@@ -9,6 +9,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    const providerConfigured = Boolean(process.env.OFFRAMP_API_URL && process.env.OFFRAMP_API_KEY);
+    if (!providerConfigured) {
+      return NextResponse.json({ success: true, processed: 0, reason: 'not_configured', results: [] });
+    }
     const pending: Array<{ merchantId: string; amount: number; currency: string; bankAccountId: string }> = [];
     let successCount = 0;
     const results: Array<{ merchantId: string; success: boolean; error?: string }> = [];
@@ -20,8 +24,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, processed: successCount, results });
-  } catch (e: any) {
+  } catch (e: unknown) {
     Sentry.captureException(e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: 'Settlement job failed' }, { status: 500 });
   }
 }

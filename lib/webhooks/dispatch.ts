@@ -71,7 +71,7 @@ export async function dispatchWebhookEvent({
 
   if (error || !webhooks || webhooks.length === 0) return { dispatched: 0 };
 
-  const dispatchPromises = webhooks.map(async (webhook) => {
+  const dispatchPromises = webhooks.map(async (webhook: { id: string; endpoint_url: string; secret_hash: string }) => {
     const timestamp = Math.floor(Date.now() / 1000);
     const eventBody = JSON.stringify({
       id: `evt_${crypto.randomBytes(12).toString('hex')}`,

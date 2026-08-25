@@ -16,7 +16,7 @@ import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 const TEE_RPC = getSolanaRpcUrl();
 
 export default function MerchantDashboard() {
-  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const [privateBalance, setPrivateBalance] = useState(0);
   const [mainWallet, setMainWallet] = useState("");
   const [flushLoading, setFlushLoading] = useState(false);
@@ -244,11 +244,7 @@ export default function MerchantDashboard() {
       const connection = new Connection(TEE_RPC, 'processed');
       let sig: string;
 
-      if (signAndSendTransaction) {
-        // Some wallets (e.g., Phantom) provide a combined sign+send helper
-        const res = await signAndSendTransaction(tx as any);
-        sig = (res && (res as any).signature) || String(res);
-      } else if (signTransaction) {
+      if (signTransaction) {
         const signedTx = await signTransaction(tx as any);
         sig = await connection.sendRawTransaction(signedTx.serialize(), {
           skipPreflight: true,

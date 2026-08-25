@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeApiKeyHeader, buildKeyHash, isValidPublishableKey, resolveMerchantAccessStatus } from './apiKey.ts';
+import { normalizeApiKeyHeader, buildKeyHash, isValidPublishableKey, resolveMerchantAccessStatus } from './apiKey';
 
 test('normalizeApiKeyHeader trims bearer prefixes and whitespace', () => {
   assert.equal(normalizeApiKeyHeader('Bearer   opq_live_abc123   '), 'opq_live_abc123');
