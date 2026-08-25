@@ -1,23 +1,10 @@
 import { NextResponse } from 'next/server';
-import {
-  Connection,
-  ComputeBudgetProgram,
-  PublicKey,
-  TransactionMessage,
-  VersionedTransaction,
-} from '@solana/web3.js';
-import {
-  createAssociatedTokenAccountIdempotentInstruction,
-  getAssociatedTokenAddressSync,
-} from '@solana/spl-token';
-import {
-  createShieldedPaymentInstruction,
-} from '@/lib/magicblock';
-import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from '@/lib/solana/constants';
+import { PublicKey } from '@solana/web3.js';
+import { requestPrivateSplTransfer } from '@/lib/magicblock';
+import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { checkRequestRateLimit } from '@/lib/rate-limit';
 
-const RPC_ENDPOINT = getSolanaRpcUrl();
-const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 const isDevnet = isDevnetNetwork();
 
 export async function POST(request: Request) {
@@ -31,6 +18,15 @@ export async function POST(request: Request) {
       merchant_id?: string;
     };
 
+    const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
+    const rateLimit = checkRequestRateLimit(`transfer:${address}`, 10);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many transfer requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
+
     if (!sender || !recipient || typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
       return NextResponse.json(
         { error: 'Missing required transfer parameters (sender, recipient, amount)' },
@@ -40,49 +36,23 @@ export async function POST(request: Request) {
 
     const senderPubkey = new PublicKey(sender);
     const recipientPubkey = new PublicKey(recipient);
-    const mintPubkey = typeof mint === 'string' && mint.length > 0
-      ? new PublicKey(mint)
-      : new PublicKey(getAssetMintAddress('USDC', isDevnet));
-
-    // The API accepts human-readable token amounts, e.g. 15 means 15 USDC.
-    const bundle = await createShieldedPaymentInstruction(
-      senderPubkey,
-      recipientPubkey,
-      amount,
-      mintPubkey
-    );
-
-    if (bundle.summary.status !== 'ready') {
-      return NextResponse.json(
-        { error: bundle.summary.message || 'Failed to create shielded payment instructions' },
-        { status: 500 }
-      );
+    const expectedMint = getAssetMintAddress('USDC', isDevnet);
+    const mintAddress = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint).toBase58() : expectedMint;
+    if (mintAddress !== expectedMint) {
+      return NextResponse.json({ error: 'Only the configured network USDC mint is supported for private payments' }, { status: 400 });
+    }
+    const amountBaseUnits = Math.round(amount * 1_000_000);
+    if (!Number.isSafeInteger(amountBaseUnits) || amountBaseUnits <= 0 || amountBaseUnits >= 1_000_000_000_000) {
+      return NextResponse.json({ error: 'Payment amount must be a valid USDC amount' }, { status: 400 });
     }
 
-    const recipientAta = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-    const ataInstruction = createAssociatedTokenAccountIdempotentInstruction(
-      senderPubkey,
-      recipientAta,
-      recipientPubkey,
-      mintPubkey
-    );
-
-    const instructions = [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 250_000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5_000 }),
-      ataInstruction,
-      ...bundle.instructions,
-      ...bundle.cleanupInstructions,
-    ];
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-    const messageV0 = new TransactionMessage({
-      payerKey: senderPubkey,
-      recentBlockhash: blockhash,
-      instructions,
-    }).compileToV0Message();
-
-    const transaction = new VersionedTransaction(messageV0);
-    const serializedTx = Buffer.from(transaction.serialize()).toString('base64');
+    const privateTransfer = await requestPrivateSplTransfer({
+      sender: senderPubkey.toBase58(),
+      recipient: recipientPubkey.toBase58(),
+      mint: mintAddress,
+      amountBaseUnits,
+      memo: typeof merchant_id === 'string' ? merchant_id.slice(0, 64) : undefined,
+    });
 
     if (merchant_id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
@@ -90,7 +60,7 @@ export async function POST(request: Request) {
         await supabase.from('transactions').insert({
           merchant_id,
           token_symbol: 'USDC',
-          amount,
+          amount: Number((amountBaseUnits / 1_000_000).toFixed(6)),
           status: 'pending_signature',
         });
       } catch (supabaseError) {
@@ -100,10 +70,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      transaction: serializedTx,
-      blockhash,
-      lastValidBlockHeight,
-      rpcUrl: RPC_ENDPOINT,
+      transaction: privateTransfer.transaction,
+      blockhash: privateTransfer.blockhash,
+      lastValidBlockHeight: privateTransfer.lastValidBlockHeight,
+      rpcUrl: privateTransfer.rpcUrl,
+      mode: 'private',
+      cluster: getSolanaNetwork() === 'mainnet-beta' ? 'mainnet' : 'devnet',
     });
   } catch (error: unknown) {
     console.error('Error constructing transaction:', error);

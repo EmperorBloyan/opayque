@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, PublicKey, SendTransactionError, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, SendTransactionError, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
@@ -177,15 +177,25 @@ export default function ShieldedCheckout({
       paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
 
       // buildShieldedTransfer returns VersionedTransaction
-      if (built.transaction instanceof VersionedTransaction) {
+      if (built.mode !== "private") {
+        throw new Error("Private payment transaction was not returned by MagicBlock.");
+      }
+
+      if (built.transaction instanceof VersionedTransaction || built.transaction instanceof Transaction) {
         if (signTransaction) {
           const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
-          built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
+          if (built.transaction instanceof VersionedTransaction) {
+            built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
+          } else {
+            built.transaction.recentBlockhash = freshBlockhash.blockhash;
+            built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
+            built.transaction.feePayer = publicKey;
+          }
           setMessage("Approve in your wallet...");
           const signed = await signTransaction(built.transaction as any);
           setMessage("Submitting transaction...");
           signature = await paymentConnection.sendRawTransaction(
-            (signed as VersionedTransaction).serialize(),
+            signed.serialize(),
             { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 }
           );
           setMessage("Confirming on Solana...");
@@ -194,6 +204,14 @@ export default function ShieldedCheckout({
             ...freshBlockhash,
           }, "confirmed");
         } else if (sendTransaction) {
+          const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
+          if (built.transaction instanceof VersionedTransaction) {
+            built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
+          } else {
+            built.transaction.recentBlockhash = freshBlockhash.blockhash;
+            built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
+            built.transaction.feePayer = publicKey;
+          }
           setMessage("Approve in your wallet...");
           signature = await sendTransaction(built.transaction as any, paymentConnection, {
               skipPreflight: false,
@@ -203,8 +221,7 @@ export default function ShieldedCheckout({
           setMessage("Confirming on Solana...");
           await paymentConnection.confirmTransaction({
             signature,
-            blockhash: built.blockhash || built.transaction.message.recentBlockhash,
-            lastValidBlockHeight: built.lastValidBlockHeight,
+            ...freshBlockhash,
           }, "confirmed");
         } else {
           throw new Error("Wallet cannot sign or send transactions.");

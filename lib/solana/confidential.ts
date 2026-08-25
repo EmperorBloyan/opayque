@@ -22,7 +22,7 @@ export interface ConfidentialTransferSummary {
   instructionCount?: number;
 }
 
-export interface ConfidentialTransferInstructionBundle {
+export interface PublicTransferInstructionBundle {
   instructions: TransactionInstruction[];
   cleanupInstructions: TransactionInstruction[];
   summary: ConfidentialTransferSummary;
@@ -67,7 +67,7 @@ export async function configureConfidentialAccount(
   }
 }
 
-export async function createShieldedPaymentInstruction(
+export async function createPublicPaymentInstruction(
   connection: Connection,
   sender: PublicKey,
   recipient: PublicKey,
@@ -97,7 +97,7 @@ export async function createShieldedPaymentInstruction(
       cleanupInstructions,
       summary: {
         status: "ready",
-        message: "Shielded payment instructions prepared.",
+        message: "Standard on-chain transfer instructions prepared (public).",
         instructionCount: instructions.length,
       },
     };

@@ -1,6 +1,5 @@
-import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
-import { createShieldedPaymentInstruction as createShieldedPaymentInstructionImpl } from "@/lib/solana/confidential";
-import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { Connection, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
 
 export const PAYMENTS_API =
   process.env.NEXT_PUBLIC_MAGICBLOCK_API || "https://payments.magicblock.app";
@@ -12,21 +11,6 @@ const RPC_ENDPOINT =
 const connection = new Connection(RPC_ENDPOINT, "confirmed");
 const isDevnet = isDevnetNetwork();
 export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", isDevnet));
-
-export async function createShieldedPaymentInstruction(
-  sender: PublicKey,
-  recipient: PublicKey,
-  amount: number,
-  mint: PublicKey = USDC_MINT
-) {
-  return createShieldedPaymentInstructionImpl(
-    connection,
-    sender,
-    recipient,
-    amount,
-    mint
-  );
-}
 
 function base64ToUint8Array(base64: string): Uint8Array {
   if (!base64 || typeof base64 !== "string") {
@@ -66,6 +50,65 @@ async function fetchWithTimeout(
   }
 }
 
+export async function requestPrivateSplTransfer({
+  sender,
+  recipient,
+  mint,
+  amountBaseUnits,
+  memo,
+}: {
+  sender: string;
+  recipient: string;
+  mint: string;
+  amountBaseUnits: number;
+  memo?: string;
+}): Promise<{ transaction: string; blockhash?: string; lastValidBlockHeight?: number; rpcUrl?: string }> {
+  const endpoint = `${PAYMENTS_API.replace(/\/$/, "")}/v1/spl/transfer`;
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(process.env.MAGICBLOCK_API_KEY
+        ? { Authorization: `Bearer ${process.env.MAGICBLOCK_API_KEY}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      from: sender,
+      to: recipient,
+      mint,
+      amount: amountBaseUnits,
+      visibility: "private",
+      fromBalance: "base",
+      toBalance: "base",
+      initIfMissing: true,
+      initAtasIfMissing: true,
+      initVaultIfMissing: true,
+      memo,
+      minDelayMs: 0,
+      maxDelayMs: 0,
+      split: 1,
+      cluster: getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "devnet",
+    }),
+  }, 25000);
+
+  const payload = await response.json().catch(() => ({}));
+  const transaction = typeof payload === "string"
+    ? payload
+    : payload?.transactionBase64 || payload?.transaction || payload?.serializedTransaction || payload?.data?.transactionBase64 || payload?.data?.transaction;
+
+  if (!response.ok || typeof transaction !== "string" || transaction.length === 0) {
+    const detail = payload?.error || payload?.message || `MagicBlock private transfer failed (HTTP ${response.status})`;
+    throw new Error(String(detail));
+  }
+
+  return {
+    transaction,
+    blockhash: typeof payload?.blockhash === "string" ? payload.blockhash : undefined,
+    lastValidBlockHeight: Number.isFinite(Number(payload?.lastValidBlockHeight)) ? Number(payload.lastValidBlockHeight) : undefined,
+    rpcUrl: typeof payload?.rpcUrl === "string" ? payload.rpcUrl : typeof payload?.sendTo === "string" ? payload.sendTo : undefined,
+  };
+}
+
 export async function getPrivateBalance(address: string): Promise<number> {
   try {
     const response = await fetchWithTimeout(
@@ -94,7 +137,7 @@ export async function buildShieldedTransfer(
   sender: string,
   recipient: string,
   amount: number
-): Promise<{ transaction: VersionedTransaction; blockhash: string; lastValidBlockHeight: number; rpcUrl?: string }> {
+): Promise<{ transaction: VersionedTransaction | Transaction; blockhash: string; lastValidBlockHeight: number; rpcUrl?: string; mode: "private" }> {
   const response = await fetchWithTimeout(
     "/api/transfer",
     {
@@ -129,11 +172,19 @@ export async function buildShieldedTransfer(
   }
 
   try {
+    const transactionBytes = base64ToUint8Array(data.transaction);
+    let transaction: VersionedTransaction | Transaction;
+    try {
+      transaction = VersionedTransaction.deserialize(transactionBytes);
+    } catch {
+      transaction = Transaction.from(transactionBytes);
+    }
     return {
-      transaction: VersionedTransaction.deserialize(base64ToUint8Array(data.transaction)),
+      transaction,
       blockhash: typeof data.blockhash === "string" ? data.blockhash : "",
       lastValidBlockHeight: Number(data.lastValidBlockHeight),
       rpcUrl: typeof data.rpcUrl === "string" ? data.rpcUrl : undefined,
+      mode: "private",
     };
   } catch (err) {
     console.error("Failed to deserialize transaction:", err, data);
