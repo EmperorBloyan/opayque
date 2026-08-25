@@ -308,7 +308,7 @@ export default function ShieldedCheckout({
           {recipientName ? (
             <p className="text-zinc-500 text-sm mt-1">Paying {recipientName}</p>
           ) : (
-            <p className="text-zinc-500 text-sm mt-1">Protected via MagicBlock TEE</p>
+            <p className="text-zinc-500 text-sm mt-1">Private mode via MagicBlock when available</p>
           )}
           {(endpointName || endpointCategory) && (
             <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500 mt-2">

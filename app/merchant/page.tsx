@@ -296,7 +296,7 @@ export default function MerchantDashboard() {
         <div className="text-center">
           <div className="animate-pulse text-purple-500 text-2xl mb-4">🔐</div>
           <p className="text-white text-xl">Awaiting Merchant Authorization...</p>
-          <p className="text-zinc-500 text-sm mt-2">TEE Validation in progress</p>
+          <p className="text-zinc-500 text-sm mt-2">Wallet validation in progress</p>
         </div>
       </div>
     );

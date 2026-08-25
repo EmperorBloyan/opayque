@@ -2,7 +2,7 @@ Opayque
 
 Privacy is the prerequisite for institutional commerce.
 
-Opayque is a shielded merchant settlement layer on Solana. It lets businesses accept on-chain payments without turning every sale into a public ledger of revenue, customers, and cash flow—while remaining non-custodial, composable, and production-oriented.
+Opayque is a non-custodial merchant settlement layer on Solana. It supports a MagicBlock private-payment path when configured, while public Solana transfers remain publicly observable.
 
 Built for high-adoption markets where financial discretion is not optional.
 
@@ -26,7 +26,7 @@ The Solution
 Opayque provides a privacy-oriented Vault model:
 
 Merchants operate a private control surface (vault, registry, terminals, API keys).
-Customers pay through a shielded checkout path (TEE-assisted transfer construction).
+Customers can pay through a MagicBlock private checkout path when the provider returns a valid private transaction.
 Settlement can use the MagicBlock private transfer path when the provider returns a valid private transaction; public Solana transfers remain publicly observable.
 
 Core idea: business accounting privacy with cryptographic settlement integrity.
@@ -224,6 +224,14 @@ Build
 
 npm run build
 npm start
+
+Tests
+
+`yarn test:unit` runs focused auth, pairing, and payment reliability tests. `yarn tsc --noEmit` runs the full TypeScript check. `yarn anchor:idl` rebuilds the Anchor program and copies its generated IDL into `lib/idl/opayque.json`; it requires Rust and Anchor CLI.
+
+Stack hygiene
+
+The primary Solana stack is `@solana/web3.js` plus Anchor. Payment privacy is provider-dependent: only transactions returned by MagicBlock with `visibility: "private"` use the private path; ordinary Solana transfers are public. Merchants retain custody of signing keys. Devnet is the default and mainnet operation requires separate configuration and provider validation.
 
 Core User Journeys
 

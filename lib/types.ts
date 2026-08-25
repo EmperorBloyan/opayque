@@ -13,7 +13,7 @@ export interface Endpoint {
 }
 
 /**
- * Represents a piece of TEE-enabled hardware in the fleet.
+ * Represents a paired hardware terminal in the fleet.
  */
 export interface Terminal {
   id: string;

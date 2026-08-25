@@ -25,6 +25,12 @@ export async function sendPayment(
 
     let signature: string;
     try {
+      const simulation = await connection.simulateTransaction(signed, { sigVerify: false });
+      if (simulation.value.err) {
+        const details = simulation.value.logs?.slice(-3).join("; ") || JSON.stringify(simulation.value.err);
+        if (/insufficient|lamports|funds|balance/i.test(details)) throw new PaymentRpcError(`Insufficient funds: ${details}`);
+        throw new PaymentRpcError(`Simulation failed: ${details}`);
+      }
       signature = await connection.sendRawTransaction(signed.serialize(), {
         preflightCommitment: "confirmed",
         maxRetries: 0,

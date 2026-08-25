@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from "react"
 import { useRouter } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { 
   LucideBell, 
@@ -24,12 +24,11 @@ import {
   getStoredMerchantId,
 } from "@/lib/crypto/session";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
-import { sendJitoBundle } from "@/lib/solana/jito";
+import { sendPayment } from "@/lib/solana/sendPayment";
 import type { Terminal } from "@/lib/types";
 import PairingModal from "./PairingModal";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-const JITO_TIP_ACCOUNT = new PublicKey("96gYZGLnJYVFmbjzopA9f848uwF32vRkeXaE4W36fT23");
 const JUPITER_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
 const JUPITER_SWAP_INSTRUCTIONS_URL = "https://quote-api.jup.ag/v6/swap-instructions";
 
@@ -91,20 +90,6 @@ function formatBaseUnits(amount: bigint, decimals: number): string {
   const fraction = amount % base;
   const fractionString = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
   return fractionString.length > 0 ? `${whole.toString()}.${fractionString}` : whole.toString();
-}
-
-function toBase64(bytes: Uint8Array): string {
-  if (typeof window !== "undefined" && window.btoa) {
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    return window.btoa(binary);
-  }
-
-  return Buffer.from(bytes).toString("base64");
 }
 
 function fromBase64(base64: string): Uint8Array {
@@ -647,25 +632,7 @@ export default function TerminalManager({
     }
 
     const transaction = await buildSwapTransaction();
-    let serialized: Uint8Array;
-
-    const signed = await signTransaction(transaction as any);
-    serialized = signed.serialize();
-    const encoded = toBase64(serialized);
-
-    try {
-      const jitoResult = await sendJitoBundle([encoded]);
-      if (jitoResult.success) {
-        return jitoResult.bundleId;
-      }
-      console.warn("Jito bundle failed, falling back to raw send", jitoResult.error);
-    } catch (error) {
-      console.warn("Jito bundle submission error", error);
-    }
-
-    const signature = await connection.sendRawTransaction(serialized, { skipPreflight: true, maxRetries: 5 });
-    await connection.confirmTransaction(signature, "confirmed");
-    return signature;
+    return sendPayment(connection, transaction as VersionedTransaction, signTransaction!);
   }, [buildSwapTransaction, connection, signTransaction]);
 
   const handleDirectUsdcPay = useCallback(async () => {
@@ -679,11 +646,15 @@ export default function TerminalManager({
     const transferIx = createTransferInstruction(payerTokenAccount, destinationTokenAccount, publicKey, expectedUsdcBaseUnits);
 
     const tx = new Transaction().add(transferIx);
-    let signature: string;
-    const signedTx = await signTransaction(tx as any);
-    signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
-    await connection.confirmTransaction(signature, "confirmed");
-    return signature;
+    const blockhash = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash.blockhash;
+    tx.feePayer = publicKey;
+    const versioned = new VersionedTransaction(new TransactionMessage({
+      payerKey: publicKey,
+      recentBlockhash: blockhash.blockhash,
+      instructions: tx.instructions,
+    }).compileToV0Message());
+    return sendPayment(connection, versioned, signTransaction!);
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {

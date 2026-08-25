@@ -196,7 +196,7 @@ export default function UnifiedLanding() {
           <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Merchant Authorization</h2>
           <div className="flex items-center gap-3 text-zinc-500">
             <LucideLoader2 size={14} className="animate-spin" />
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Shielded Identity...</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Wallet Identity...</p>
           </div>
           {authError ? (
             <p className="mt-4 max-w-sm text-sm text-amber-400">{authError}</p>
@@ -207,7 +207,7 @@ export default function UnifiedLanding() {
           <header className="text-center mb-16">
             <h1 className="text-6xl font-black italic uppercase tracking-tighter mb-2">Opayque</h1>
             <p className="text-[10px] text-zinc-500 uppercase tracking-[0.5em] font-bold">
-              Shielded POS Infrastructure
+              Private-Payment POS Infrastructure
             </p>
           </header>
 
@@ -220,7 +220,7 @@ export default function UnifiedLanding() {
                   <LucideLock className="text-zinc-700" size={20} />
                 </div>
                 <p className="text-zinc-500 text-sm mb-12 h-12">
-                  Manage staff, pair terminals, and audit transactions via TEE-shielded protocols.
+                  Manage staff, pair terminals, and audit transactions. Private payments require the MagicBlock path.
                 </p>
               </div>
 
