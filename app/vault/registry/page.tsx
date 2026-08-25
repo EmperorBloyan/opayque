@@ -7,7 +7,6 @@ import TerminalManager from "@/components/TerminalManager";
 import ReportingHub from "@/components/ReportingHub";
 import { Endpoint, Terminal } from "@/lib/types";
 import {
-  LucideLock,
   LucideFileSpreadsheet,
   LucideTrash2,
   LucideQrCode,
@@ -32,15 +31,7 @@ export default function RegistryPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [vaultReady, setVaultReady] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isNavigating, setIsNavigating] = useState(false);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
-
-  const goToDestination = (path: string) => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-    router.push(path);
-    setTimeout(() => setIsNavigating(false), 1000);
-  };
 
   const resolveMerchantId = useCallback(async (): Promise<string | null> => {
     let merchantId = getActiveMerchantId();
@@ -256,22 +247,7 @@ export default function RegistryPage() {
 
   return (
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
-      <div className="flex justify-between items-center mb-12 px-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("opayque_next_route", "/vault/registry");
-              }
-              goToDestination("/login?next=%2Fvault%2Fregistry");
-            }}
-            disabled={isNavigating}
-            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
-          >
-            <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault
-          </button>
-        </div>
-
+      <div className="flex justify-end items-center mb-12 px-4">
         <div className="flex items-center gap-2">
           <LucideShieldCheck size={16} className="text-purple-500" />
           <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">

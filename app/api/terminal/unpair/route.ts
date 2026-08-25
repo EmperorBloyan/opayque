@@ -26,14 +26,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
     }
 
-    const { error } = await supabase
+    const { data: revokedTerminal, error } = await supabase
       .from("terminals")
       .update({ status: "revoked", last_active: new Date().toISOString() })
       .eq("id", terminal.id)
-      .eq("device_token", deviceToken);
+      .eq("device_token", deviceToken)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    if (!revokedTerminal) {
+      return NextResponse.json({ success: false, error: "Terminal could not be unpaired" }, { status: 409 });
     }
 
     return NextResponse.json({ success: true });

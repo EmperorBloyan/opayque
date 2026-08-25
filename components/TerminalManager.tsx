@@ -13,7 +13,8 @@ import {
   LucideRefreshCw, 
   LucideTrash2, 
   LucideAlertTriangle, 
-  LucideHome 
+  LucideHome,
+  LucideCheckCircle2,
 } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -259,6 +260,11 @@ export default function TerminalManager({
   const [quoteInputAmount, setQuoteInputAmount] = useState<bigint | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState<{
+    amount: number;
+    currency: string;
+    signature?: string;
+  } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
   // Runtime Error Recovery State
@@ -320,6 +326,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
+          .not("status", "in", "(revoked,unpaired)")
           .order("last_active", { ascending: false });
         data = res.data;
         error = res.error;
@@ -330,6 +337,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
+          .not("status", "in", "(revoked,unpaired)")
           .order("created_at", { ascending: false });
         data = res.data;
         error = res.error;
@@ -715,18 +723,24 @@ export default function TerminalManager({
     setCheckoutLoading(true);
     setToast(null);
     setErrorState(null);
+    setPaymentSuccess(null);
 
     try {
+      let signature: string;
       if (usdcBalanceSufficient) {
-        await handleDirectUsdcPay();
+        signature = await handleDirectUsdcPay();
       } else {
         if (!selectedBalance || !quoteInputAmount) {
           throw new Error("Select an alternate token for swap");
         }
-        await submitSwapPayment();
+        signature = await submitSwapPayment();
       }
 
-      setToast("Payment completed successfully");
+      setPaymentSuccess({
+        amount: Number(amount ?? 0),
+        currency: "USDC",
+        signature,
+      });
       onSuccess?.();
     } catch (error: any) {
       console.error("[Terminal Payment Exception]:", error);
@@ -749,6 +763,38 @@ export default function TerminalManager({
 
     return (
       <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-[#0c0d11] p-6 shadow-2xl shadow-black/40">
+        {paymentSuccess ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="relative isolate flex min-h-[520px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-400/30 bg-[#07090d] px-6 py-12 text-center shadow-[0_0_40px_rgba(168,85,247,0.35),0_0_80px_rgba(16,185,129,0.16)]"
+          >
+            <div className="absolute inset-8 -z-10 rounded-full bg-purple-600/15 blur-3xl animate-pulse" />
+            <div className="absolute inset-0 -z-10 bg-emerald-500/5" />
+            <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-500/10 text-emerald-300 shadow-[0_0_35px_rgba(16,185,129,0.3)] animate-pulse">
+              <LucideCheckCircle2 size={52} strokeWidth={1.8} />
+            </div>
+            <p className="mt-8 text-2xl font-black uppercase tracking-[0.18em] text-emerald-300">
+              Payment Successful
+            </p>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-zinc-300">
+              Shielded transfer of{" "}
+              <span className="font-bold text-white">
+                {paymentSuccess.amount.toFixed(2)} {paymentSuccess.currency}
+              </span>{" "}
+              finalized.
+            </p>
+            {paymentSuccess.signature && (
+              <p className="mt-6 max-w-full break-all font-mono text-[10px] text-zinc-500">
+                Ref: {paymentSuccess.signature}
+              </p>
+            )}
+            <p className="mt-8 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
+              Payment recorded on Solana
+            </p>
+          </div>
+        ) : (
+          <>
         {errorState && (
           <div className="bg-red-950/40 border border-red-500/30 p-6 rounded-3xl animate-in fade-in duration-300 shadow-2xl">
             <div className="flex items-start gap-4 mb-4">
@@ -872,6 +918,8 @@ export default function TerminalManager({
         >
           {checkoutLoading ? "Processing payment…" : usdcBalanceSufficient ? "Pay with USDC" : "Swap & Pay with Jito Bundle"}
         </button>
+          </>
+        )}
       </div>
     );
   };
