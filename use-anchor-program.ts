@@ -4,16 +4,10 @@ import { useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { AnchorProvider, Program, type Idl } from '@coral-xyz/anchor';
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
+import OPAYQUE_IDL_JSON from '@/lib/idl/opayque.json';
 
-const PROGRAM_ID = new PublicKey("9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL");
-const FALLBACK_IDL: Idl = {
-  version: '0.1.0',
-  name: 'opayque',
-  instructions: [],
-  accounts: [],
-  types: [],
-  metadata: { address: PROGRAM_ID.toBase58() },
-} as Idl;
+const OPAYQUE_IDL = OPAYQUE_IDL_JSON as unknown as Idl;
+const PROGRAM_ID = new PublicKey(OPAYQUE_IDL_JSON.address);
 
 export const useAnchorProgram = () => {
   const { connection } = useConnection();
@@ -28,7 +22,7 @@ export const useAnchorProgram = () => {
       AnchorProvider.defaultOptions()
     );
 
-    return new Program(FALLBACK_IDL, PROGRAM_ID, provider);
+    return new Program(OPAYQUE_IDL, PROGRAM_ID, provider);
   }, [connection, wallet]);
 
   const getValidSolanaPayUri = (amount: number) => {

@@ -2,6 +2,29 @@ import { PublicKey } from "@solana/web3.js";
 
 export const SOLANA_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 export const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
+export const SOLANA_TESTNET_RPC = "https://api.testnet.solana.com";
+
+export type SolanaNetwork = "mainnet-beta" | "testnet" | "devnet";
+
+export function getSolanaNetwork(): SolanaNetwork {
+  const configured = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
+  if (configured === "mainnet-beta" || configured === "testnet" || configured === "devnet") {
+    return configured;
+  }
+  return "devnet";
+}
+
+export function getSolanaRpcUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_RPC_URL?.trim() || process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim();
+  if (configured) return configured;
+
+  const network = getSolanaNetwork();
+  return network === "mainnet-beta" ? SOLANA_MAINNET_RPC : network === "testnet" ? SOLANA_TESTNET_RPC : SOLANA_DEVNET_RPC;
+}
+
+export function isDevnetNetwork(): boolean {
+  return getSolanaNetwork() !== "mainnet-beta";
+}
 
 export interface AssetMintConfig {
   symbol: string;

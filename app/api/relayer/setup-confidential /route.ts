@@ -8,8 +8,9 @@ import {
 } from "@solana/web3.js";
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
+import { getSolanaRpcUrl } from "@/lib/solana/constants";
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
+const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 
 export async function POST(req: Request) {

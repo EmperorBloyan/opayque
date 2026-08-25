@@ -21,6 +21,7 @@ create table if not exists merchants (
   secondary_email text,
   settlement_wallet_address text,
   refund_wallet_address text,
+  preferred_currency text not null default 'USD',
   api_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -52,8 +53,12 @@ create table if not exists terminals (
   merchant_id uuid not null references merchants(id) on delete cascade,
   terminal_label text not null,
   device_token text not null unique,
+  label text,
   status text not null default 'offline',
-  last_active timestamptz not null default now()
+  last_active timestamptz not null default now(),
+  is_active boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists transactions (
@@ -65,7 +70,8 @@ create table if not exists transactions (
   amount numeric not null default 0,
   status text not null default 'pending',
   payload_hash text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists terminal_pairing_codes (
@@ -84,6 +90,14 @@ create trigger merchants_set_updated_at
 
 create trigger webhooks_set_updated_at
   before update on webhooks
+  for each row execute function set_updated_at();
+
+create trigger terminals_set_updated_at
+  before update on terminals
+  for each row execute function set_updated_at();
+
+create trigger transactions_set_updated_at
+  before update on transactions
   for each row execute function set_updated_at();
 
 alter table merchants enable row level security;
@@ -127,60 +141,8 @@ create policy "Merchant owners can manage webhooks"
     )
   );
 
-create table if not exists terminals (
-  id uuid primary key default gen_random_uuid(),
-  merchant_id uuid not null references merchants(id) on delete cascade,
-  terminal_label text not null,
-  device_token text not null unique,
-  status text not null default 'offline',
-  last_active timestamptz not null default now()
-);
-
-create table if not exists transactions (
-  id uuid primary key default gen_random_uuid(),
-  merchant_id uuid not null references merchants(id) on delete cascade,
-  terminal_id uuid references terminals(id) on delete set null,
-  signature text,
-  token_symbol text not null,
-  amount numeric not null default 0,
-  status text not null default 'pending',
-  payload_hash text,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists terminal_pairing_codes (
-  code text primary key,
-  merchant_id uuid,
-  terminal_id uuid,
-  terminal_label text,
-  status text not null default 'PENDING' check (status in ('PENDING', 'USED', 'EXPIRED')),
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null
-);
-
-create trigger merchants_set_updated_at
-  before update on merchants
-  for each row execute function set_updated_at();
-
-create trigger webhooks_set_updated_at
-  before update on webhooks
-  for each row execute function set_updated_at();
-
-alter table merchants enable row level security;
-alter table api_keys enable row level security;
-alter table webhooks enable row level security;
-alter table terminals enable row level security;
-alter table transactions enable row level security;
-alter table terminal_pairing_codes enable row level security;
-
-create policy "Authenticated merchant can manage own profile"
-  on merchants
-  for all
-  using (auth.uid() = auth_user_id)
-  with check (auth.uid() = auth_user_id);
-
-create policy "Merchant owners can manage api keys"
-  on api_keys
+create policy "Merchant owners can manage terminals"
+  on terminals
   for all
   using (
     merchant_id in (
@@ -193,8 +155,8 @@ create policy "Merchant owners can manage api keys"
     )
   );
 
-create policy "Merchant owners can manage webhooks"
-  on webhooks
+create policy "Merchant owners can manage transactions"
+  on transactions
   for all
   using (
     merchant_id in (

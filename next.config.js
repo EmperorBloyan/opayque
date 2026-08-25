@@ -2,9 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   // add any other settings you need here
 };
 

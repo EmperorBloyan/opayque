@@ -8,7 +8,7 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
-import { getAssetMintAddress } from "@/lib/solana/constants";
+import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -144,7 +144,7 @@ export default function ShieldedCheckout({
         process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
         "https://api.devnet.solana.com";
       const connection = new Connection(rpc, "confirmed");
-      const isDevnet = rpc.includes("devnet") || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+      const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
       const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
         connection.getBalance(publicKey, "confirmed"),

@@ -13,12 +13,12 @@ import {
 import {
   createShieldedPaymentInstruction,
 } from '@/lib/magicblock';
-import { getAssetMintAddress } from '@/lib/solana/constants';
+import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+const RPC_ENDPOINT = getSolanaRpcUrl();
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-const isDevnet = RPC_ENDPOINT.includes('devnet') || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== 'mainnet-beta';
+const isDevnet = isDevnetNetwork();
 
 export async function POST(request: Request) {
   try {

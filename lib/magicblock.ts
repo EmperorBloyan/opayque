@@ -1,16 +1,16 @@
 import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { createShieldedPaymentInstruction as createShieldedPaymentInstructionImpl } from "@/lib/solana/confidential";
-import { getAssetMintAddress } from "@/lib/solana/constants";
+import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
 
 export const PAYMENTS_API =
   process.env.NEXT_PUBLIC_MAGICBLOCK_API || "https://payments.magicblock.app";
 export const TEE_RPC =
-  process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
+  getSolanaRpcUrl();
 
 const RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
+  getSolanaRpcUrl();
 const connection = new Connection(RPC_ENDPOINT, "confirmed");
-const isDevnet = RPC_ENDPOINT.includes("devnet") || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+const isDevnet = isDevnetNetwork();
 export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", isDevnet));
 
 export async function createShieldedPaymentInstruction(

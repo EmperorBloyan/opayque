@@ -9,11 +9,11 @@ import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { getAssetMintAddress } from '@/lib/solana/constants';
+import { getAssetMintAddress, getSolanaRpcUrl } from '@/lib/solana/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 
-const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+const TEE_RPC = getSolanaRpcUrl();
 
 export default function MerchantDashboard() {
   const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
