@@ -79,7 +79,7 @@ export default function TerminalPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Correct currency hooks
-  const { currency, setCurrency, rates, convert, toUsdc } = useCurrency();
+  const { currency, setCurrency, rates, toUsdc } = useCurrency();
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
@@ -398,6 +398,25 @@ export default function TerminalPage() {
 
   const handleGenerateQR = async () => {
     await generateNewPayment();
+  };
+
+  const handleActivityClick = (transaction: any) => {
+    if (String(transaction.status ?? "").toLowerCase() !== "pending") return;
+
+    const transactionAmount = Number(transaction.amount);
+    if (!transaction.id || !Number.isFinite(transactionAmount) || transactionAmount <= 0) {
+      setToast("Pending payment details are unavailable");
+      return;
+    }
+
+    setTransactionId(String(transaction.id));
+    setLockedAmount(transactionAmount.toFixed(2));
+    setAmount(transactionAmount.toFixed(2));
+    setPaymentStatus("PENDING");
+    setLatestTxHash(null);
+    setIsPaid(false);
+    setIsActivityOpen(false);
+    setStep("PAYING");
   };
 
   const triggerSuccess = useCallback(async () => {
@@ -819,14 +838,20 @@ export default function TerminalPage() {
                   </thead>
                   <tbody className="divide-y divide-white/10 bg-black/30">
                     {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => (
-                      <tr key={`${tx.id ?? idx}`} className="hover:bg-white/5">
+                      <tr
+                        key={`${tx.id ?? idx}`}
+                        onClick={() => handleActivityClick(tx)}
+                        className={`hover:bg-white/5 ${String(tx.status ?? "").toLowerCase() === "pending" ? "cursor-pointer" : ""}`}
+                      >
                         <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
                         <td className="px-4 py-3">
                           <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
                             {tx.status || "PENDING"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-bold text-violet-300">{convert(Number(tx.amount ?? 0)).formatted}</td>
+                        <td className="px-4 py-3 font-bold text-violet-300">
+                          {Number(tx.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {String(tx.tokenSymbol ?? "USDC").toUpperCase()}
+                        </td>
                         <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                       </tr>
                     )) : (
