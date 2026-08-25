@@ -140,7 +140,7 @@ export default function ShieldedCheckout({
         process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
         "https://api.devnet.solana.com";
       const connection = new Connection(rpc, "confirmed");
-      const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
+      const isDevnet = rpc.includes("devnet") || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
       const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
         connection.getBalance(publicKey, "confirmed"),
@@ -171,18 +171,29 @@ export default function ShieldedCheckout({
       let signature: string | null = null;
 
       paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
-      const latestBlockhash = await withTimeout(
-        paymentConnection.getLatestBlockhash("confirmed"),
-        10000,
-        "Latest blockhash refresh"
-      );
-      built.transaction.message.recentBlockhash = latestBlockhash.blockhash;
-      built.blockhash = latestBlockhash.blockhash;
-      built.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
       // buildShieldedTransfer returns VersionedTransaction
       if (built.transaction instanceof VersionedTransaction) {
-        if (sendTransaction) {
+        if (signTransaction) {
+          const signed = await withTimeout(
+            signTransaction(built.transaction as any),
+            30000,
+            "Wallet signature"
+          );
+          signature = await withTimeout(
+            paymentConnection.sendRawTransaction(
+              (signed as VersionedTransaction).serialize(),
+              { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }
+            ),
+            30000,
+            "Transaction submission"
+          );
+          await withTimeout(paymentConnection.confirmTransaction({
+            signature,
+            blockhash: built.blockhash || signed.message.recentBlockhash,
+            lastValidBlockHeight: built.lastValidBlockHeight,
+          }, "confirmed"), 15000, "Payment confirmation");
+        } else if (sendTransaction) {
           signature = await withTimeout(
             sendTransaction(built.transaction as any, paymentConnection, {
               skipPreflight: false,
@@ -195,24 +206,6 @@ export default function ShieldedCheckout({
           await withTimeout(paymentConnection.confirmTransaction({
             signature,
             blockhash: built.blockhash || built.transaction.message.recentBlockhash,
-            lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Payment confirmation");
-        } else if (signTransaction) {
-          const signed = await withTimeout(
-            signTransaction(built.transaction as any),
-            30000,
-            "Wallet signature"
-          );
-          signature = await withTimeout(
-            paymentConnection.sendRawTransaction(
-              (signed as VersionedTransaction).serialize()
-            ),
-            30000,
-            "Send transaction"
-          );
-          await withTimeout(paymentConnection.confirmTransaction({
-            signature,
-            blockhash: built.blockhash || signed.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
           }, "confirmed"), 15000, "Payment confirmation");
         } else {

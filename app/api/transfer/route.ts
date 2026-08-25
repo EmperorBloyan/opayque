@@ -17,7 +17,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== 'mainnet-beta';
+const isDevnet = RPC_ENDPOINT.includes('devnet') || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== 'mainnet-beta';
 
 export async function POST(request: Request) {
   try {
