@@ -3,29 +3,21 @@ import { PublicKey } from '@solana/web3.js';
 import { requestPrivateSplTransfer } from '@/lib/magicblock';
 import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { checkRequestRateLimit } from '@/lib/rate-limit';
+import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 
 const isDevnet = isDevnetNetwork();
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, mint, merchant_id, memo } = body as {
+    const { sender, recipient, amount, mint, intent_id, memo } = body as {
       sender?: string;
       recipient?: string;
       amount?: number;
       mint?: string;
-      merchant_id?: string;
+      intent_id?: string;
+      memo?: string;
     };
-
-    const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
-    const rateLimit = checkRequestRateLimit(`transfer:${address}`, 10);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: "Too many transfer requests. Please try again later." },
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-      );
-    }
 
     if (!sender || !recipient || typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
       return NextResponse.json(
@@ -36,6 +28,17 @@ export async function POST(request: Request) {
 
     const senderPubkey = new PublicKey(sender);
     const recipientPubkey = new PublicKey(recipient);
+    const address = getClientAddress(request);
+    const rateLimit = await strictLimit(`transfer:${address}:${senderPubkey.toBase58()}`, true);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error || "Too many transfer requests. Please try again later." },
+        { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
+    if (!intent_id) {
+      return NextResponse.json({ error: "Payment intent is required" }, { status: 400 });
+    }
     const expectedMint = getAssetMintAddress('USDC', isDevnet);
     const mintAddress = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint).toBase58() : expectedMint;
     if (mintAddress !== expectedMint) {
@@ -46,27 +49,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Payment amount must be a valid USDC amount' }, { status: 400 });
     }
 
+    const supabase = createSupabaseServerClient(request);
+    let intent: any = null;
+    const transactionIntent = await supabase
+      .from("transactions")
+      .select("id, merchant_id, amount, status")
+      .eq("id", intent_id)
+      .maybeSingle();
+    if (!transactionIntent.error) intent = transactionIntent.data;
+
+    if (!intent) {
+      const sessionIntent = await supabase
+        .from("checkout_sessions")
+        .select("id, merchant_id, amount, amount_token, status, settlement_token")
+        .eq("id", intent_id)
+        .maybeSingle();
+      if (!sessionIntent.error) intent = sessionIntent.data;
+    }
+
+    if (!intent || !["pending", "created", "pending_signature", "submitted"].includes(String(intent.status || "pending").toLowerCase())) {
+      return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
+    }
+
+    const expectedAmount = Number(intent.amount_token ?? intent.amount);
+    if (!Number.isFinite(expectedAmount) || Math.abs(expectedAmount - amount) > 0.000001) {
+      return NextResponse.json({ error: "Payment amount does not match the payment intent" }, { status: 400 });
+    }
+    const merchant = await supabase
+      .from("merchants")
+      .select("settlement_wallet_address, wallet_address")
+      .eq("id", intent.merchant_id)
+      .maybeSingle();
+    const expectedRecipient = String(merchant.data?.settlement_wallet_address || merchant.data?.wallet_address || "");
+    if (!expectedRecipient || expectedRecipient !== recipientPubkey.toBase58()) {
+      return NextResponse.json({ error: "Payment recipient does not match the merchant intent" }, { status: 400 });
+    }
+
     const privateTransfer = await requestPrivateSplTransfer({
       sender: senderPubkey.toBase58(),
       recipient: recipientPubkey.toBase58(),
       mint: mintAddress,
       amountBaseUnits,
-      memo: typeof memo === 'string' ? memo.slice(0, 64) : typeof merchant_id === 'string' ? merchant_id.slice(0, 64) : undefined,
+      memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
-
-    if (merchant_id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      try {
-        const supabase = createSupabaseServerClient();
-        await supabase.from('transactions').insert({
-          merchant_id,
-          token_symbol: 'USDC',
-          amount: Number((amountBaseUnits / 1_000_000).toFixed(6)),
-          status: 'pending_signature',
-        });
-      } catch (supabaseError) {
-        console.error('Supabase insert failed:', supabaseError);
-      }
-    }
 
     return NextResponse.json({
       success: true,

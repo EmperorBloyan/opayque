@@ -3,6 +3,8 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@sol
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
 import { getSolanaRpcUrl } from "@/lib/solana/constants";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
 
 const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
@@ -14,8 +16,19 @@ export async function POST(req: Request) {
   try {
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = await req.json();
 
+    const rateLimit = await strictLimit(`relayer:init:${getClientAddress(req)}`, true);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ success: false, error: rateLimit.error || "Too many initialization requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
+    }
+
     if (!merchantPublicKey || !RELAYER_SECRET) {
       return NextResponse.json({ success: false, error: "Missing data: Ensure Relayer Key is set." }, { status: 400 });
+    }
+
+    const ownership = await getOwnedMerchantForWallet(req, merchantPublicKey);
+    if ("error" in ownership) return NextResponse.json({ success: false, error: ownership.error }, { status: ownership.status });
+    if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000 || !Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 18) {
+      return NextResponse.json({ success: false, error: "Invalid vault fee or token decimals" }, { status: 400 });
     }
 
     const secretKey = Uint8Array.from(JSON.parse(RELAYER_SECRET));

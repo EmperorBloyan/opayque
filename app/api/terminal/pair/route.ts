@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { randomUUID } from "crypto";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 
 interface PairTerminalRequest {
   merchant_id?: string;
@@ -9,6 +10,8 @@ interface PairTerminalRequest {
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = await strictLimit(`terminal:pair:${getClientAddress(request)}`, true);
+    if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many pairing requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = (await request.json()) as PairTerminalRequest;
     const terminalLabel = body.terminal_label?.trim();
 

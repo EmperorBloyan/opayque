@@ -166,7 +166,8 @@ export default function ShieldedCheckout({
         buildShieldedTransfer(
           publicKey.toBase58(),
           safeMerchantPubkey,
-          safeAmount
+          safeAmount,
+          transactionId || checkoutSessionId || ""
         ),
         25000,
         "Shielded transfer build"

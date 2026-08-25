@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { checkRequestRateLimit } from "@/lib/rate-limit";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -71,8 +71,8 @@ async function authenticateMerchantApiKey(authHeader: string | null) {
 
 export async function POST(request: Request) {
   try {
-    const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
-    const rateLimit = checkRequestRateLimit(`session:${address}`, 10);
+    const address = getClientAddress(request);
+    const rateLimit = await strictLimit(`session:${address}`, true);
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: "Too many session requests. Please try again later." },

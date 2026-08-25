@@ -7,7 +7,6 @@ import { Check } from "lucide-react";
 import { ConnectionProvider, WalletProvider, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl, VersionedTransaction } from "@solana/web3.js";
 import { clusterApiUrl, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
 
@@ -195,6 +194,7 @@ function PayButton({ id, merchantWallet, settlementAmount, disabled, status, suc
           recipient: merchantWalletAddress,
           amount: Number(settlementAmount),
           mint: getAssetMintAddress('USDC', isDevnetNetwork()),
+          intent_id: id,
           memo: id,
         }),
       });

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = await strictLimit(`terminal:unpair:${getClientAddress(request)}`, true);
+    if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many unpair requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = await request.json().catch(() => ({}));
     const terminalId = typeof body?.terminalId === "string" ? body.terminalId.trim() : "";
     const deviceToken = typeof body?.deviceToken === "string" ? body.deviceToken.trim() : "";

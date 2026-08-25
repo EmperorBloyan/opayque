@@ -34,6 +34,8 @@
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
     "@upstash/qstash": "^2.11.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
     "bignumber.js": "^11.1.5",
     "bs58": "^5.0.0",
     "clsx": "^2.1.1",

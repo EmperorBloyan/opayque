@@ -136,7 +136,8 @@ export async function getPrivateBalance(address: string): Promise<number> {
 export async function buildShieldedTransfer(
   sender: string,
   recipient: string,
-  amount: number
+  amount: number,
+  intentId: string
 ): Promise<{ transaction: VersionedTransaction | Transaction; blockhash: string; lastValidBlockHeight: number; rpcUrl?: string; mode: "private" }> {
   const response = await fetchWithTimeout(
     "/api/transfer",
@@ -147,6 +148,7 @@ export async function buildShieldedTransfer(
         sender,
         recipient,
         amount,
+        intent_id: intentId,
         mint: USDC_MINT.toBase58(),
         private: true,
       }),

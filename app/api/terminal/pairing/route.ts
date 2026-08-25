@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 
 function isValidMerchantId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -24,6 +25,8 @@ function normalizeWalletAddress(value: unknown): string {
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = await strictLimit(`terminal:pairing:${getClientAddress(request)}`, true);
+    if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many pairing requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = await request.json().catch(() => ({}));
     const action = typeof body?.action === "string" ? body.action : "create";
     const merchantId = typeof body?.merchant_id === "string" ? body.merchant_id : null;
