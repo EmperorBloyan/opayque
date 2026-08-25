@@ -360,6 +360,9 @@ export default function TerminalManager({
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
+      }).filter((terminal, index) => {
+        const source = data?.[index];
+        return !["revoked", "unpaired", "deleted"].includes(String(source?.status).toLowerCase());
       });
 
       await persistTerminals(mapped);

@@ -92,6 +92,7 @@ export default function RegistryPage() {
           .from("terminals")
           .select("*")
           .eq("merchant_id", id)
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("last_active", { ascending: false });
         data = res.data;
         error = res.error;
@@ -102,6 +103,7 @@ export default function RegistryPage() {
           .from("terminals")
           .select("*")
           .eq("merchant_id", id)
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("created_at", { ascending: false });
         data = res.data;
         error = res.error;
@@ -109,7 +111,9 @@ export default function RegistryPage() {
 
       if (error) throw error;
 
-      const mapped = (data ?? []).map((row: any) => {
+      const mapped = (data ?? [])
+        .filter((row: any) => !["revoked", "unpaired", "deleted"].includes(String(row.status).toLowerCase()))
+        .map((row: any) => {
         const when =
           row.last_active ||
           row.created_at ||
@@ -124,7 +128,7 @@ export default function RegistryPage() {
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
-      });
+        });
 
       setTerminals(mapped);
     } catch (error) {
