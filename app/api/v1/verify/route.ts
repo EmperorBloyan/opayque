@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { dispatchWebhookEvent } from '@/lib/webhooks/dispatch';
 import { verifySolanaTransaction } from '@/lib/solana/verify';
+import { getAssetMintAddress } from '@/lib/solana/constants';
 
 export async function POST(request: Request) {
   const supabaseAdmin = createSupabaseServerClient(request);
@@ -34,10 +35,21 @@ export async function POST(request: Request) {
     }
 
     // 2. Verify against Solana RPC
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+    const isDevnet = rpcUrl.includes('devnet') || process.env.NEXT_PUBLIC_SOLANA_NETWORK !== 'mainnet-beta';
+    const settlementToken = String(session.currency || 'USDC').toUpperCase();
+
+    if (settlementToken !== 'USDC') {
+      return NextResponse.json({ error: 'Only USDC checkout verification is supported' }, { status: 400 });
+    }
+
     const verification = await verifySolanaTransaction({
       signature: transactionSignature,
       expectedMerchantWallet,
       expectedAmount: session.amount,
+      expectedTokenMint: getAssetMintAddress('USDC', isDevnet),
+      expectedTokenDecimals: 6,
+      rpcUrl,
     });
 
     if (!verification.verified) {

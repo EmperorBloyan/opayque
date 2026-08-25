@@ -16,6 +16,8 @@ function CheckoutContent() {
   const name = searchParams.get('name') || 'Secure Terminal';
   const currency = (searchParams.get('currency') || 'USD').toUpperCase();
   const token = (searchParams.get('token') || 'USDC').toUpperCase();
+  const transactionId = searchParams.get('tx_id');
+  const sessionId = searchParams.get('session');
 
   // Parse settlement amount (crypto) and display amount (fiat)
   const usdcAmount = Number(searchParams.get('amount') || searchParams.get('fixed') || '0');
@@ -64,6 +66,8 @@ function CheckoutContent() {
         displayCurrency={currency}
         displayFiatAmount={safeFiat}
         settlementToken={token}
+        transactionId={transactionId}
+        checkoutSessionId={sessionId}
       />
     </main>
   );

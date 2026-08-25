@@ -82,7 +82,7 @@ function openPhantomUniversalLink(targetUrl: string) {
     return;
   }
 
-  const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(targetUrl)}`;
+  const phantomUrl = `https://phantom.app/ul/v1/browse?url=${encodeURIComponent(targetUrl)}`;
   const popup = window.open(phantomUrl, "_blank", "noopener,noreferrer");
 
   if (!popup) {

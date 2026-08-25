@@ -342,6 +342,17 @@ export default function TerminalPage() {
 
   const generateNewPayment = async () => {
     if (!isAmountValid || isGenerating) return;
+    if (asset !== "USDC") {
+      setToast("This hosted checkout currently supports USDC payments only");
+      return;
+    }
+
+    const settlementAmount = toUsdc(numericAmount, currency);
+    if (!Number.isFinite(settlementAmount) || settlementAmount <= 0) {
+      setToast("Unable to calculate the USDC settlement amount");
+      return;
+    }
+
     let timeout: ReturnType<typeof setTimeout> | undefined;
     setIsGenerating(true);
     try {
@@ -354,8 +365,8 @@ export default function TerminalPage() {
         body: JSON.stringify({
           terminalId: terminalContext.terminalId,
           deviceToken: terminalContext.deviceToken,
-          amount: numericAmount,
-          tokenSymbol: asset,
+          amount: settlementAmount,
+          tokenSymbol: "USDC",
         }),
         signal: controller.signal,
       });
@@ -368,8 +379,8 @@ export default function TerminalPage() {
       const nextActivity = [{
         id: String(pendingRecord.id),
         status: "PENDING",
-        amount: Number(pendingRecord.amount ?? numericAmount),
-        tokenSymbol: String(pendingRecord.token_symbol ?? asset),
+        amount: Number(pendingRecord.amount ?? settlementAmount),
+        tokenSymbol: String(pendingRecord.token_symbol ?? "USDC"),
         time: pendingRecord.created_at ?? new Date().toISOString(),
         walletAddress: terminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,

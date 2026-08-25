@@ -1,9 +1,5 @@
 import { Connection } from '@solana/web3.js';
 
-const SOLANA_RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
-
-const LAMPORTS_PER_SOL = 10n ** 9n;
 const DEFAULT_USDC_DECIMALS = 6;
 
 interface VerifyTxParams {
@@ -12,6 +8,7 @@ interface VerifyTxParams {
   expectedAmount: number;
   expectedTokenMint?: string;
   expectedTokenDecimals?: number;
+  rpcUrl?: string;
 }
 
 interface VerifyTxSuccess {
@@ -52,7 +49,10 @@ function parseHumanAmountToBaseUnits(amount: number, decimals: number): bigint {
   return BigInt(whole + normalizedFraction);
 }
 
-function getSolTransferBaseUnits(tx: Awaited<ReturnType<typeof connection.getParsedTransaction>>, expectedMerchantWallet: string): bigint {
+function getSolTransferBaseUnits(
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
+  expectedMerchantWallet: string,
+): bigint {
   if (!tx.meta?.preBalances || !tx.meta?.postBalances) {
     throw new Error('Missing transaction balance metadata for SOL verification');
   }
@@ -61,7 +61,7 @@ function getSolTransferBaseUnits(tx: Awaited<ReturnType<typeof connection.getPar
   let totalReceived = 0n;
 
   for (let index = 0; index < accountKeys.length; index += 1) {
-    const accountPubkey = 'pubkey' in accountKeys[index] ? accountKeys[index].pubkey : accountKeys[index].toBase58();
+    const accountPubkey = accountKeys[index].pubkey.toBase58();
     if (accountPubkey !== expectedMerchantWallet) continue;
 
     const preBalance = BigInt(tx.meta.preBalances[index]);
@@ -76,7 +76,7 @@ function getSolTransferBaseUnits(tx: Awaited<ReturnType<typeof connection.getPar
 }
 
 function getSplTransferBaseUnits(
-  tx: Awaited<ReturnType<typeof connection.getParsedTransaction>>,
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
   expectedMerchantWallet: string,
   expectedTokenMint: string,
 ): bigint {
@@ -89,12 +89,12 @@ function getSplTransferBaseUnits(
 
   tx.meta.preTokenBalances.forEach((balance) => {
     if (balance.owner !== expectedMerchantWallet || balance.mint !== expectedTokenMint) return;
-    preBalances.set(`${balance.accountIndex}`, BigInt(balance.rawTokenAmount.amount));
+    preBalances.set(`${balance.accountIndex}`, BigInt(balance.uiTokenAmount.amount));
   });
 
   tx.meta.postTokenBalances.forEach((balance) => {
     if (balance.owner !== expectedMerchantWallet || balance.mint !== expectedTokenMint) return;
-    postBalances.set(`${balance.accountIndex}`, BigInt(balance.rawTokenAmount.amount));
+    postBalances.set(`${balance.accountIndex}`, BigInt(balance.uiTokenAmount.amount));
   });
 
   const allIndices = new Set<string>([...preBalances.keys(), ...postBalances.keys()]);
@@ -118,14 +118,19 @@ export async function verifySolanaTransaction({
   expectedAmount,
   expectedTokenMint,
   expectedTokenDecimals,
+  rpcUrl,
 }: VerifyTxParams): Promise<VerifyTxResult> {
   try {
+    const connection = new Connection(
+      rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+      'confirmed',
+    );
     const tx = await connection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',
     });
 
-    if (!tx || tx.meta?.err) {
+    if (!tx || !tx.meta || tx.meta.err) {
       return { verified: false, status: 'failed', reason: 'Transaction failed or not found on-chain' };
     }
 

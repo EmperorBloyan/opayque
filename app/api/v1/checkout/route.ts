@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { authenticateApiKey } from '@/lib/auth/apiKey';
 
+function getRequestOrigin(request: Request): string {
+  const protocol = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+  return `${protocol}://${host}`.replace(/\/$/, '');
+}
+
 export async function POST(request: Request) {
   const supabaseAdmin = createSupabaseServerClient(request);
   // 1. Authenticate the API Key
@@ -11,7 +17,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { amount, currency = 'USDC', customerEmail, referenceId } = body;
+    const { amount, currency = 'USD', customerEmail, referenceId } = body;
+    const normalizedCurrency = String(currency).trim().toUpperCase();
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'Valid amount is required' }, { status: 400 });
@@ -28,6 +35,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Merchant settlement wallet not configured' }, { status: 400 });
     }
 
+    if (normalizedCurrency !== 'USD' && normalizedCurrency !== 'USDC') {
+      return NextResponse.json({ error: 'Only USD/USDC checkout amounts are supported' }, { status: 400 });
+    }
+
     // 3. Create Checkout Session
     const { data: session, error } = await supabaseAdmin
       .from('checkout_sessions')
@@ -35,7 +46,7 @@ export async function POST(request: Request) {
         merchant_id: auth.merchantId,
         environment: auth.environment,
         amount,
-        currency,
+        currency: normalizedCurrency,
         customer_email: customerEmail,
         reference_id: referenceId,
       }])
@@ -55,7 +66,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       id: session.id,
-      url: `https://your-domain.com/checkout/${session.id}`, // Hosted checkout page
+      url: `${getRequestOrigin(request)}/checkout?address=${encodeURIComponent(merchant.settlement_wallet_address)}&amount=${encodeURIComponent(Number(amount).toFixed(2))}&fiat_amount=${encodeURIComponent(Number(amount).toFixed(2))}&currency=${encodeURIComponent(normalizedCurrency)}&token=USDC&session=${encodeURIComponent(session.id)}`,
       solanaPayUrl,
       status: session.status,
       referenceId: session.reference_id,

@@ -22,6 +22,8 @@ interface ShieldedCheckoutProps {
   displayCurrency?: string;
   displayFiatAmount?: number;
   settlementToken?: string;
+  transactionId?: string | null;
+  checkoutSessionId?: string | null;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -51,6 +53,8 @@ export default function ShieldedCheckout({
   displayCurrency = "USD",
   displayFiatAmount,
   settlementToken = "USDC",
+  transactionId,
+  checkoutSessionId,
 }: ShieldedCheckoutProps) {
   const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
 
@@ -217,6 +221,28 @@ export default function ShieldedCheckout({
 
       if (!signature) {
         throw new Error("Transaction was not signed or submitted.");
+      }
+
+      if (transactionId) {
+        const settleResponse = await fetch(`/api/terminal/payments/${encodeURIComponent(transactionId)}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signature }),
+        });
+        const settlePayload = await settleResponse.json().catch(() => ({}));
+        if (!settleResponse.ok) {
+          throw new Error(settlePayload?.error || "Payment confirmed, but terminal reconciliation failed.");
+        }
+      } else if (checkoutSessionId) {
+        const verifyResponse = await fetch("/api/v1/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: checkoutSessionId, transactionSignature: signature }),
+        });
+        const verifyPayload = await verifyResponse.json().catch(() => ({}));
+        if (!verifyResponse.ok) {
+          throw new Error(verifyPayload?.error || "Payment confirmed, but checkout verification failed.");
+        }
       }
 
       appendLocalActivity({

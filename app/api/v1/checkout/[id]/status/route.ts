@@ -9,7 +9,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
   const { data: session, error } = await supabaseAdmin
     .from('checkout_sessions')
-    .select('id, status, amount, currency, solana_pay_url, updated_at')
+    .select('id, status, amount, currency, solana_pay_url, updated_at, merchants(settlement_wallet_address)')
     .eq('id', sessionId)
     .single();
 
@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   const { data: tx, error: txErr } = await supabaseAdmin
     .from('onchain_transactions')
     .select('id, signature, created_at')
-    .eq('session_id', sessionId)
+    .eq('checkout_session_id', sessionId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -29,6 +29,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     status: session.status,
     amount: session.amount,
     currency: session.currency,
+    merchantWallet: session.merchants?.settlement_wallet_address || null,
     solanaPayUrl: session.solana_pay_url,
     updatedAt: session.updated_at,
     transaction: tx || null,

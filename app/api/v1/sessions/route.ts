@@ -84,16 +84,18 @@ export async function POST(request: Request) {
         ? body.description.trim()
         : "Opayque Payment";
 
+    const displayCurrency =
+      typeof body?.currency === "string" && body.currency.trim()
+        ? body.currency.trim().toUpperCase()
+        : "USD";
     const settlementToken =
       typeof body?.settlement_token === "string" && body.settlement_token.trim()
         ? body.settlement_token.trim().toUpperCase()
-        : typeof body?.currency === "string" && body.currency.trim()
-          ? body.currency.trim().toUpperCase()
-          : "USDC";
+        : "USDC";
 
-    if (!orderId || !Number.isFinite(amountFiat) || amountFiat <= 0) {
+    if (!orderId || !Number.isFinite(amountFiat) || amountFiat <= 0 || settlementToken !== "USDC" || !["USD", "USDC"].includes(displayCurrency)) {
       return NextResponse.json(
-        { error: "order_id and amount_fiat are required" },
+        { error: "A valid USD/USDC amount is required; only USDC settlement is supported" },
         { status: 400 }
       );
     }
@@ -134,6 +136,8 @@ export async function POST(request: Request) {
       `${origin}/checkout` +
       `?address=${encodeURIComponent(merchantWallet)}` +
       `&amount=${encodeURIComponent(amountFiat.toFixed(2))}` +
+      `&fiat_amount=${encodeURIComponent(amountFiat.toFixed(2))}` +
+      `&currency=${encodeURIComponent(displayCurrency)}` +
       `&name=${encodeURIComponent(merchantName)}` +
       `&session=${encodeURIComponent(sessionId)}` +
       `&order=${encodeURIComponent(orderId)}` +

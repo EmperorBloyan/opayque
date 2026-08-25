@@ -174,6 +174,7 @@ export default function OnboardingPage() {
           const res = await fetch("/api/relayer/build-initialize-vault", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            cache: "no-store",
             body: JSON.stringify({
               merchantPublicKey: publicKey.toBase58(),
               feeBps: 0,

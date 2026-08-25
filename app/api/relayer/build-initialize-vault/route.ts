@@ -21,8 +21,7 @@ export async function POST(req: Request) {
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
     const merchant = new PublicKey(merchantPublicKey);
 
-    // FIX: Change to "confirmed" for instant response
-    const connection = new Connection(RPC_URL, "confirmed");
+    const connection = new Connection(RPC_URL, "processed");
 
     const wallet = {
       publicKey: relayerKeypair.publicKey,
@@ -76,8 +75,7 @@ export async function POST(req: Request) {
       })
       .transaction();
 
-    // FIX: Change to "confirmed" to ensure Phantom gets a fresh blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
     
     tx.feePayer = relayerKeypair.publicKey;
     tx.recentBlockhash = blockhash;
@@ -94,6 +92,7 @@ export async function POST(req: Request) {
       blockhash,
       lastValidBlockHeight,
       rpcUrl: RPC_URL,
+      network: RPC_URL.includes("mainnet") ? "mainnet-beta" : RPC_URL.includes("testnet") ? "testnet" : "devnet",
     });
   } catch (error: any) {
     console.error(error);
