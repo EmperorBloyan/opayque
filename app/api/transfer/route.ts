@@ -10,7 +10,7 @@ const isDevnet = isDevnetNetwork();
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, mint, merchant_id } = body as {
+    const { sender, recipient, amount, mint, merchant_id, memo } = body as {
       sender?: string;
       recipient?: string;
       amount?: number;
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       recipient: recipientPubkey.toBase58(),
       mint: mintAddress,
       amountBaseUnits,
-      memo: typeof merchant_id === 'string' ? merchant_id.slice(0, 64) : undefined,
+      memo: typeof memo === 'string' ? memo.slice(0, 64) : typeof merchant_id === 'string' ? merchant_id.slice(0, 64) : undefined,
     });
 
     if (merchant_id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {

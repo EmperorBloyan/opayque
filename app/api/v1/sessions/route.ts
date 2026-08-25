@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkRequestRateLimit } from "@/lib/rate-limit";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -13,6 +14,20 @@ function getRequestOrigin(request: Request): string {
   const origin = `${forwardedProto}://${forwardedHost}`;
   return origin.replace(/\/$/, "");
 }
+
+  const FALLBACK_RATES: Record<string, number> = {
+    USD: 1,
+    USDC: 1,
+    EUR: 0.92,
+    GBP: 0.78,
+    NGN: 1600,
+    GHS: 15.5,
+    KES: 129,
+    ZAR: 18.2,
+    INR: 83,
+    CAD: 1.36,
+    AUD: 1.52,
+  };
 
 async function authenticateMerchantApiKey(authHeader: string | null) {
   const rawKey = normalizeApiKeyHeader(authHeader);
@@ -56,6 +71,14 @@ async function authenticateMerchantApiKey(authHeader: string | null) {
 
 export async function POST(request: Request) {
   try {
+    const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
+    const rateLimit = checkRequestRateLimit(`session:${address}`, 10);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many session requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
     const authHeader = request.headers.get("authorization");
     const auth = await authenticateMerchantApiKey(authHeader);
 
@@ -92,10 +115,14 @@ export async function POST(request: Request) {
       typeof body?.settlement_token === "string" && body.settlement_token.trim()
         ? body.settlement_token.trim().toUpperCase()
         : "USDC";
+    const rate = FALLBACK_RATES[displayCurrency];
+    const settlementAmount = displayCurrency === "USD" || displayCurrency === "USDC"
+      ? amountFiat
+      : rate ? amountFiat / rate : Number.NaN;
 
-    if (!orderId || !Number.isFinite(amountFiat) || amountFiat <= 0 || settlementToken !== "USDC" || !["USD", "USDC"].includes(displayCurrency)) {
+    if (!orderId || !Number.isFinite(amountFiat) || amountFiat <= 0 || !Number.isFinite(settlementAmount) || settlementAmount <= 0 || settlementAmount >= 1_000_000 || settlementToken !== "USDC") {
       return NextResponse.json(
-        { error: "A valid USD/USDC amount is required; only USDC settlement is supported" },
+        { error: `A valid ${displayCurrency} amount with an available FX rate is required; only USDC settlement is supported` },
         { status: 400 }
       );
     }
@@ -135,7 +162,7 @@ export async function POST(request: Request) {
     const paymentUrl =
       `${origin}/checkout` +
       `?address=${encodeURIComponent(merchantWallet)}` +
-      `&amount=${encodeURIComponent(amountFiat.toFixed(2))}` +
+      `&amount=${encodeURIComponent(Number(settlementAmount.toFixed(6)).toFixed(6))}` +
       `&fiat_amount=${encodeURIComponent(amountFiat.toFixed(2))}` +
       `&currency=${encodeURIComponent(displayCurrency)}` +
       `&name=${encodeURIComponent(merchantName)}` +
@@ -149,8 +176,11 @@ export async function POST(request: Request) {
         id: sessionId,
         merchant_id: auth.merchantId,
         environment: auth.environment,
-        amount: Number(amountFiat),
-        currency: settlementToken,
+        amount: Number(settlementAmount.toFixed(6)),
+        amount_fiat: Number(amountFiat.toFixed(2)),
+        amount_token: Number(settlementAmount.toFixed(6)),
+        currency: displayCurrency,
+        settlement_token: settlementToken,
         customer_email: customerEmail,
         reference_id: orderId,
         status: "pending",
@@ -171,6 +201,7 @@ export async function POST(request: Request) {
       payment_url: paymentUrl,
       merchant_wallet: merchantWallet,
       amount_fiat: amountFiat,
+      amount_token: Number(settlementAmount.toFixed(6)),
       token: settlementToken,
       description,
       customer_email: customerEmail,

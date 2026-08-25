@@ -184,6 +184,7 @@ App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 Solana
+NEXT_PUBLIC_SOLANA_NETWORK=devnet
 NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 Optional dedicated Helius / other RPC:
@@ -196,6 +197,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 MagicBlock / payments (if used in your deployment)
 NEXT_PUBLIC_MAGICBLOCK_API=https://payments.magicblock.app
+MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
 
@@ -221,7 +223,7 @@ Land in Registry / Dashboard
 Register an endpoint or pair a terminal  
 Generate QR / link with settlement address + amount  
 Customer opens checkout → connects wallet → Pay Privately  
-Transfer builds via /api/transfer → sign → confirm  
+Private transfer builds through MagicBlock `/v1/spl/transfer` via `/api/transfer` → sign → confirm
 Merchant sees activity (local feed and/or backend trail)  
 
 3. Developer integration
@@ -231,6 +233,11 @@ Create checkout session / embed HTML
 Point storefront buttons at Opayque checkout URLs  
 
 Security & Privacy Notes
+
+Pay Privately uses MagicBlock Private Payments (PER/TEE) with `visibility: "private"`.
+The Opayque Anchor program provides vault, terminal, nonce, and accounting operations; it is not itself a confidentiality layer.
+The private path hides the sender/amount/recipient relationship according to MagicBlock's privacy guarantees, while any final settlement footprint exposed by MagicBlock remains subject to its network design.
+There is no automatic public-transfer fallback under the Pay Privately action.
 
 Never** commit service-role keys or production secrets.  
 Prefer email+password auth with confirmations disabled only if intentional; do not disable the email provider itself.  

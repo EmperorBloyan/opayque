@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     // 2. Verify against Solana RPC
     const rpcUrl = getSolanaRpcUrl();
     const isDevnet = isDevnetNetwork();
-    const settlementToken = String(session.currency || 'USDC').toUpperCase();
+    const settlementToken = String(session.settlement_token || 'USDC').toUpperCase();
 
     if (settlementToken !== 'USDC') {
       return NextResponse.json({ error: 'Only USDC checkout verification is supported' }, { status: 400 });
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const verification = await verifySolanaTransaction({
       signature: transactionSignature,
       expectedMerchantWallet,
-      expectedAmount: session.amount,
+      expectedAmount: Number(session.amount_token ?? session.amount),
       expectedTokenMint: getAssetMintAddress('USDC', isDevnet),
       expectedTokenDecimals: 6,
       rpcUrl,
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       signature: transactionSignature,
       slot: verification.slot,
       block_time: verification.blockTime ? new Date(verification.blockTime * 1000).toISOString() : null,
-      amount: session.amount,
+      amount: Number(session.amount_token ?? session.amount),
       fee_lamports: verification.fee,
       status: 'finalized'
     }]);
@@ -81,8 +81,10 @@ export async function POST(request: Request) {
       eventType: 'checkout.session.completed',
       payload: {
         sessionId: session.id,
-        amount: session.amount,
+        amount: Number(session.amount_token ?? session.amount),
+        amountFiat: Number(session.amount_fiat ?? session.amount),
         currency: session.currency,
+        settlementToken,
         referenceId: session.reference_id,
         customerEmail: session.customer_email,
         transactionSignature,
