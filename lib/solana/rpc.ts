@@ -1,4 +1,4 @@
-import { Connection } from "@solana/web3.js";
+import { Connection, VersionedTransaction } from "@solana/web3.js";
 
 export interface RpcHealthState {
   isOnline: boolean;
@@ -87,12 +87,12 @@ export async function getRpcHealth(connection: Connection): Promise<RpcHealthSta
 export async function waitForSignatureConfirmation(
   connection: Connection,
   signature: string,
+  validity?: { blockhash: string; lastValidBlockHeight: number },
   timeoutMs = 60_000,
   pollIntervalMs = 1500
 ) {
   const start = Date.now();
-  const latest = await connection.getLatestBlockhash('finalized');
-  const lastValidBlockHeight = latest.lastValidBlockHeight;
+  const lastValidBlockHeight = validity?.lastValidBlockHeight;
 
   while (Date.now() - start < timeoutMs) {
     const statuses = await connection.getSignatureStatuses([signature], {
@@ -111,8 +111,8 @@ export async function waitForSignatureConfirmation(
       }
     }
 
-    const currentBlockHeight = await connection.getBlockHeight();
-    if (currentBlockHeight > lastValidBlockHeight) {
+    const currentBlockHeight = await connection.getBlockHeight('confirmed');
+    if (lastValidBlockHeight !== undefined && currentBlockHeight > lastValidBlockHeight) {
       throw new Error('Transaction expired before confirmation. Please retry.');
     }
 
@@ -120,4 +120,58 @@ export async function waitForSignatureConfirmation(
   }
 
   throw new Error('Transaction confirmation timed out after 60 seconds.');
+}
+
+export interface PaymentTransactionValidity {
+  blockhash: string;
+  lastValidBlockHeight: number;
+}
+
+export interface PaymentSendResult {
+  signature: string;
+  validity: PaymentTransactionValidity;
+}
+
+function isBlockhashError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /blockhash|expired|last valid block height|transaction expiration/i.test(message);
+}
+
+export async function sendAndConfirmPayment(
+  connection: Connection,
+  unsignedTransaction: VersionedTransaction,
+  signTransaction: (transaction: VersionedTransaction) => Promise<VersionedTransaction>,
+  onStage?: (stage: "approving" | "submitting" | "confirming") => void,
+  maxAttempts = 3,
+  sendTransaction?: (transaction: VersionedTransaction, connection: Connection) => Promise<string>
+): Promise<PaymentSendResult> {
+  const serializedUnsigned = unsignedTransaction.serialize();
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const validity = await connection.getLatestBlockhash("confirmed");
+    const transaction = VersionedTransaction.deserialize(serializedUnsigned);
+    transaction.message.recentBlockhash = validity.blockhash;
+
+    try {
+      onStage?.("approving");
+      const signature = sendTransaction
+        ? await sendTransaction(transaction, connection)
+        : await connection.sendRawTransaction((await signTransaction(transaction)).serialize(), {
+            preflightCommitment: "confirmed",
+            maxRetries: 0,
+          });
+      onStage?.("submitting");
+      onStage?.("confirming");
+      await waitForSignatureConfirmation(connection, signature, validity, 90_000);
+      return { signature, validity };
+    } catch (error) {
+      lastError = error;
+      if (!isBlockhashError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Payment failed. Please retry.");
 }

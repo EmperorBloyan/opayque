@@ -135,7 +135,7 @@ export default function ShieldedCheckout({
     }
 
     setStatus("processing");
-    setMessage("Confirming payment...");
+    setMessage("Building transaction...");
     setSuccessSignature(null);
 
     let paymentConnection: Connection | null = null;
@@ -179,39 +179,33 @@ export default function ShieldedCheckout({
       // buildShieldedTransfer returns VersionedTransaction
       if (built.transaction instanceof VersionedTransaction) {
         if (signTransaction) {
-          const signed = await withTimeout(
-            signTransaction(built.transaction as any),
-            30000,
-            "Wallet signature"
+          const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
+          built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
+          setMessage("Approve in your wallet...");
+          const signed = await signTransaction(built.transaction as any);
+          setMessage("Submitting transaction...");
+          signature = await paymentConnection.sendRawTransaction(
+            (signed as VersionedTransaction).serialize(),
+            { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 }
           );
-          signature = await withTimeout(
-            paymentConnection.sendRawTransaction(
-              (signed as VersionedTransaction).serialize(),
-              { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }
-            ),
-            30000,
-            "Transaction submission"
-          );
-          await withTimeout(paymentConnection.confirmTransaction({
+          setMessage("Confirming on Solana...");
+          await paymentConnection.confirmTransaction({
             signature,
-            blockhash: built.blockhash || signed.message.recentBlockhash,
-            lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Payment confirmation");
+            ...freshBlockhash,
+          }, "confirmed");
         } else if (sendTransaction) {
-          signature = await withTimeout(
-            sendTransaction(built.transaction as any, paymentConnection, {
+          setMessage("Approve in your wallet...");
+          signature = await sendTransaction(built.transaction as any, paymentConnection, {
               skipPreflight: false,
               preflightCommitment: "confirmed",
-              maxRetries: 3,
-            }),
-            30000,
-            "Wallet transaction"
-          );
-          await withTimeout(paymentConnection.confirmTransaction({
+              maxRetries: 0,
+            });
+          setMessage("Confirming on Solana...");
+          await paymentConnection.confirmTransaction({
             signature,
             blockhash: built.blockhash || built.transaction.message.recentBlockhash,
             lastValidBlockHeight: built.lastValidBlockHeight,
-          }, "confirmed"), 15000, "Payment confirmation");
+          }, "confirmed");
         } else {
           throw new Error("Wallet cannot sign or send transactions.");
         }
@@ -270,7 +264,11 @@ export default function ShieldedCheckout({
       }
       console.error("Shielded payment failed:", error, { logs: transactionLogs });
       setStatus("error");
-      setMessage(errorMessage);
+      setMessage(
+        /blockhash|expired|timed out|confirmation/i.test(errorMessage)
+          ? "Transaction expired or took too long. Please try again."
+          : errorMessage
+      );
     }
   };
 

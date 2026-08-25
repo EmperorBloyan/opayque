@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   Connection,
+  ComputeBudgetProgram,
   PublicKey,
   TransactionMessage,
   VersionedTransaction,
@@ -66,7 +67,13 @@ export async function POST(request: Request) {
       mintPubkey
     );
 
-    const instructions = [ataInstruction, ...bundle.instructions, ...bundle.cleanupInstructions];
+    const instructions = [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 250_000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5_000 }),
+      ataInstruction,
+      ...bundle.instructions,
+      ...bundle.cleanupInstructions,
+    ];
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const messageV0 = new TransactionMessage({
       payerKey: senderPubkey,
