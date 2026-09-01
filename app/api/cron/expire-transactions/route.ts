@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import * as Sentry from "@/lib/sentry";
 
 const EXPIRY_WINDOW_MS = 15 * 60 * 1000;
 const MAX_BATCH = 500;
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     if (error) throw error;
     return NextResponse.json({ success: true, expired: data?.length ?? 0 });
   } catch (error: unknown) {
+    Sentry.captureException(error);
     console.error("Transaction expiry failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ success: false, error: "Unable to expire transactions" }, { status: 500 });
   }

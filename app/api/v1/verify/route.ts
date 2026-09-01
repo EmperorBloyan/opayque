@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { dispatchWebhookEvent } from '@/lib/webhooks/dispatch';
 import { verifySolanaTransaction } from '@/lib/solana/verify';
 import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from '@/lib/solana/constants';
+import * as Sentry from '@/lib/sentry';
 
 export async function POST(request: Request) {
   const supabaseAdmin = createSupabaseServerClient(request);
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, status: 'completed' });
   } catch (error: unknown) {
+    Sentry.captureException(error);
     console.error('Verification Error:', error instanceof Error ? error.message : 'unknown error');
     return NextResponse.json({ error: 'Unable to verify payment' }, { status: 500 });
   }

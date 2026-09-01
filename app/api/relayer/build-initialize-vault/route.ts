@@ -5,6 +5,7 @@ import idl from "@/lib/idl/opayque.json";
 import { getSolanaRpcUrl } from "@/lib/solana/constants";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
+import * as Sentry from "@/lib/sentry";
 
 const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
@@ -112,6 +113,7 @@ export async function POST(req: Request) {
       network: RPC_URL.includes("mainnet") ? "mainnet-beta" : RPC_URL.includes("testnet") ? "testnet" : "devnet",
     });
   } catch (error: unknown) {
+    Sentry.captureException(error);
     console.error("Vault initialization failed", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ success: false, error: "Unable to initialize vault" }, { status: 500 });
   }

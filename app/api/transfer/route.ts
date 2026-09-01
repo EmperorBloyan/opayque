@@ -4,6 +4,7 @@ import { requestPrivateSplTransfer } from '@/lib/magicblock';
 import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getClientAddress, strictLimit } from '@/lib/rate-limit';
+import * as Sentry from '@/lib/sentry';
 
 const isDevnet = isDevnetNetwork();
 
@@ -103,7 +104,8 @@ export async function POST(request: Request) {
       cluster: getSolanaNetwork() === 'mainnet-beta' ? 'mainnet' : 'devnet',
     });
   } catch (error: unknown) {
-    console.error('Error constructing transaction:', error);
+    Sentry.captureException(error);
+    console.error('Error constructing transaction:', error instanceof Error ? error.message : 'unknown error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

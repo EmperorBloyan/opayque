@@ -11,6 +11,7 @@ import idl from "@/lib/idl/opayque.json";
 import { getSolanaRpcUrl } from "@/lib/solana/constants";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
+import * as Sentry from "@/lib/sentry";
 
 const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
@@ -152,6 +153,7 @@ export async function POST(req: Request) {
       treasury: treasuryPda.toBase58(),
     });
   } catch (error: unknown) {
+    Sentry.captureException(error);
     console.error("Relayer error:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json(
       {

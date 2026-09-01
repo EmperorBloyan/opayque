@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { initiateFiatPayout } from '@/lib/settlement/offramp';
 import * as Sentry from '@/lib/sentry';
+import { getOfframpConfig } from '@/lib/env/server';
 
 export async function POST(req: Request) {
   const auth = req.headers.get('authorization');
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const providerConfigured = Boolean(process.env.OFFRAMP_API_URL && process.env.OFFRAMP_API_KEY);
+    const providerConfigured = !getOfframpConfig().error;
     if (!providerConfigured) {
       return NextResponse.json({ success: true, processed: 0, reason: 'not_configured', results: [] });
     }

@@ -17,7 +17,6 @@ export function getOfframpConfig(): { config?: OfframpConfig; error?: string } {
 }
 
 export function getStaffTerminalPin(): string | null {
-  const pin = process.env.NEXT_PUBLIC_STAFF_TERMINAL_PIN;
-  if (!pin) return null;
-  return pin.trim().toUpperCase();
+  const pin = process.env.STAFF_TERMINAL_PIN;
+  return pin?.trim().toUpperCase() || null;
 }

@@ -276,6 +276,24 @@ Set the same env vars as local (production values)
 Deploy production  
 Point NEXT_PUBLIC_APP_URL at the production domain  
 
+Production checklist
+
+- [x] `.env.example` documents public and server-only variables; service-role, relayer, cron, MagicBlock, Upstash, off-ramp, and Sentry auth credentials are server-only.
+- [x] TypeScript, unit tests, and the Next production build pass locally with bounded Node memory.
+- [x] `/api/health` checks the configured Solana RPC and Supabase connectivity without returning provider details.
+- [x] Critical transfer, verification, relayer, and cron failures are captured by Sentry without logging request secrets.
+- [ ] Configure Vercel Preview with devnet RPC/mint and Production with mainnet RPC/mint only when mainnet gates are complete.
+- [ ] Verify the MagicBlock private path on devnet with a real provider response and correct send RPC.
+- [ ] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
+- [ ] Apply and verify Supabase migrations/RLS in the production project.
+- [ ] Configure and verify Upstash distributed rate limiting in each deployed environment.
+- [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
+- [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
+
+Preview and Production environments
+
+Use separate Vercel environment values. Preview should use `NEXT_PUBLIC_SOLANA_NETWORK=devnet`, a devnet RPC, devnet USDC, and non-production relayer/provider credentials. Production should remain disabled for mainnet merchants until every unchecked gate above is verified; when enabled, use `mainnet-beta`, a mainnet RPC, mainnet USDC, and separate rotated secrets. Never reuse Preview secrets in Production.
+
 Post-deploy checks
 [ ] Login binds merchant session  
 [ ] Registry loads without infinite “verifying”  
