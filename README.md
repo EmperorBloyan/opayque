@@ -187,6 +187,7 @@ Solana
 NEXT_PUBLIC_SOLANA_NETWORK=devnet
 NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+NEXT_PUBLIC_SOLANA_RPC_FALLBACK_URL=https://your-secondary-rpc.example.com
 Optional dedicated Helius / other RPC:
 NEXT_PUBLIC_SOLANA_RPC_URL=https://devnet.helius-rpc.com/?api-key=YOUR_KEY
 
@@ -204,6 +205,7 @@ NEXT_PUBLIC_MAGICBLOCK_API=https://payments.magicblock.app
 MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
+Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
 
 Auth matrix and product boundaries
 

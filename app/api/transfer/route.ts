@@ -106,9 +106,17 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     Sentry.captureException(error);
     console.error('Error constructing transaction:', error instanceof Error ? error.message : 'unknown error');
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    const status = /timed out|timeout/i.test(message)
+      ? 504
+      : /invalid public key|invalid.*amount|missing/i.test(message)
+        ? 400
+        : /rpc|magicblock|tee|upstream|network/i.test(message)
+          ? 502
+          : 500;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
-      { status: 500 }
+      { error: message },
+      { status }
     );
   }
 }

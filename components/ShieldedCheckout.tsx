@@ -8,8 +8,9 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
-import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
 import { sendPayment } from "@/lib/solana/sendPayment";
+import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -114,6 +115,16 @@ export default function ShieldedCheckout({
     return () => window.clearTimeout(timer);
   }, [status, countdown]);
 
+  useEffect(() => {
+    const pending = readPendingPayment();
+    const currentIntent = transactionId || checkoutSessionId || "";
+    if (pending && pending.intentId === currentIntent) {
+      clearPendingPayment(currentIntent);
+      setStatus("error");
+      setMessage("A previous payment was interrupted before completion. Please try again.");
+    }
+  }, [checkoutSessionId, transactionId]);
+
   const handlePayment = async () => {
     if (isLocked) return;
 
@@ -138,12 +149,19 @@ export default function ShieldedCheckout({
     setStatus("processing");
     setMessage("Building transaction...");
     setSuccessSignature(null);
+    const intentId = transactionId || checkoutSessionId || "";
+    writePendingPayment({
+      intentId,
+      sender: publicKey.toBase58(),
+      recipient: safeMerchantPubkey,
+      amount: safeAmount,
+      phase: "building",
+      startedAt: Date.now(),
+    });
 
     let paymentConnection: Connection | null = null;
     try {
-      const rpc = process.env.NEXT_PUBLIC_RPC_URL ||
-        process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-        "https://api.devnet.solana.com";
+      const rpc = getSolanaRpcUrl();
       const connection = new Connection(rpc, "confirmed");
       const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
@@ -186,6 +204,7 @@ export default function ShieldedCheckout({
       if (built.transaction instanceof VersionedTransaction || built.transaction instanceof Transaction) {
         if (signTransaction && built.transaction instanceof VersionedTransaction) {
           setMessage("Approve in your wallet...");
+          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
           signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
           setMessage("Payment confirmed on Solana.");
         } else if (signTransaction) {
@@ -198,6 +217,7 @@ export default function ShieldedCheckout({
             built.transaction.feePayer = publicKey;
           }
           setMessage("Approve in your wallet...");
+          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
           const signed = await signTransaction(built.transaction as any);
           setMessage("Submitting transaction...");
           signature = await paymentConnection.sendRawTransaction(
@@ -219,6 +239,7 @@ export default function ShieldedCheckout({
             built.transaction.feePayer = publicKey;
           }
           setMessage("Approve in your wallet...");
+          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
           signature = await sendTransaction(built.transaction as any, paymentConnection, {
               skipPreflight: false,
               preflightCommitment: "confirmed",
@@ -239,6 +260,7 @@ export default function ShieldedCheckout({
       if (!signature) {
         throw new Error("Transaction was not signed or submitted.");
       }
+      writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "submitted", signature, startedAt: Date.now() });
 
       if (transactionId) {
         const settleResponse = await fetch(`/api/terminal/payments/${encodeURIComponent(transactionId)}/settle`, {
@@ -273,6 +295,7 @@ export default function ShieldedCheckout({
       });
 
       setSuccessSignature(signature);
+      clearPendingPayment(intentId);
       setStatus("success");
       setMessage("Payment confirmed. Returning to wallet...");
       setCountdown(5);
@@ -286,6 +309,7 @@ export default function ShieldedCheckout({
         }
       }
       console.error("Shielded payment failed:", error, { logs: transactionLogs });
+      clearPendingPayment(intentId);
       setStatus("error");
       setMessage(
         /blockhash|expired|timed out|confirmation/i.test(errorMessage)

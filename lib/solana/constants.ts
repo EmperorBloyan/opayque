@@ -6,6 +6,13 @@ export const SOLANA_TESTNET_RPC = "https://api.testnet.solana.com";
 
 export type SolanaNetwork = "mainnet-beta" | "testnet" | "devnet";
 
+export interface SolanaNetworkConfig {
+  network: SolanaNetwork;
+  rpcUrls: string[];
+  isMainnet: boolean;
+  isSandbox: boolean;
+}
+
 export function getSolanaNetwork(): SolanaNetwork {
   const configured = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
   if (configured === "mainnet-beta" || configured === "testnet" || configured === "devnet") {
@@ -15,15 +22,37 @@ export function getSolanaNetwork(): SolanaNetwork {
 }
 
 export function getSolanaRpcUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_RPC_URL?.trim() || process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim();
-  if (configured) return configured;
+  return getSolanaRpcUrls()[0];
+}
+
+export function getSolanaRpcUrls(): string[] {
+  const configured = [
+    process.env.NEXT_PUBLIC_RPC_URL,
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
+    process.env.NEXT_PUBLIC_SOLANA_RPC_FALLBACK_URL,
+  ].map((url) => url?.trim()).filter((url): url is string => Boolean(url));
+  if (configured.length > 0) return [...new Set(configured)];
 
   const network = getSolanaNetwork();
-  return network === "mainnet-beta" ? SOLANA_MAINNET_RPC : network === "testnet" ? SOLANA_TESTNET_RPC : SOLANA_DEVNET_RPC;
+  return [network === "mainnet-beta" ? SOLANA_MAINNET_RPC : network === "testnet" ? SOLANA_TESTNET_RPC : SOLANA_DEVNET_RPC];
 }
 
 export function isDevnetNetwork(): boolean {
   return getSolanaNetwork() !== "mainnet-beta";
+}
+
+export function isMainnetNetwork(): boolean {
+  return getSolanaNetwork() === "mainnet-beta";
+}
+
+export function getSolanaNetworkConfig(): SolanaNetworkConfig {
+  const network = getSolanaNetwork();
+  return {
+    network,
+    rpcUrls: getSolanaRpcUrls(),
+    isMainnet: network === "mainnet-beta",
+    isSandbox: network !== "mainnet-beta",
+  };
 }
 
 export interface AssetMintConfig {
