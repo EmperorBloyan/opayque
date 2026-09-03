@@ -63,18 +63,14 @@ export default function VaultDashboard() {
   }, [transactions]);
 
   useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
     try {
-      const supabase = createSupabaseBrowserClient();
-
       const seedTransactions = async (merchantId: string) => {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('merchant_id', merchantId)
-          .order('created_at', { ascending: false })
-          .limit(20);
+        const response = await fetch('/api/merchant/activity?page=1&pageSize=20', { credentials: 'include', cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        const data = response.ok ? payload.data : null;
 
-        if (!error && Array.isArray(data)) {
+        if (Array.isArray(data)) {
           const mapped = data.map((row: any) => ({
             id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
             staff: row.source_name ?? (row.terminal_id ? 'Merchant Terminal' : 'System'),

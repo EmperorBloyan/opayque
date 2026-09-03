@@ -90,6 +90,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment recipient does not match the merchant intent" }, { status: 400 });
     }
 
+    const ledgerIntent = transactionIntent.data || (await supabase
+      .from("transactions")
+      .select("id, merchant_id, status")
+      .eq("checkout_session_id", intent_id)
+      .maybeSingle()).data;
+
     const privateTransfer = await requestPrivateSplTransfer({
       sender: senderPubkey.toBase58(),
       recipient: recipientPubkey.toBase58(),
@@ -97,6 +103,16 @@ export async function POST(request: Request) {
       amountBaseUnits,
       memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
+    if (ledgerIntent?.id) {
+      const { data: updatedIntent, error: intentUpdateError } = await supabase
+        .from("transactions")
+        .update({ status: "pending_signature", sender_address: senderPubkey.toBase58(), recipient_address: recipientPubkey.toBase58(), amount_base_units: amountBaseUnits, mint: mintAddress, updated_at: new Date().toISOString() })
+        .eq("id", ledgerIntent.id)
+        .in("status", ["created", "pending_signature"])
+        .select("id, merchant_id, amount, amount_base_units, mint, sender_address, recipient_address, signature, status, environment, created_at, updated_at")
+        .maybeSingle();
+      if (intentUpdateError) throw intentUpdateError;
+    }
     logLifecycle("info", "private_transfer", "submit_ready", getSolanaNetwork());
 
     return NextResponse.json({

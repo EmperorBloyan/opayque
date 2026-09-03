@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import * as Sentry from "@/lib/sentry";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 const EXPIRY_WINDOW_MS = 15 * 60 * 1000;
 const MAX_BATCH = 500;
@@ -19,9 +20,15 @@ export async function POST(request: Request) {
       .in("status", ["created", "pending_signature", "submitted"])
       .lt("updated_at", cutoff)
       .limit(MAX_BATCH)
-      .select("id");
+      .select("*");
 
     if (error) throw error;
+    await Promise.all((data ?? []).map((row: any) => dispatchWebhookEvent({
+      merchantId: row.merchant_id,
+      environment: row.environment === "mainnet" ? "mainnet" : "sandbox",
+      eventType: "payment.expired",
+      payload: row,
+    })));
     return NextResponse.json({ success: true, expired: data?.length ?? 0 });
   } catch (error: unknown) {
     Sentry.captureException(error);

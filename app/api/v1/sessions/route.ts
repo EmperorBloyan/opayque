@@ -4,6 +4,9 @@ import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getSolanaNetwork } from "@/lib/solana/constants";
+import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -151,6 +154,24 @@ export async function POST(request: Request) {
       );
     }
 
+    const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotency_key);
+    if (idempotencyKey) {
+      const { data: existing } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("merchant_id", auth.merchantId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (existing?.checkout_session_id) {
+        const { data: existingSession } = await supabase
+          .from("checkout_sessions")
+          .select("id, solana_pay_url")
+          .eq("id", existing.checkout_session_id)
+          .maybeSingle();
+        return NextResponse.json({ success: true, payment_intent_id: existing.checkout_session_id, session_id: existing.checkout_session_id, payment_url: existingSession?.solana_pay_url || "", idempotent: true, transaction: existing });
+      }
+    }
+
     const merchantName = String(merchant.merchant_name || "Opayque Merchant").trim();
     const sessionId = crypto.randomUUID();
     const origin = getRequestOrigin(request);
@@ -186,10 +207,31 @@ export async function POST(request: Request) {
       },
     ]);
 
-    // Do not hard-fail payment link if session table insert fails
     if (insertError) {
-      console.warn("checkout_sessions insert failed:", insertError.message);
+      return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
     }
+
+    const { data: transaction, error: transactionError } = await supabase
+      .from("transactions")
+      .insert({
+        merchant_id: auth.merchantId,
+        checkout_session_id: sessionId,
+        amount: Number(settlementAmount.toFixed(6)),
+        amount_base_units: Math.round(settlementAmount * 1_000_000),
+        mint: getAssetMintAddress("USDC", isDevnetNetwork()),
+        token_symbol: "USDC",
+        recipient_address: merchantWallet,
+        memo: description.slice(0, 256),
+        environment: auth.environment,
+        idempotency_key: idempotencyKey,
+        status: "created",
+      })
+      .select("*")
+      .maybeSingle();
+    if (transactionError || !transaction) {
+      return NextResponse.json({ error: "Failed to create payment ledger intent" }, { status: 500 });
+    }
+    await dispatchWebhookEvent({ merchantId: auth.merchantId, environment: auth.environment === "mainnet" ? "mainnet" : "sandbox", eventType: "payment.created", payload: transaction });
 
     return NextResponse.json({
       success: true,
@@ -203,6 +245,7 @@ export async function POST(request: Request) {
       description,
       customer_email: customerEmail,
       network: "Solana",
+      transaction,
     });
   } catch (error) {
     console.error("POST /api/v1/sessions error:", error);

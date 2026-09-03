@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { assertProductionConfig, getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from "@/lib/solana/constants";
 import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -73,12 +74,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     if (!verification.verified) {
+      const { data: failed } = await supabase
+        .from("transactions")
+        .update({ status: "failed", failed_reason: verification.reason, updated_at: new Date().toISOString() })
+        .eq("id", transactionId)
+        .eq("status", "submitted")
+        .select("*")
+        .maybeSingle();
+      if (failed) await dispatchWebhookEvent({ merchantId: failed.merchant_id, environment: getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox", eventType: "payment.failed", payload: failed });
       return NextResponse.json({ success: false, error: "On-chain payment verification failed", details: verification.reason }, { status: 400 });
     }
 
     const { data: updated, error: updateError } = await supabase
       .from("transactions")
-      .update({ signature, status: "confirmed", updated_at: new Date().toISOString() })
+      .update({ signature, status: "confirmed", confirmed_at: new Date().toISOString(), reconciliation_status: "matched", updated_at: new Date().toISOString() })
       .eq("id", transactionId)
       .in("status", ["created", "pending_signature", "submitted"])
       .select("id, status, signature")
@@ -99,6 +108,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
       return NextResponse.json({ success: false, error: "Terminal transaction was updated by another request" }, { status: 409 });
     }
+
+    await dispatchWebhookEvent({
+      merchantId: updated.merchant_id,
+      environment: getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox",
+      eventType: "payment.confirmed",
+      payload: updated,
+    });
 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (error) {

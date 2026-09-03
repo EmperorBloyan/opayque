@@ -85,6 +85,15 @@ export async function POST(request: Request) {
       .eq('id', sessionId)
       .in('status', ['created', 'pending', 'pending_signature', 'submitted']);
 
+    const { data: ledger } = await supabaseAdmin
+      .from('transactions')
+      .update({ status: 'confirmed', signature: transactionSignature, confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString(), reconciliation_status: 'matched' })
+      .eq('checkout_session_id', session.id)
+      .in('status', ['created', 'pending_signature', 'submitted'])
+      .select('*')
+      .maybeSingle();
+    if (ledger) await dispatchWebhookEvent({ merchantId: ledger.merchant_id, environment: ledger.environment === 'mainnet' ? 'mainnet' : 'sandbox', eventType: 'payment.confirmed', payload: ledger });
+
     // 5. Dispatch Webhook to the Merchant
     await dispatchWebhookEvent({
       merchantId: session.merchant_id,
