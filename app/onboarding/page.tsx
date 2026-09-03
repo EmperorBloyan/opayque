@@ -51,6 +51,28 @@ export default function OnboardingPage() {
   const [isSigningWallet, setIsSigningWallet] = useState(false);
   const [isInitVault, setIsInitVault] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [setupNotice, setSetupNotice] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    setSetupNotice(params.get("setup") === "1");
+    setCompanyName(window.localStorage.getItem("merchant_name")?.trim() || "");
+    setLogoPreview(
+      window.localStorage.getItem("merchant_logo")?.trim() ||
+        window.localStorage.getItem("merchant_avatar")?.trim() ||
+        null
+    );
+    setWalletAddress(window.localStorage.getItem("settlement_wallet_address")?.trim() || "");
+    setWebhookUrl(window.localStorage.getItem("webhook_url")?.trim() || "");
+    setEmail(window.localStorage.getItem("merchant_email")?.trim() || "");
+
+    void createClient().auth.getUser().then(({ data }) => {
+      const authenticatedEmail = data.user?.email?.trim();
+      if (authenticatedEmail) setEmail(authenticatedEmail);
+    });
+  }, []);
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -501,6 +523,11 @@ export default function OnboardingPage() {
               Connect wallet, sign ownership, initialize gasless vault, then
               create your account.
             </p>
+            {setupNotice && (
+              <div className="mt-4 w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                Please complete setup for this account.
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

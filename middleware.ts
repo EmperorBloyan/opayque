@@ -73,6 +73,7 @@ export async function middleware(request: NextRequest) {
   if (user && !isOnboardingPage && isProtectedRoute && !merchant) {
     const redirectUrl = new URL("/onboarding", request.url);
     redirectUrl.searchParams.set("next", request.nextUrl.pathname);
+    redirectUrl.searchParams.set("setup", "1");
     return NextResponse.redirect(redirectUrl);
   }
 

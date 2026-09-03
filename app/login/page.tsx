@@ -45,6 +45,7 @@ function LoginContent() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [setupRequired, setSetupRequired] = useState(false);
 
   useEffect(() => {
     setMerchantName(getSavedMerchantName());
@@ -77,6 +78,7 @@ function LoginContent() {
     event.preventDefault();
     setError(null);
     setMessage(null);
+    setSetupRequired(false);
     setIsLoading(true);
 
     try {
@@ -139,6 +141,12 @@ function LoginContent() {
           );
         }
 
+        if (!bound) {
+          setSetupRequired(true);
+          setMessage(null);
+          return;
+        }
+
         const next = searchParams.get("next");
         const destination =
           next && next.startsWith("/")
@@ -147,11 +155,6 @@ function LoginContent() {
 
         if (typeof window !== "undefined") {
           window.localStorage.removeItem("opayque_next_route");
-          if (!bound) {
-            console.warn(
-              "Login succeeded but merchant session was not bound. Check /api/v1/merchant."
-            );
-          }
           // Hard navigation so mobile doesn't soft-fail and stay on login
           window.location.assign(destination);
           return;
@@ -163,7 +166,7 @@ function LoginContent() {
         setMessage("Signed in successfully. Redirecting…");
       }
     } catch (err: any) {
-      setError(err?.message || "Unable to sign in. Please try again.");
+      setError("Invalid email or password. Please check your credentials and try again.");
     } finally {
       setIsLoading(false);
     }
@@ -262,6 +265,23 @@ function LoginContent() {
               {error && (
                 <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {error}
+                </div>
+              )}
+              {setupRequired && (
+                <div className="rounded-3xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  <p>This account does not have a merchant profile yet. Please complete setup.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextTarget = getRedirectTarget("/vault/registry");
+                      goToDestination(`/onboarding?setup=1&next=${encodeURIComponent(nextTarget)}`);
+                    }}
+                    disabled={isNavigating}
+                    className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Complete Setup
+                  </button>
                 </div>
               )}
               {message && (
