@@ -19,6 +19,7 @@ import {
   Check,
   ShieldCheck,
   Lock,
+  LogOut,
 } from "lucide-react";
 
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
@@ -241,7 +242,11 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     handleVaultEntrance();
   }, []);
 
-  const handleLockHub = async () => {
+  const handleLockHub = () => {
+    router.push("/");
+  };
+
+  const handleSignOut = async () => {
     if (isLocking) return;
     setIsLocking(true);
 
@@ -355,7 +360,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
 
             <button
               type="button"
-              onClick={() => void handleLockHub()}
+              onClick={handleLockHub}
               disabled={isLocking}
               className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white disabled:opacity-50"
             >
@@ -465,6 +470,15 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   className="inline-flex w-full justify-center rounded-[1.8rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:bg-purple-500 hover:brightness-110"
                 >
                   Save Profile
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  disabled={isLocking}
+                  className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <LogOut size={14} /> {isLocking ? "Signing out..." : "Sign out"}
                 </button>
               </div>
             </div>

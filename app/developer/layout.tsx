@@ -14,9 +14,7 @@ import {
   Globe,
   Building2
 } from "lucide-react";
-import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
-import { createClient } from "@/lib/supabase/client";
 
 export default function DeveloperLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -85,23 +83,8 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     };
   }, []);
 
-  const lockDeveloperHub = async () => {
-    const supabase = createClient();
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.warn("Supabase sign-out failed during developer lock", error);
-    }
-
-    clearActiveSession();
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem("merchant_name");
-      window.localStorage.removeItem("merchant_logo");
-      window.localStorage.removeItem("merchant_email");
-      window.localStorage.removeItem("settlement_wallet_address");
-      window.localStorage.setItem("opayque_next_route", "/developer/overview");
-    }
-    router.push("/login?next=%2Fdeveloper%2Foverview");
+  const lockDeveloperHub = () => {
+    router.push("/");
   };
 
   return (

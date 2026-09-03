@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import { clearActiveSession, createSessionChallenge, createTerminalSession, getA
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
 import { getAssetMintAddress } from "@/lib/solana/constants";
 import { PublicKey } from "@solana/web3.js";
+import { createClient } from "@/lib/supabase/client";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") {
@@ -178,6 +179,24 @@ export default function UnifiedLanding() {
     }
   };
 
+  const handleAccessVault = async () => {
+    setAuthError(null);
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) {
+      router.push(`/login?next=${encodeURIComponent("/vault")}`);
+      return;
+    }
+    router.push("/vault");
+  };
+
+  const handleDeveloperDashboard = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.getSession();
+    router.push(error || !data.session ? "/login?next=%2Fdeveloper%2Foverview" : "/developer/overview");
+  };
+
   if (!mounted) return null;
 
   return (
@@ -226,13 +245,7 @@ export default function UnifiedLanding() {
 
               <button
                 type="button"
-                onClick={() => {
-                  const nextRoute = "/vault/registry";
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem("opayque_next_route", nextRoute);
-                  }
-                  router.push(`/login?next=${encodeURIComponent(nextRoute)}`);
-                }}
+                onClick={() => void handleAccessVault()}
                 className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
               >
                 Access Vault
@@ -277,7 +290,8 @@ export default function UnifiedLanding() {
 
               <div className="flex gap-3">
                 <Link
-                  href={`/login?next=${encodeURIComponent("/developer/overview")}`}
+                  href="/developer/overview"
+                  onClick={(event) => void handleDeveloperDashboard(event)}
                   className="flex-1"
                 >
                   <button className="w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
