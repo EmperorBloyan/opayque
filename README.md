@@ -207,6 +207,9 @@ MagicBlock / payments (if used in your deployment)
 NEXT_PUBLIC_MAGICBLOCK_API=https://payments.magicblock.app
 MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
+Operations
+CRON_SECRET=your_server_only_cron_secret
+
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
 Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
 Production mainnet server paths fail configuration validation when the dedicated RPC, MagicBlock endpoint/key, relayer key, or Supabase server configuration is missing. The priority-fee variables are optional production tuning knobs; invalid values use bounded safe defaults.
@@ -253,7 +256,14 @@ Register an endpoint or pair a terminal
 Generate QR / link with settlement address + amount  
 Customer opens checkout → connects wallet → Pay Privately  
 Private transfer builds through MagicBlock `/v1/spl/transfer` via `/api/transfer` → sign → confirm
-Merchant sees activity (local feed and/or backend trail)  
+Merchant activity is read from the durable database ledger through `/api/merchant/activity`; local activity storage is optional optimistic cache only.
+
+Payment ledger operations
+
+- Terminal and API checkout creation persist `transactions` rows with idempotency support through the `Idempotency-Key` header.
+- Wallet confirmation is recorded through `POST /api/v1/payments/confirm`; existing checkout verification and terminal settlement also update the ledger.
+- Payment status webhooks are emitted after committed transitions (`payment.created`, `payment.submitted`, `payment.confirmed`, `payment.failed`, and `payment.expired`).
+- `POST /api/cron/expire-transactions` expires stale intents, while `POST /api/cron/reconcile-payments` checks signed rows against Solana and flags mismatches without rewriting confirmed amounts.
 
 3. Developer integration
 Unlock Developer Hub  
@@ -297,6 +307,7 @@ Production checklist
 - [ ] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
 - [ ] Apply and verify Supabase migrations/RLS in the production project.
 - [ ] Configure and verify Upstash distributed rate limiting in each deployed environment.
+- [ ] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
 - [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
 - [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
 
