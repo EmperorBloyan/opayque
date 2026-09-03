@@ -28,6 +28,7 @@ export async function sendPayment(
   unsigned: VersionedTransaction,
   signTransaction: (transaction: VersionedTransaction) => Promise<VersionedTransaction>,
   timeoutMs = 90_000,
+  onStage?: (stage: "approving" | "submitting" | "confirming") => void,
 ): Promise<string> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const validity = await withTimeout(connection.getLatestBlockhash("confirmed"), 10_000, "Blockhash request");
@@ -36,6 +37,7 @@ export async function sendPayment(
 
     let signed: VersionedTransaction;
     try {
+      onStage?.("approving");
       signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
     } catch (error) {
       if (isWalletRejection(error)) throw new UserRejectedError();
@@ -59,6 +61,7 @@ export async function sendPayment(
           preflightCommitment: "confirmed",
           maxRetries: 0,
         }), 20_000, "Transaction submission");
+      onStage?.("submitting");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/blockhash|expired|last valid block/i.test(message) && attempt === 0) continue;
@@ -73,6 +76,7 @@ export async function sendPayment(
         10_000,
         "Transaction status request"
       )).value[0];
+      onStage?.("confirming");
       if (status?.err) throw new PaymentRpcError(JSON.stringify(status.err));
       if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return signature;
       if (await withTimeout(connection.getBlockHeight("confirmed"), 10_000, "Block height request") > validity.lastValidBlockHeight) {

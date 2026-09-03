@@ -1,5 +1,6 @@
 import { Connection, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
-import { getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { getPriorityFeeConfig } from "@/lib/solana/priorityFee";
 
 export const PAYMENTS_API =
   process.env.NEXT_PUBLIC_MAGICBLOCK_API || "https://payments.magicblock.app";
@@ -11,6 +12,8 @@ const RPC_ENDPOINT =
 const connection = new Connection(RPC_ENDPOINT, "confirmed");
 const isDevnet = isDevnetNetwork();
 export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", isDevnet));
+let magicBlockUnavailableUntil = 0;
+let consecutiveFailures = 0;
 
 function base64ToUint8Array(base64: string): Uint8Array {
   if (!base64 || typeof base64 !== "string") {
@@ -63,7 +66,13 @@ export async function requestPrivateSplTransfer({
   amountBaseUnits: number;
   memo?: string;
 }): Promise<{ transaction: string; blockhash?: string; lastValidBlockHeight?: number; rpcUrl?: string }> {
+  assertProductionConfig();
+  if (Date.now() < magicBlockUnavailableUntil) {
+    throw new Error("Private transfer service is temporarily unavailable; please retry shortly.");
+  }
+  console.info(JSON.stringify({ event: "private_transfer", stage: "build", network: getSolanaNetwork() }));
   const endpoint = `${PAYMENTS_API.replace(/\/$/, "")}/v1/spl/transfer`;
+  const priorityFee = getPriorityFeeConfig();
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
     headers: {
@@ -87,6 +96,8 @@ export async function requestPrivateSplTransfer({
       minDelayMs: 0,
       maxDelayMs: 0,
       split: 1,
+      computeUnitLimit: priorityFee.computeUnitLimit,
+      priorityFeeMicroLamports: priorityFee.microLamports,
       cluster: getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "devnet",
     }),
   }, 25000);
@@ -97,9 +108,15 @@ export async function requestPrivateSplTransfer({
     : payload?.transactionBase64 || payload?.transaction || payload?.serializedTransaction || payload?.data?.transactionBase64 || payload?.data?.transaction;
 
   if (!response.ok || typeof transaction !== "string" || transaction.length === 0) {
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= 3) magicBlockUnavailableUntil = Date.now() + 30_000;
     const detail = payload?.error || payload?.message || `MagicBlock private transfer failed (HTTP ${response.status})`;
     throw new Error(String(detail));
   }
+
+  consecutiveFailures = 0;
+  magicBlockUnavailableUntil = 0;
+  console.info(JSON.stringify({ event: "private_transfer", stage: "build_ready", network: getSolanaNetwork() }));
 
   return {
     transaction,
