@@ -1,10 +1,49 @@
 import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { getSolanaRpcUrls } from "./constants";
 
 export interface RpcHealthState {
   isOnline: boolean;
   rpcLatency: number | null;
   retrying: boolean;
   attempts: number;
+}
+
+export interface RpcProbeResult {
+  url: string;
+  ok: boolean;
+  latencyMs: number | null;
+  slot: number | null;
+  error?: string;
+}
+
+const unhealthyUntil = new Map<string, number>();
+
+export async function probeRpc(url: string, timeoutMs = 5_000): Promise<RpcProbeResult> {
+  const startedAt = Date.now();
+  try {
+    const connection = new Connection(url, "confirmed");
+    const slot = await Promise.race([
+      connection.getSlot("confirmed"),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("RPC probe timed out")), timeoutMs)),
+    ]);
+    unhealthyUntil.delete(url);
+    return { url, ok: true, latencyMs: Date.now() - startedAt, slot };
+  } catch (error) {
+    unhealthyUntil.set(url, Date.now() + 30_000);
+    return { url, ok: false, latencyMs: null, slot: null, error: error instanceof Error ? error.message : "RPC probe failed" };
+  }
+}
+
+export async function probeSolanaRpcs(urls = getSolanaRpcUrls()): Promise<RpcProbeResult[]> {
+  return Promise.all([...new Set(urls)].map((url) => probeRpc(url)));
+}
+
+export async function selectHealthyRpcUrl(urls = getSolanaRpcUrls()): Promise<string> {
+  const candidates = [...new Set(urls)].filter((url) => (unhealthyUntil.get(url) ?? 0) <= Date.now());
+  const results = await probeSolanaRpcs(candidates.length > 0 ? candidates : urls);
+  const healthy = results.filter((result) => result.ok).sort((left, right) => (left.latencyMs ?? Infinity) - (right.latencyMs ?? Infinity));
+  if (healthy[0]) return healthy[0].url;
+  throw new Error("No healthy Solana RPC endpoint is available");
 }
 
 export interface RetryableRpcRequestOptions<T> {

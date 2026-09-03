@@ -37,6 +37,40 @@ export function getSolanaRpcUrls(): string[] {
   return [network === "mainnet-beta" ? SOLANA_MAINNET_RPC : network === "testnet" ? SOLANA_TESTNET_RPC : SOLANA_DEVNET_RPC];
 }
 
+export interface ProductionConfigIssue {
+  key: string;
+  message: string;
+}
+
+export function getProductionConfigIssues(): ProductionConfigIssue[] {
+  if (process.env.NODE_ENV !== "production" || !isMainnetNetwork()) return [];
+
+  const issues: ProductionConfigIssue[] = [];
+  if (!process.env.NEXT_PUBLIC_RPC_URL?.trim() && !process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) {
+    issues.push({ key: "NEXT_PUBLIC_RPC_URL", message: "A dedicated mainnet RPC URL is required" });
+  }
+  if (!process.env.NEXT_PUBLIC_MAGICBLOCK_API?.trim()) {
+    issues.push({ key: "NEXT_PUBLIC_MAGICBLOCK_API", message: "MagicBlock private transfer API is required" });
+  }
+  if (!process.env.MAGICBLOCK_API_KEY?.trim()) {
+    issues.push({ key: "MAGICBLOCK_API_KEY", message: "MagicBlock API authentication is required" });
+  }
+  if (!process.env.RELAYER_PRIVATE_KEY?.trim()) {
+    issues.push({ key: "RELAYER_PRIVATE_KEY", message: "Relayer signing key is required" });
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    issues.push({ key: "SUPABASE_SERVICE_ROLE_KEY", message: "Server-side Supabase configuration is required" });
+  }
+  return issues;
+}
+
+export function assertProductionConfig(): void {
+  const issues = getProductionConfigIssues();
+  if (issues.length > 0) {
+    throw new Error(`Production configuration is incomplete: ${issues.map((issue) => issue.message).join("; ")}`);
+  }
+}
+
 export function isDevnetNetwork(): boolean {
   return getSolanaNetwork() !== "mainnet-beta";
 }
