@@ -210,6 +210,7 @@ MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
 Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
 Production mainnet server paths fail configuration validation when the dedicated RPC, MagicBlock endpoint/key, relayer key, or Supabase server configuration is missing. The priority-fee variables are optional production tuning knobs; invalid values use bounded safe defaults.
+Payment-critical server routes probe configured RPCs, prefer the lowest-latency healthy endpoint, and temporarily cool down failed endpoints before trying them again. `/api/health` reports cluster and RPC readiness using endpoint hosts only, never credential-bearing query strings.
 
 Auth matrix and product boundaries
 
