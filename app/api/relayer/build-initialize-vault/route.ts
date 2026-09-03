@@ -3,11 +3,12 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@sol
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
 import { getSolanaRpcUrl } from "@/lib/solana/constants";
+import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
 import * as Sentry from "@/lib/sentry";
+import { getComputeBudgetInstructions } from "@/lib/solana/priorityFee";
 
-const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID || "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
@@ -18,7 +19,6 @@ export async function POST(req: Request) {
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = await req.json();
 
     const rateLimit = await strictLimit(`relayer:init:ip:${getClientAddress(req)}`, true);
-    if (!rateLimit.allowed) {
       return NextResponse.json({ success: false, error: rateLimit.error || "Too many initialization requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     }
 
@@ -40,7 +40,8 @@ export async function POST(req: Request) {
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
     const merchant = new PublicKey(merchantPublicKey);
 
-    const connection = new Connection(RPC_URL, "processed");
+    const rpcUrl = await selectHealthyRpcUrl();
+    const connection = new Connection(rpcUrl, "processed");
 
     const wallet = {
       publicKey: relayerKeypair.publicKey,
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
         systemProgram: SystemProgram.programId,
       })
       .transaction();
+    tx.instructions.unshift(...getComputeBudgetInstructions());
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
     
@@ -109,8 +111,8 @@ export async function POST(req: Request) {
       transaction: serialized.toString("base64"),
       blockhash,
       lastValidBlockHeight,
-      rpcUrl: RPC_URL,
-      network: RPC_URL.includes("mainnet") ? "mainnet-beta" : RPC_URL.includes("testnet") ? "testnet" : "devnet",
+      rpcUrl,
+      network: rpcUrl.includes("mainnet") ? "mainnet-beta" : rpcUrl.includes("testnet") ? "testnet" : "devnet",
     });
   } catch (error: unknown) {
     Sentry.captureException(error);

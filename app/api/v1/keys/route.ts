@@ -2,6 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
+import { getClientAddress, strictLimit } from '@/lib/rate-limit';
+import { getSolanaNetwork } from '@/lib/solana/constants';
 
 async function getSupabaseClient() {
   const cookieStore = await cookies();
@@ -70,6 +72,8 @@ export async function GET() {
 
 // POST create real key only
 export async function POST(request: Request) {
+  const rateLimit = await strictLimit(`keys:create:${getClientAddress(request)}`, true);
+  if (!rateLimit.allowed) return NextResponse.json({ error: rateLimit.error || 'Too many key creation requests' }, { status: rateLimit.error ? 503 : 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } });
   const supabase = await getSupabaseClient();
 
   const {
@@ -91,6 +95,9 @@ export async function POST(request: Request) {
   const rawEnv = body.environment || 'sandbox';
   const environment =
     rawEnv === 'mainnet' || rawEnv === 'live' ? 'mainnet' : 'sandbox';
+  if (environment === 'mainnet' && getSolanaNetwork() !== 'mainnet-beta') {
+    return NextResponse.json({ error: 'Mainnet keys can only be created in the mainnet environment' }, { status: 409 });
+  }
   const prefix = environment === 'mainnet' ? 'osk_live_' : 'osk_test_';
 
   // Find merchant
@@ -161,13 +168,12 @@ export async function POST(request: Request) {
     );
   }
 
-  // Update merchant status + legacy api_key field
+  // Keep only access state on the merchant; the raw secret is returned once.
   await supabase
     .from('merchants')
     .update({
       api_access_status: 'active',
       onboarding_status: 'completed',
-      api_key: rawSecretKey,
       updated_at: new Date().toISOString(),
     })
     .eq('id', merchant.id);

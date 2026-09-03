@@ -49,6 +49,9 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(amountBaseUnits) || amountBaseUnits <= 0 || amountBaseUnits >= 1_000_000_000_000) {
       return NextResponse.json({ error: 'Payment amount must be a valid USDC amount' }, { status: 400 });
     }
+    if (typeof memo === 'string' && memo.length > 64) {
+      return NextResponse.json({ error: 'Payment memo must be 64 characters or fewer' }, { status: 400 });
+    }
 
     const supabase = createSupabaseServerClient(request);
     let intent: any = null;
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
       amountBaseUnits,
       memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
+    console.info(JSON.stringify({ event: "private_transfer", stage: "submit_ready", network: getSolanaNetwork(), intentId: intent_id }));
 
     return NextResponse.json({
       success: true,
@@ -105,7 +109,7 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     Sentry.captureException(error);
-    console.error('Error constructing transaction:', error instanceof Error ? error.message : 'unknown error');
+    console.error(JSON.stringify({ event: "private_transfer", stage: "failed", error: error instanceof Error ? error.name : "unknown" }));
     const message = error instanceof Error ? error.message : 'Internal server error';
     const status = /timed out|timeout/i.test(message)
       ? 504

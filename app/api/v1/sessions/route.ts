@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { getSolanaNetwork } from "@/lib/solana/constants";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -41,11 +42,11 @@ async function authenticateMerchantApiKey(authHeader: string | null) {
   // Preferred: hashed key in api_keys
   const { data: keyRecord, error } = await supabase
     .from("api_keys")
-    .select("merchant_id, environment")
+    .select("merchant_id, environment, status, revoked_at")
     .eq("key_hash", keyHash)
     .maybeSingle();
 
-  if (!error && keyRecord?.merchant_id) {
+  if (!error && keyRecord?.merchant_id && keyRecord.status === "active" && !keyRecord.revoked_at) {
     return {
       merchantId: keyRecord.merchant_id as string,
       environment: (keyRecord.environment as string) ?? "sandbox",
@@ -71,6 +72,10 @@ export async function POST(request: Request) {
     if ("error" in auth) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
+    const expectedEnvironment = getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox";
+    if (auth.environment !== expectedEnvironment) {
+      return NextResponse.json({ error: "API key environment does not match the configured Solana cluster" }, { status: 403 });
+    }
 
     const body = await request.json().catch(() => ({}));
 
@@ -78,6 +83,9 @@ export async function POST(request: Request) {
       typeof body?.order_id === "string" && body.order_id.trim()
         ? body.order_id.trim()
         : null;
+    if (orderId && orderId.length > 128) {
+      return NextResponse.json({ error: "order_id must be 128 characters or fewer" }, { status: 400 });
+    }
 
     const amountFiat = Number(
       body?.amount_fiat ?? body?.amount ?? body?.amount_fiat_usd ?? 0
@@ -87,6 +95,9 @@ export async function POST(request: Request) {
       typeof body?.customer_email === "string" && body.customer_email.trim()
         ? body.customer_email.trim()
         : null;
+    if (customerEmail && customerEmail.length > 254) {
+      return NextResponse.json({ error: "customer_email is too long" }, { status: 400 });
+    }
 
     const description =
       typeof body?.description === "string" && body.description.trim()

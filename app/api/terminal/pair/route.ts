@@ -19,6 +19,9 @@ export async function POST(request: Request) {
     if (!terminalLabel) {
       return NextResponse.json({ success: false, error: "terminal_label is required" }, { status: 400 });
     }
+    if (terminalLabel.length > 80) {
+      return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
+    }
 
     const supabase = await createSupabaseServerClient(request);
     const {

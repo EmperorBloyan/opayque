@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Connection } from "@solana/web3.js";
 import { getProductionConfigIssues, getSolanaNetworkConfig } from "@/lib/solana/constants";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { probeSolanaRpcs } from "@/lib/solana/rpc";

@@ -8,12 +8,12 @@ import {
 } from "@solana/web3.js";
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
-import { getSolanaRpcUrl } from "@/lib/solana/constants";
+import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
 import * as Sentry from "@/lib/sentry";
+import { getComputeBudgetInstructions } from "@/lib/solana/priorityFee";
 
-const RPC_URL = getSolanaRpcUrl();
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 
 export async function POST(req: Request) {
@@ -54,7 +54,8 @@ export async function POST(req: Request) {
     const secretKey = Uint8Array.from(JSON.parse(RELAYER_SECRET));
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
 
-    const connection = new Connection(RPC_URL, "confirmed");
+    const rpcUrl = await selectHealthyRpcUrl();
+    const connection = new Connection(rpcUrl, "confirmed");
     const merchant = new PublicKey(merchantPublicKey);
 
     // Wallet adapter interface for the relayer
@@ -121,6 +122,7 @@ export async function POST(req: Request) {
         systemProgram: SystemProgram.programId,
       })
       .transaction();
+    tx.instructions.unshift(...getComputeBudgetInstructions());
 
     // Attach fresh blockhash and fee payer
     const { blockhash, lastValidBlockHeight } =

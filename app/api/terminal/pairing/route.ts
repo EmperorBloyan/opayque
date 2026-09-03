@@ -10,9 +10,10 @@ function isValidMerchantId(value: unknown): value is string {
 
 function createPairingCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const random = randomBytes(6);
   let code = "";
   for (let index = 0; index < 6; index += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[random[index] % chars.length];
   }
   return code;
 }
@@ -55,6 +56,9 @@ export async function POST(request: Request) {
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
+      if (terminalLabel && terminalLabel.length > 80) {
+        return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
+      }
 
       if (normalizedWalletAddress) {
         const { error: merchantUpdateError } = await supabase

@@ -24,10 +24,8 @@ export function validateMerchantSessionRequirements(merchant: MerchantSessionReq
   const status = typeof merchant.api_access_status === 'string'
     ? merchant.api_access_status.trim().toLowerCase()
     : '';
-  const apiKey = typeof merchant.api_key === 'string' ? merchant.api_key.trim() : '';
-
   const hasApprovedAccess = status === 'active' || status === 'approved';
-  if (!apiKey || !hasApprovedAccess) {
+  if (!hasApprovedAccess) {
     return {
       ok: false,
       error: 'Your merchant profile is not active yet. Please finish onboarding and generate a valid API key in the Keys page.',

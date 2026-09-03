@@ -38,6 +38,7 @@ export async function sendPayment(
     let signed: VersionedTransaction;
     try {
       onStage?.("approving");
+      console.info(JSON.stringify({ event: "wallet_payment", stage: "approving" }));
       signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
     } catch (error) {
       if (isWalletRejection(error)) throw new UserRejectedError();
@@ -62,6 +63,7 @@ export async function sendPayment(
           maxRetries: 0,
         }), 20_000, "Transaction submission");
       onStage?.("submitting");
+      console.info(JSON.stringify({ event: "wallet_payment", stage: "submitting" }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/blockhash|expired|last valid block/i.test(message) && attempt === 0) continue;
@@ -77,6 +79,7 @@ export async function sendPayment(
         "Transaction status request"
       )).value[0];
       onStage?.("confirming");
+      console.info(JSON.stringify({ event: "wallet_payment", stage: "confirming" }));
       if (status?.err) throw new PaymentRpcError(JSON.stringify(status.err));
       if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return signature;
       if (await withTimeout(connection.getBlockHeight("confirmed"), 10_000, "Block height request") > validity.lastValidBlockHeight) {
