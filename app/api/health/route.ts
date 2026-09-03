@@ -17,13 +17,17 @@ export async function GET() {
   }
 
   const configIssues = getProductionConfigIssues();
+  const selected = rpcResults
+    .filter((result) => result.ok)
+    .sort((left, right) => (left.latencyMs ?? Infinity) - (right.latencyMs ?? Infinity))[0];
   const healthy = checks.rpc && checks.supabase && configIssues.length === 0;
   return NextResponse.json({
     ok: healthy,
     network: network.network,
     isMainnet: network.isMainnet,
     checks,
-    rpc: rpcResults.map(({ url, ...result }) => ({ endpoint: new URL(url).host, ...result })),
+    selectedRpc: selected ? { endpoint: new URL(selected.url).host, latencyMs: selected.latencyMs, slot: selected.slot } : null,
+    rpc: rpcResults.map(({ url, error: _error, ...result }) => ({ endpoint: new URL(url).host, ...result })),
     configIssues: configIssues.map(({ key, message }) => ({ key, message })),
     magicBlockConfigured: Boolean(process.env.NEXT_PUBLIC_MAGICBLOCK_API?.trim()),
   }, { status: healthy ? 200 : 503 });

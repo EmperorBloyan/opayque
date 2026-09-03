@@ -1,4 +1,5 @@
 import { Connection } from '@solana/web3.js';
+import { selectHealthyRpcUrl } from './rpc';
 
 const DEFAULT_USDC_DECIMALS = 6;
 
@@ -121,10 +122,7 @@ export async function verifySolanaTransaction({
   rpcUrl,
 }: VerifyTxParams): Promise<VerifyTxResult> {
   try {
-    const connection = new Connection(
-      rpcUrl || process.env.NEXT_PUBLIC_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-      'confirmed',
-    );
+    const connection = new Connection(rpcUrl || await selectHealthyRpcUrl(), 'confirmed');
     const tx = await connection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',

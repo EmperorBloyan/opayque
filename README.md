@@ -190,6 +190,9 @@ NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_SOLANA_RPC_FALLBACK_URL=https://your-secondary-rpc.example.com
 Optional dedicated Helius / other RPC:
 NEXT_PUBLIC_SOLANA_RPC_URL=https://devnet.helius-rpc.com/?api-key=YOUR_KEY
+Optional transaction priority-fee controls:
+SOLANA_COMPUTE_UNIT_LIMIT=300000
+SOLANA_PRIORITY_FEE_MICROLAMPORTS=1000
 
 Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -206,6 +209,7 @@ MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
 Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
+Production mainnet server paths fail configuration validation when the dedicated RPC, MagicBlock endpoint/key, relayer key, or Supabase server configuration is missing. The priority-fee variables are optional production tuning knobs; invalid values use bounded safe defaults.
 
 Auth matrix and product boundaries
 
@@ -262,6 +266,7 @@ Pay Privately uses MagicBlock Private Payments (PER/TEE) with `visibility: "priv
 The Opayque Anchor program provides vault, terminal, nonce, and accounting operations; it is not itself a confidentiality layer.
 The private path hides the sender/amount/recipient relationship according to MagicBlock's privacy guarantees, while any final settlement footprint exposed by MagicBlock remains subject to its network design.
 There is no automatic public-transfer fallback under the Pay Privately action.
+MagicBlock or Solana RPC degradation fails closed; the private path never falls back to a public transfer.
 
 Never** commit service-role keys or production secrets.  
 Prefer email+password auth with confirmations disabled only if intentional; do not disable the email provider itself.  
@@ -269,6 +274,8 @@ Merchant session binding (merchantId) is required for terminal and many API rout
 Checkout should timeout failed TEE/RPC builds rather than spin forever.  
 Treat confidential / TEE paths as environment-sensitive: wrong RPC, mint, or incomplete confidential setup will fail transfer construction.  
 RLS on Supabase tables should scope merchants to their own rows.  
+
+See [SECURITY.md](SECURITY.md) for trust boundaries, threat mitigations, and secret rotation guidance.
 
 Deployment
 

@@ -13,6 +13,7 @@ import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
 import * as Sentry from "@/lib/sentry";
 import { getComputeBudgetInstructions } from "@/lib/solana/priorityFee";
+import { assertProductionConfig } from "@/lib/solana/constants";
 
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
     const secretKey = Uint8Array.from(JSON.parse(RELAYER_SECRET));
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
 
+    assertProductionConfig();
     const rpcUrl = await selectHealthyRpcUrl();
     const connection = new Connection(rpcUrl, "confirmed");
     const merchant = new PublicKey(merchantPublicKey);

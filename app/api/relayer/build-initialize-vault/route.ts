@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
-import { getSolanaRpcUrl } from "@/lib/solana/constants";
+import { assertProductionConfig } from "@/lib/solana/constants";
 import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
     const merchant = new PublicKey(merchantPublicKey);
 
+    assertProductionConfig();
     const rpcUrl = await selectHealthyRpcUrl();
     const connection = new Connection(rpcUrl, "processed");
 

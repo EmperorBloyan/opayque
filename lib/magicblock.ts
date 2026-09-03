@@ -1,19 +1,30 @@
-import { Connection, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
-import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
 import { getPriorityFeeConfig } from "@/lib/solana/priorityFee";
+import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
+import { logLifecycle } from "@/lib/observability";
 
 export const PAYMENTS_API =
   process.env.NEXT_PUBLIC_MAGICBLOCK_API || "https://payments.magicblock.app";
 export const TEE_RPC =
-  getSolanaRpcUrl();
-
-const RPC_ENDPOINT =
-  getSolanaRpcUrl();
-const connection = new Connection(RPC_ENDPOINT, "confirmed");
+  getSolanaRpcUrls()[0];
 const isDevnet = isDevnetNetwork();
 export const USDC_MINT = new PublicKey(getAssetMintAddress("USDC", isDevnet));
 let magicBlockUnavailableUntil = 0;
 let consecutiveFailures = 0;
+let circuitOpenLogged = false;
+
+function recordMagicBlockFailure(error: unknown): void {
+  consecutiveFailures += 1;
+  const errorClass = error instanceof Error ? error.name : "MagicBlockRequestError";
+  if (consecutiveFailures >= 3) {
+    magicBlockUnavailableUntil = Date.now() + 30_000;
+    if (!circuitOpenLogged) {
+      circuitOpenLogged = true;
+      logLifecycle("error", "private_transfer", "circuit_open", getSolanaNetwork(), errorClass);
+    }
+  }
+}
 
 function base64ToUint8Array(base64: string): Uint8Array {
   if (!base64 || typeof base64 !== "string") {
@@ -70,10 +81,14 @@ export async function requestPrivateSplTransfer({
   if (Date.now() < magicBlockUnavailableUntil) {
     throw new Error("Private transfer service is temporarily unavailable; please retry shortly.");
   }
-  console.info(JSON.stringify({ event: "private_transfer", stage: "build", network: getSolanaNetwork() }));
+  if (circuitOpenLogged && Date.now() >= magicBlockUnavailableUntil) circuitOpenLogged = false;
+    logLifecycle("info", "private_transfer", "build", getSolanaNetwork());
   const endpoint = `${PAYMENTS_API.replace(/\/$/, "")}/v1/spl/transfer`;
   const priorityFee = getPriorityFeeConfig();
-  const response = await fetchWithTimeout(endpoint, {
+  const rpcUrl = await selectHealthyRpcUrl();
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -98,9 +113,14 @@ export async function requestPrivateSplTransfer({
       split: 1,
       computeUnitLimit: priorityFee.computeUnitLimit,
       priorityFeeMicroLamports: priorityFee.microLamports,
+      rpcUrl,
       cluster: getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "devnet",
     }),
-  }, 25000);
+    }, 25000);
+  } catch (error) {
+    recordMagicBlockFailure(error);
+    throw error;
+  }
 
   const payload = await response.json().catch(() => ({}));
   const transaction = typeof payload === "string"
@@ -108,15 +128,15 @@ export async function requestPrivateSplTransfer({
     : payload?.transactionBase64 || payload?.transaction || payload?.serializedTransaction || payload?.data?.transactionBase64 || payload?.data?.transaction;
 
   if (!response.ok || typeof transaction !== "string" || transaction.length === 0) {
-    consecutiveFailures += 1;
-    if (consecutiveFailures >= 3) magicBlockUnavailableUntil = Date.now() + 30_000;
+    recordMagicBlockFailure(new Error("MagicBlockResponseError"));
     const detail = payload?.error || payload?.message || `MagicBlock private transfer failed (HTTP ${response.status})`;
     throw new Error(String(detail));
   }
 
   consecutiveFailures = 0;
   magicBlockUnavailableUntil = 0;
-  console.info(JSON.stringify({ event: "private_transfer", stage: "build_ready", network: getSolanaNetwork() }));
+  circuitOpenLogged = false;
+  logLifecycle("info", "private_transfer", "build_ready", getSolanaNetwork());
 
   return {
     transaction,

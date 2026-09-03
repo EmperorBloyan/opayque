@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { dispatchWebhookEvent } from '@/lib/webhooks/dispatch';
 import { verifySolanaTransaction } from '@/lib/solana/verify';
-import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from '@/lib/solana/constants';
+import { assertProductionConfig, getAssetMintAddress, isDevnetNetwork } from '@/lib/solana/constants';
+import { selectHealthyRpcUrl } from '@/lib/solana/rpc';
 import * as Sentry from '@/lib/sentry';
 
 export async function POST(request: Request) {
@@ -36,7 +37,8 @@ export async function POST(request: Request) {
     }
 
     // 2. Verify against Solana RPC
-    const rpcUrl = getSolanaRpcUrl();
+    assertProductionConfig();
+    const rpcUrl = await selectHealthyRpcUrl();
     const isDevnet = isDevnetNetwork();
     const settlementToken = String(session.settlement_token || 'USDC').toUpperCase();
 

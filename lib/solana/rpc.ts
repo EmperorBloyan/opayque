@@ -1,5 +1,6 @@
 import { Connection, VersionedTransaction } from "@solana/web3.js";
-import { getSolanaRpcUrls } from "./constants";
+import { getSolanaNetwork, getSolanaRpcUrls } from "./constants";
+import { logLifecycle } from "../observability";
 
 export interface RpcHealthState {
   isOnline: boolean;
@@ -17,6 +18,7 @@ export interface RpcProbeResult {
 }
 
 const unhealthyUntil = new Map<string, number>();
+let rpcFailureLoggedUntil = 0;
 
 export async function probeRpc(url: string, timeoutMs = 5_000): Promise<RpcProbeResult> {
   const startedAt = Date.now();
@@ -43,6 +45,10 @@ export async function selectHealthyRpcUrl(urls = getSolanaRpcUrls()): Promise<st
   const results = await probeSolanaRpcs(candidates.length > 0 ? candidates : urls);
   const healthy = results.filter((result) => result.ok).sort((left, right) => (left.latencyMs ?? Infinity) - (right.latencyMs ?? Infinity));
   if (healthy[0]) return healthy[0].url;
+  if (Date.now() >= rpcFailureLoggedUntil) {
+    rpcFailureLoggedUntil = Date.now() + 30_000;
+    logLifecycle("error", "solana_rpc", "selection_failed", getSolanaNetwork(), "AllRpcEndpointsUnhealthy");
+  }
   throw new Error("No healthy Solana RPC endpoint is available");
 }
 

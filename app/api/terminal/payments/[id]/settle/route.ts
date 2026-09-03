@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { assertProductionConfig, getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
@@ -53,7 +54,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ success: false, error: "Merchant settlement wallet not configured" }, { status: 400 });
     }
 
-    const rpcUrl = getSolanaRpcUrl();
+    assertProductionConfig();
+    const rpcUrl = await selectHealthyRpcUrl();
     const isDevnet = isDevnetNetwork();
     const tokenSymbol = String(transaction.token_symbol || "USDC").toUpperCase();
 

@@ -5,6 +5,7 @@ import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from '@/lib/so
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 import * as Sentry from '@/lib/sentry';
+import { logLifecycle } from '@/lib/observability';
 
 const isDevnet = isDevnetNetwork();
 
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
       amountBaseUnits,
       memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
-    console.info(JSON.stringify({ event: "private_transfer", stage: "submit_ready", network: getSolanaNetwork(), intentId: intent_id }));
+    logLifecycle("info", "private_transfer", "submit_ready", getSolanaNetwork());
 
     return NextResponse.json({
       success: true,
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     Sentry.captureException(error);
-    console.error(JSON.stringify({ event: "private_transfer", stage: "failed", error: error instanceof Error ? error.name : "unknown" }));
+    logLifecycle("error", "private_transfer", "failed", getSolanaNetwork(), error instanceof Error ? error.name : "UnknownError");
     const message = error instanceof Error ? error.message : 'Internal server error';
     const status = /timed out|timeout/i.test(message)
       ? 504
