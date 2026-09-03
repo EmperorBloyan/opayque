@@ -35,8 +35,3 @@ Keep secrets only in Vercel/server environment variables or the approved secret 
 ## Deployment checklist
 
 Before enabling mainnet, verify dedicated RPC credentials, the configured USDC mint and cluster, MagicBlock authentication, relayer funding and key custody, Supabase migrations/RLS, Upstash fail-closed rate limiting, webhook signing configuration, Sentry alerting, and a tested rollback. Confirm devnet and mainnet use separate API keys, webhooks, settlement records, and operational credentials.
-For urgent incidents, disable the affected endpoint or environment variable, investigate with sanitized evidence, and notify affected merchants as required by the applicable compliance process.
-
-## Deployment checklist
-
-Before enabling mainnet, verify dedicated RPC credentials, the configured USDC mint and cluster, MagicBlock authentication, relayer funding and key custody, Supabase migrations/RLS, Upstash fail-closed rate limiting, webhook signing configuration, Sentry alerting, and a tested rollback. Confirm devnet and mainnet use separate API keys, webhooks, settlement records, and operational credentials.

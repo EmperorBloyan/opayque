@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = await req.json();
 
     const rateLimit = await strictLimit(`relayer:init:ip:${getClientAddress(req)}`, true);
+    if (!rateLimit.allowed) {
       return NextResponse.json({ success: false, error: rateLimit.error || "Too many initialization requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     }
 
