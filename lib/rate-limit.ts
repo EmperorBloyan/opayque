@@ -14,6 +14,7 @@ const redisConfigured = Boolean(
 let redis: Redis | null = null;
 let standardLimiter: Ratelimit | null = null;
 let strictLimiter: Ratelimit | null = null;
+let missingConfigWarningLogged = false;
 
 function getLimiter(kind: "standard" | "strict"): Ratelimit | null {
   if (!redisConfigured) return null;
@@ -42,8 +43,12 @@ async function limit(
 ): Promise<RateLimitResult> {
   const limiter = getLimiter(kind);
   if (!limiter) {
+    if (process.env.NODE_ENV !== "production" && !missingConfigWarningLogged) {
+      missingConfigWarningLogged = true;
+      console.warn("Distributed rate limiting is disabled because Upstash Redis is not configured");
+    }
     return failClosed
-      ? { allowed: false, retryAfterSeconds: 60, error: "Rate limiter is not configured" }
+      ? { allowed: false, retryAfterSeconds: 60, error: process.env.NODE_ENV === "production" ? "Rate limiter must be configured for this operation" : "Rate limiter is not configured" }
       : { allowed: true, retryAfterSeconds: 0 };
   }
 

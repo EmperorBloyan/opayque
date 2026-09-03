@@ -17,7 +17,7 @@ export async function requireTerminalDevice(request: Request, terminalId: string
     .eq("device_token_hash", hashDeviceToken(token))
     .maybeSingle();
 
-  if (error || !terminal || terminal.status === "revoked") {
+  if (error || !terminal || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())) {
     return { error: "Terminal authentication failed", status: 401 as const };
   }
 

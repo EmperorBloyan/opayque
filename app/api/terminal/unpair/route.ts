@@ -5,14 +5,14 @@ import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request) {
   try {
-    const rateLimit = await strictLimit(`terminal:unpair:${getClientAddress(request)}`, true);
+    const rateLimit = await strictLimit(`terminal:unpair:${getClientAddress(request)}`, process.env.NODE_ENV === "production");
     if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many unpair requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = await request.json().catch(() => ({}));
     const terminalId = typeof body?.terminalId === "string" ? body.terminalId.trim() : "";
     const deviceToken = typeof body?.deviceToken === "string" ? body.deviceToken.trim() : "";
 
-    if (!terminalId || !deviceToken) {
-      return NextResponse.json({ success: false, error: "Terminal credentials are required" }, { status: 400 });
+    if (!terminalId) {
+      return NextResponse.json({ success: false, error: "Terminal ID is required" }, { status: 400 });
     }
 
     const supabase = createSupabaseServerClient(request);
@@ -42,25 +42,31 @@ export async function POST(request: Request) {
       .from("terminals")
       .select("id, status, merchant_id")
       .eq("id", terminalId)
-      .eq("device_token_hash", hashDeviceToken(deviceToken))
+      .eq("merchant_id", merchant.id)
       .maybeSingle();
 
     if (lookupError) {
       return NextResponse.json({ success: false, error: lookupError.message }, { status: 500 });
     }
-    if (!terminal) {
+    if (!terminal || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())) {
       return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
     }
-    if (terminal.merchant_id !== merchant.id) {
-      return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 403 });
+    if (deviceToken) {
+      const { data: tokenMatch, error: tokenError } = await supabase
+        .from("terminals")
+        .select("id")
+        .eq("id", terminal.id)
+        .eq("device_token_hash", hashDeviceToken(deviceToken))
+        .maybeSingle();
+      if (tokenError) return NextResponse.json({ success: false, error: tokenError.message }, { status: 500 });
+      if (!tokenMatch) return NextResponse.json({ success: false, error: "Terminal authentication failed" }, { status: 401 });
     }
 
     const { data: revokedTerminal, error } = await supabase
       .from("terminals")
-      .update({ status: "revoked", last_active: new Date().toISOString() })
+      .update({ status: "revoked", device_token_hash: null, last_active: new Date().toISOString() })
       .eq("id", terminal.id)
       .eq("merchant_id", merchant.id)
-      .eq("device_token_hash", hashDeviceToken(deviceToken))
       .select("id")
       .maybeSingle();
 
@@ -72,7 +78,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Terminal could not be unpaired" }, { status: 409 });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, terminalId: terminal.id });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to unpair terminal" }, { status: 500 });
   }

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
     const { terminal, supabase } = auth;
 
-    if (!terminal || terminal.status === "revoked" || !isRealMerchantId(terminal.merchant_id)) {
+    if (!terminal || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase()) || !isRealMerchantId(terminal.merchant_id)) {
       return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
     }
 

@@ -311,7 +311,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
-          .not("status", "in", "(revoked,unpaired)")
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("last_active", { ascending: false });
         data = res.data;
         error = res.error;
@@ -322,7 +322,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
-          .not("status", "in", "(revoked,unpaired)")
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("created_at", { ascending: false });
         data = res.data;
         error = res.error;
@@ -989,7 +989,8 @@ export default function TerminalManager({
       const response = await fetch("/api/terminal/unpair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ terminalId: terminal.id, deviceToken: terminal.accessCode }),
+        credentials: "include",
+        body: JSON.stringify({ terminalId: terminal.id }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
