@@ -15,9 +15,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
   if (error || !session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
 
-  // Fetch latest on-chain transaction for this session if present
+  // Fetch the latest ledger record for this session if present
   const { data: tx, error: txErr } = await supabaseAdmin
-    .from('onchain_transactions')
+    .from('payment_ledger')
     .select('id, signature, created_at')
     .eq('checkout_session_id', sessionId)
     .order('created_at', { ascending: false })

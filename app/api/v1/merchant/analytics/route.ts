@@ -22,12 +22,12 @@ export async function GET() {
   if (merchantError) return NextResponse.json({ error: merchantError.message }, { status: 500 });
   if (!merchant?.id) return NextResponse.json({ error: 'Merchant profile not found' }, { status: 404 });
 
-  // Fetch recent completed transactions
+  // Fetch recent completed ledger payments
   const { data: transactions, error } = await supabase
-    .from('onchain_transactions')
+    .from('payment_ledger')
     .select('amount, created_at, status')
     .eq('merchant_id', merchant.id)
-    .eq('status', 'finalized')
+    .eq('status', 'confirmed')
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

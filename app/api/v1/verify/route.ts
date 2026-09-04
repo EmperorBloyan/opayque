@@ -59,25 +59,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'On-chain verification failed', details: verification.reason }, { status: 400 });
     }
 
-    // Make retries idempotent by signature before changing the checkout state.
-    const { data: existingTransaction } = await supabaseAdmin
-      .from('onchain_transactions')
-      .select('id, signature')
-      .eq('signature', transactionSignature)
-      .maybeSingle();
-    if (!existingTransaction) {
-      await supabaseAdmin.from('onchain_transactions').insert([{
-      checkout_session_id: session.id,
-      merchant_id: session.merchant_id,
-      signature: transactionSignature,
-      slot: verification.slot,
-      block_time: verification.blockTime ? new Date(verification.blockTime * 1000).toISOString() : null,
-      amount: Number(session.amount_token ?? session.amount),
-      fee_lamports: verification.fee,
-      status: 'finalized'
-      }]);
-    }
-
     // 4. Mark Session as Completed
     await supabaseAdmin
       .from('checkout_sessions')
