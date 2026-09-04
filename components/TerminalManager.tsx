@@ -168,33 +168,6 @@ async function resolveMerchantId(): Promise<string | null> {
   return insertedMerchant.id;
 }
 
-async function ensureActiveMerchantWalletRecord(): Promise<{ merchantId: string | null; walletAddress: string | null }> {
-  const session = getActiveSession();
-  const walletAddress = session?.walletAddress?.trim() || null;
-
-  if (!walletAddress) {
-    return { merchantId: null, walletAddress: null };
-  }
-
-  const supabase = createSupabaseBrowserClient();
-  const merchantName = typeof window !== "undefined"
-    ? window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant"
-    : "Opayque Merchant";
-
-  const { data, error } = await supabase
-    .from("merchants")
-    .upsert({ wallet_address: walletAddress, merchant_name: merchantName }, { onConflict: "wallet_address" })
-    .select("id, wallet_address")
-    .single();
-
-  if (error || !data?.id) {
-    console.error("Failed to persist active merchant wallet record", error);
-    return { merchantId: null, walletAddress: walletAddress };
-  }
-
-  return { merchantId: data.id, walletAddress: data.wallet_address ?? walletAddress };
-}
-
 function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   return items.map((terminal) => ({
     ...terminal,
@@ -361,12 +334,28 @@ export default function TerminalManager({
   // --- REFACTORED PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
-      const merchantWalletRecord = await ensureActiveMerchantWalletRecord();
-      const merchantIdForPairing = resolvedMerchantId ?? merchantWalletRecord.merchantId;
-      const walletAddressForPairing = merchantWalletRecord.walletAddress;
+      let merchantResponse: Response;
+      try {
+        merchantResponse = await fetch("/api/v1/merchant", {
+          credentials: "include",
+        });
+      } catch (error) {
+        console.error("Failed to resolve authenticated merchant", error);
+        setToast("Unable to verify the merchant session. Please try again.");
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      const merchantPayload = await merchantResponse.json().catch(() => null);
+      const merchant = merchantPayload?.merchant;
+      const merchantIdForPairing = typeof merchant?.id === "string" ? merchant.id : null;
+      const walletAddressForPairing =
+        (typeof merchant?.settlement_wallet_address === "string" && merchant.settlement_wallet_address.trim()) ||
+        (typeof merchant?.wallet_address === "string" && merchant.wallet_address.trim()) ||
+        getActiveSession()?.walletAddress?.trim() ||
+        null;
 
-      if (!merchantIdForPairing || merchantIdForPairing === "merchant-vault") {
-        setToast("Merchant wallet not linked. Complete vault authorization first.");
+      if (!merchantResponse.ok || !merchantIdForPairing) {
+        setToast(merchantPayload?.error || "Merchant profile not found. Complete setup and sign in again.");
         setTimeout(() => setToast(null), 3000);
         return;
       }
@@ -387,6 +376,7 @@ export default function TerminalManager({
         // Call API to create pairing code - this validates merchant and patches wallet_address
         const response = await fetch("/api/terminal/pairing", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create",
@@ -981,10 +971,11 @@ export default function TerminalManager({
 
   const disconnectTerminal = async (id: string) => {
     const terminal = safeTerminals.find((item) => item.id === id);
-    if (!terminal || !confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
+    if (!terminal || !confirm("Remove this terminal from the fleet permanently? It must be paired again to reconnect.")) {
       return;
     }
 
+    let removeSucceeded = false;
     try {
       const response = await fetch("/api/terminal/unpair", {
         method: "POST",
@@ -993,16 +984,25 @@ export default function TerminalManager({
         body: JSON.stringify({ terminalId: terminal.id }),
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || "Unable to revoke terminal");
+      if (response.ok && payload?.success) {
+        removeSucceeded = true;
+      } else if (response.status === 404) {
+        removeSucceeded = true;
+      } else if (response.status === 401) {
+        throw new Error("Your session has expired. Sign in again to remove this terminal.");
+      } else if (response.status === 403) {
+        throw new Error("Merchant profile not found for this session.");
+      } else {
+        throw new Error(payload?.error || "Unable to remove terminal from the fleet");
       }
-      setToast("Terminal revoked");
     } catch (error) {
       console.error("Failed to revoke terminal in Supabase", error);
-      setToast(error instanceof Error ? error.message : "Unable to revoke terminal");
+      setToast(error instanceof Error ? error.message : "Unable to remove terminal from the fleet");
       setTimeout(() => setToast(null), 3000);
       return;
     }
+
+    if (!removeSucceeded) return;
 
     // Optimistic local update
     const updated = safeTerminals.filter((terminal) => terminal.id !== id);
@@ -1011,6 +1011,7 @@ export default function TerminalManager({
     // Authoritative refresh
     await loadFromSupabase();
     notifyFleetUpdated();
+    setToast("Terminal removed from fleet");
   };
 
   if (isCheckoutMode) {

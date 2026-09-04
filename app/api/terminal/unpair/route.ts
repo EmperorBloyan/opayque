@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
     const { data: terminal, error: lookupError } = await supabase
       .from("terminals")
-      .select("id, status, merchant_id")
+      .select("id, merchant_id")
       .eq("id", terminalId)
       .eq("merchant_id", merchant.id)
       .maybeSingle();
@@ -48,8 +48,8 @@ export async function POST(request: Request) {
     if (lookupError) {
       return NextResponse.json({ success: false, error: lookupError.message }, { status: 500 });
     }
-    if (!terminal || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())) {
-      return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
+    if (!terminal) {
+      return NextResponse.json({ success: false, error: "Terminal not found" }, { status: 404 });
     }
     if (deviceToken) {
       const { data: tokenMatch, error: tokenError } = await supabase
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     }
 
     if (!deletedTerminal) {
-      return NextResponse.json({ success: false, error: "Terminal could not be unpaired" }, { status: 409 });
+      return NextResponse.json({ success: true, terminalId, alreadyRemoved: true });
     }
 
     return NextResponse.json({ success: true, terminalId: terminal.id });

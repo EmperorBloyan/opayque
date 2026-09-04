@@ -27,7 +27,7 @@ function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookie
 }
 
 const MERCHANT_SELECT =
-  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, auth_user_id";
+  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, wallet_address, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, auth_user_id";
 
 function normalizeMerchant(merchant: any) {
   if (!merchant) return null;
