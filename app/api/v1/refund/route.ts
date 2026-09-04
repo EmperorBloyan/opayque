@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     const { data: transaction, error: transactionError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .select("id, merchant_id, terminal_id, amount, status, signature, token_symbol")
       .eq("id", transactionId)
       .eq("merchant_id", merchant.id)

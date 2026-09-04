@@ -190,7 +190,7 @@ export default function VaultDashboard() {
       };
 
       const { data, error } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .insert(settleTx)
         .select()
         .single();
@@ -258,7 +258,7 @@ export default function VaultDashboard() {
       try {
         const supabase = createSupabaseBrowserClient();
         await supabase
-          .from('transactions')
+          .from('payment_ledger')
           .update({ status: 'REFUNDED' })
           .eq('merchant_id', merchantId)
           .eq('id', targetTx.id);

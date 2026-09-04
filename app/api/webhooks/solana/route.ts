@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const payloadHash = createPayloadHash(body);
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .insert({
         merchant_id: body.merchant_id,
         terminal_id: body.terminal_id ?? null,
