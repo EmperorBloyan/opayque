@@ -262,7 +262,9 @@ export default function TerminalPage() {
       }
 
       if (!response.ok || !payload?.success) {
-        const message = payload?.error || `Pairing request failed with status ${response.status}`;
+        const message = response.status === 409
+          ? "This pairing code is expired or already used. Generate a new code in Vault."
+          : payload?.error || `Pairing request failed with status ${response.status}`;
         throw new Error(message);
       }
 
@@ -515,7 +517,7 @@ export default function TerminalPage() {
                 setTerminalId(null);
                 setTerminalToken(null);
                 setStep("PAIRING");
-                setToast(payload?.error || "Terminal pairing expired. Pair this device again.");
+                setToast("Terminal session is invalid. Enter a fresh pairing code from Vault.");
               }
             } catch (err) {
               console.warn("Failed to validate stored terminal", err);
