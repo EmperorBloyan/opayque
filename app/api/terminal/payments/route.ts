@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     if (idempotencyKey) {
       const { data: existing, error: existingError } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .select("*")
         .eq("merchant_id", terminal.merchant_id)
         .eq("idempotency_key", idempotencyKey)
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const environment = getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox";
 
     const { data, error } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .insert({
         merchant_id: terminal.merchant_id,
         terminal_id: terminal.id,

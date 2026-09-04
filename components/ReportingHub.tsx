@@ -19,7 +19,7 @@ export default function ReportingHub({ isOpen, onClose }: { isOpen: boolean; onC
     if (!merchantId) return [];
 
     const { data, error } = await createSupabaseBrowserClient()
-      .from("transactions")
+      .from("payment_ledger")
       .select("id, amount, created_at, status")
       .eq("merchant_id", merchantId)
       .order("created_at", { ascending: false });

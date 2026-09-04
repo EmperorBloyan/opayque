@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     }
     if (!merchantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { data: row, error: lookupError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .select("*")
       .eq("id", intentId)
       .eq("merchant_id", merchantId)
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const { data: submitted, error: submitError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .update({ status: "submitted", signature, sender_address: sender || row.sender_address, updated_at: now })
       .eq("id", intentId)
       .in("status", ["created", "pending_signature", "submitted"])
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     });
     if (!verification.verified) {
       const { data: failed } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .update({ status: "failed", failed_reason: verification.reason, updated_at: new Date().toISOString() })
         .eq("id", submitted.id)
         .eq("status", "submitted")
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     const { data: confirmed, error: confirmError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .update({ status: "confirmed", confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString(), reconciliation_status: "matched" })
       .eq("id", submitted.id)
       .eq("status", "submitted")

@@ -157,7 +157,7 @@ export async function POST(request: Request) {
     const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotency_key);
     if (idempotencyKey) {
       const { data: existing } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .select("*")
         .eq("merchant_id", auth.merchantId)
         .eq("idempotency_key", idempotencyKey)
@@ -212,7 +212,7 @@ export async function POST(request: Request) {
     }
 
     const { data: transaction, error: transactionError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .insert({
         merchant_id: auth.merchantId,
         checkout_session_id: sessionId,

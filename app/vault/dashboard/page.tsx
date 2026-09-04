@@ -117,7 +117,7 @@ export default function VaultDashboard() {
           .channel(`vault-dashboard-transactions-${merchantId}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+          { event: 'INSERT', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
           (payload) => {
             const row = payload.new as any;
             if (!row) return;
@@ -135,7 +135,7 @@ export default function VaultDashboard() {
         )
         .on(
           'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+          { event: 'UPDATE', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
           (payload) => {
             const row = payload.new as any;
             if (!row) return;

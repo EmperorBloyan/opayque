@@ -1,5 +1,19 @@
 {
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install --legacy-peer-deps"
+  "installCommand": "npm install --legacy-peer-deps",
+  "crons": [
+    {
+      "path": "/api/cron/expire-transactions",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/settle",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-payments",
+      "schedule": "*/10 * * * *"
+    }
+  ]
 }

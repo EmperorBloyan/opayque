@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const cutoff = new Date(Date.now() - EXPIRY_WINDOW_MS).toISOString();
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .update({ status: "expired", updated_at: new Date().toISOString() })
       .in("status", ["created", "pending_signature", "submitted"])
       .lt("updated_at", cutoff)

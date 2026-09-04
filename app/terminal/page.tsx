@@ -120,7 +120,7 @@ export default function TerminalPage() {
       }
 
       const { data, error } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .select("*")
         .eq("merchant_id", context.merchantId)
         .eq("terminal_id", context.terminalId)
@@ -548,7 +548,7 @@ export default function TerminalPage() {
         .channel(`transactions:${merchantId}:${transactionId}`)
         .on(
           "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "transactions", filter: `merchant_id=eq.${merchantId}` },
+          { event: "UPDATE", schema: "public", table: "payment_ledger", filter: `merchant_id=eq.${merchantId}` },
           (payload) => {
             const record = payload.new as TransactionRecord | null;
             if (!record || String(record.id) !== transactionId) return;

@@ -18,7 +18,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     const supabase = createSupabaseServerClient(request);
     const { data: transaction, error: transactionError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .select("id, merchant_id, terminal_id, amount, token_symbol, status")
       .eq("id", transactionId)
       .maybeSingle();
@@ -75,7 +75,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!verification.verified) {
       const { data: failed } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .update({ status: "failed", failed_reason: verification.reason, updated_at: new Date().toISOString() })
         .eq("id", transactionId)
         .eq("status", "submitted")
@@ -86,7 +86,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const { data: updated, error: updateError } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .update({ signature, status: "confirmed", confirmed_at: new Date().toISOString(), reconciliation_status: "matched", updated_at: new Date().toISOString() })
       .eq("id", transactionId)
       .in("status", ["created", "pending_signature", "submitted"])
@@ -99,7 +99,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!updated) {
       const { data: existing } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .select("id, status, signature")
         .eq("id", transactionId)
         .maybeSingle();

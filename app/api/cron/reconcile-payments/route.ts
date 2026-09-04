@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const supabase = createSupabaseServerClient();
     const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
     const { data: rows, error } = await supabase
-      .from("transactions")
+      .from("payment_ledger")
       .select("id, merchant_id, signature, status, reconciliation_status, last_reconciled_at")
       .in("status", ["submitted", "confirmed", "failed"])
       .or(`reconciliation_status.eq.pending,last_reconciled_at.lt.${cutoff}`)
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         }
       }
       const { error: updateError } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .update({ reconciliation_status: reconciliationStatus, last_reconciled_at: new Date().toISOString(), reconciliation_notes: notes })
         .eq("id", row.id);
       if (updateError) throw updateError;

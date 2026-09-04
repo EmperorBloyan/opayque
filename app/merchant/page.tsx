@@ -153,7 +153,7 @@ export default function MerchantDashboard() {
       if (!merchantId) return;
       try {
         const { data, error } = await supabase
-          .from('transactions')
+          .from('payment_ledger')
           .select('*')
           .eq('merchant_id', merchantId)
           .order('created_at', { ascending: false })
@@ -184,7 +184,7 @@ export default function MerchantDashboard() {
       .channel(`merchant-transactions-${merchantId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        { event: 'INSERT', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
         (payload) => {
           const rec = payload.new as any;
           if (!rec) return;
@@ -198,7 +198,7 @@ export default function MerchantDashboard() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        { event: 'UPDATE', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
         (payload) => {
           const rec = payload.new as any;
           if (!rec) return;

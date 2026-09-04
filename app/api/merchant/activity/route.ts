@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const from = (page - 1) * pageSize;
   const to = from + pageSize;
   const { data, error } = await supabase
-    .from("transactions")
+    .from("payment_ledger")
     .select("id, merchant_id, terminal_id, checkout_session_id, amount, amount_base_units, mint, token_symbol, sender_address, recipient_address, signature, status, memo, environment, failed_reason, confirmed_at, reconciliation_status, created_at, updated_at")
     .eq("merchant_id", merchant.id)
     .order("created_at", { ascending: false })
