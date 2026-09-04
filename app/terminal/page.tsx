@@ -584,37 +584,6 @@ export default function TerminalPage() {
     };
   }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
 
-  const unpairTerminal = async () => {
-    let remoteError: string | null = null;
-    try {
-      const device = loadTerminalDeviceCredential();
-      if (device?.terminalId && device.deviceToken) {
-        const response = await fetch("/api/terminal/unpair", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ terminalId: device.terminalId, deviceToken: device.deviceToken }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          remoteError = payload?.error || "Unable to revoke terminal remotely";
-        }
-      }
-    } catch (err) {
-      remoteError = err instanceof Error ? err.message : "Unable to revoke terminal remotely";
-    } finally {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("opayque_terminal_id");
-        window.localStorage.removeItem("opayque_terminal_token");
-        window.localStorage.removeItem("opayque_terminal_label");
-        clearTerminalDeviceCredential();
-      }
-      setTerminalId(null);
-      setTerminalToken(null);
-      setStep("PAIRING");
-      setToast(remoteError ? `Terminal removed locally. ${remoteError}` : "Terminal unpaired");
-    }
-  };
-
   if (!mounted) return null;
 
   const qrUri = (() => {
@@ -664,10 +633,11 @@ export default function TerminalPage() {
                 </button>
                 {terminalId ? (
                   <button
-                    onClick={() => void unpairTerminal()}
+                    type="button"
+                    onClick={() => router.push("/")}
                     className="text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-2 rounded-xl border border-white/10 bg-zinc-900/50 hover:bg-red-600/20"
                   >
-                    Unpair
+                    Return Home
                   </button>
                 ) : null}
               </div>
