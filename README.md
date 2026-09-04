@@ -58,7 +58,7 @@ Logical components
 |-----------|------|
 | Vault | Authenticated merchant control center |
 | Registry | Endpoint identities (store / staff / channel addresses + QR) |
-| Hardware Fleet | Paired POS terminals with codes, unpair, refresh |
+| Hardware Fleet | Paired POS terminals with codes, permanent unpair, refresh |
 | Terminal | Cashier UI → generates pay links / QR → customer checkout |
 | Shielded Checkout | Customer-facing payment surface (amount, wallet, TEE path) |
 | Developer Hub | API keys, overview, RPC/terminal telemetry, embed links |
@@ -103,7 +103,7 @@ Merchant Vault
 Email unlock with merchant profile hydration  
 Settlement wallet binding  
 Registry of payment endpoints with identity (name, category, QR)  
-Terminal fleet pairing / unpair / refresh codes  
+Terminal fleet pairing / permanent unpair / refresh codes
 
 Shielded Checkout
 Customer pay surface with fiat display + USDC settlement amount  
@@ -199,7 +199,7 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-Distributed rate limiting (required for transfer, relayer, and pairing APIs)
+Distributed rate limiting (required in production for transfer, relayer, and pairing APIs)
 UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
 
@@ -218,6 +218,8 @@ Payment-critical server routes probe configured RPCs, prefer the lowest-latency 
 Auth matrix and product boundaries
 
 Public pages include landing, login, checkout, and pay links. Vault, developer, and onboarding pages require a Supabase merchant session. Terminal payment operations require the `x-terminal-token` device credential; fleet pairing and revocation require the merchant session. Cron routes require `CRON_SECRET`, while `/api/v1/*` uses hashed publishable or secret API keys according to endpoint scope.
+
+Terminal pairing lifecycle: a merchant generates a code in Vault, and staff enters it on the Terminal page. Staff can use `Return Home` to navigate to the landing page without ending the paired terminal session; `Open Terminal` restores the saved device credential. Only `Unpair` in Vault removes the terminal row and invalidates access. If the terminal is already removed, bootstrap validation clears the stale local credential and requires pairing again. In development, pairing and unpairing work without Upstash credentials; production keeps these operations fail-closed until `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are configured.
 
 Compliance screening is demo-only unless a real provider is configured. It is disabled in production by default and must not be described as KYB. Fiat settlement is also disabled unless `OFFRAMP_API_URL` and `OFFRAMP_API_KEY` are configured; the cron reports `not_configured` rather than claiming work was processed.
 
@@ -260,7 +262,7 @@ Merchant activity is read from the durable database ledger through `/api/merchan
 
 Payment ledger operations
 
-- Terminal and API checkout creation persist `transactions` rows with idempotency support through the `Idempotency-Key` header.
+- Terminal and API checkout creation persist `payment_ledger` rows with idempotency support through the `Idempotency-Key` header.
 - Wallet confirmation is recorded through `POST /api/v1/payments/confirm`; existing checkout verification and terminal settlement also update the ledger.
 - Payment status webhooks are emitted after committed transitions (`payment.created`, `payment.submitted`, `payment.confirmed`, `payment.failed`, and `payment.expired`).
 - `POST /api/cron/expire-transactions` expires stale intents, while `POST /api/cron/reconcile-payments` checks signed rows against Solana and flags mismatches without rewriting confirmed amounts.
@@ -319,6 +321,8 @@ Post-deploy checks
 [ ] Login binds merchant session  
 [ ] Registry loads without infinite “verifying”  
 [ ] Terminal pairing updates fleet  
+[ ] Terminal `Return Home` preserves pairing and `Open Terminal` restores access
+[ ] Vault `Unpair` permanently removes the terminal from Hardware Fleet
 [ ] Checkout does not hang on SHIELDING (error or success within timeout)  
 [ ] Embed/checkout links resolve (no 404)  
 
