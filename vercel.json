@@ -5,15 +5,15 @@
   "crons": [
     {
       "path": "/api/cron/expire-transactions",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/settle",
-      "schedule": "*/15 * * * *"
+      "schedule": "15 0 * * *"
     },
     {
       "path": "/api/cron/reconcile-payments",
-      "schedule": "*/10 * * * *"
+      "schedule": "30 0 * * *"
     }
   ]
 }
