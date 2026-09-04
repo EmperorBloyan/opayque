@@ -1,3 +1,4 @@
+import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 
 function createChainableFallbackClient(error: Error) {
@@ -19,39 +20,54 @@ function createChainableFallbackClient(error: Error) {
   } as any;
 }
 
-function getAuthToken(request?: Request | null) {
-  if (!request) return null;
-
-  const authHeader = request.headers.get('authorization') || '';
-  if (authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.slice(7).trim();
-  }
-
+function getRequestCookies(request: Request) {
   const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/(?:^|;\s*)sb-access-token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+  return cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const separator = part.indexOf('=');
+      return separator === -1
+        ? { name: part, value: '' }
+        : { name: part.slice(0, separator), value: decodeURIComponent(part.slice(separator + 1)) };
+    });
 }
 
 export function createSupabaseServerClient(request?: Request | null) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    const err = new Error('Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !supabaseAnonKey || (!request && !supabaseServiceKey)) {
+    const err = new Error(
+      request
+        ? 'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
+        : 'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
+    );
     return createChainableFallbackClient(err);
   }
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
-  const token = getAuthToken(request);
-  if (token) {
-    try {
-      (supabase.auth as any).setAuth?.(token);
-    } catch (e) {
-      console.error('Failed to set Supabase auth token', e);
+  if (!request) {
+    if (!supabaseServiceKey) {
+      return createChainableFallbackClient(new Error('Supabase not configured. Set SUPABASE_SERVICE_ROLE_KEY'));
     }
+    return createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
   }
 
-  return supabase;
+  const cookies = getRequestCookies(request);
+  const authHeader = request.headers.get('authorization') || undefined;
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll: () => cookies,
+      setAll: () => {
+        // Route handlers cannot mutate the response through this shared client.
+        // Middleware refreshes the session cookies before protected requests run.
+      },
+    },
+    global: authHeader ? { headers: { Authorization: authHeader } } : undefined,
+  });
 }
 
 export async function getAuthenticatedUserId(request: Request) {
