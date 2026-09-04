@@ -62,9 +62,9 @@ export async function POST(request: Request) {
       if (!tokenMatch) return NextResponse.json({ success: false, error: "Terminal authentication failed" }, { status: 401 });
     }
 
-    const { data: revokedTerminal, error } = await supabase
+    const { data: deletedTerminal, error } = await supabase
       .from("terminals")
-      .update({ status: "revoked", device_token_hash: null, last_active: new Date().toISOString() })
+      .delete()
       .eq("id", terminal.id)
       .eq("merchant_id", merchant.id)
       .select("id")
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    if (!revokedTerminal) {
+    if (!deletedTerminal) {
       return NextResponse.json({ success: false, error: "Terminal could not be unpaired" }, { status: 409 });
     }
 

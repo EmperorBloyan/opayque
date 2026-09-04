@@ -28,7 +28,10 @@ function normalizeWalletAddress(value: unknown): string {
 
 export async function POST(request: Request) {
   try {
-    const rateLimit = await strictLimit(`terminal:pairing:${getClientAddress(request)}`, true);
+    const rateLimit = await strictLimit(
+      `terminal:pairing:${getClientAddress(request)}`,
+      process.env.NODE_ENV === "production"
+    );
     if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many pairing requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = await request.json().catch(() => ({}));
     const action = typeof body?.action === "string" ? body.action : "create";

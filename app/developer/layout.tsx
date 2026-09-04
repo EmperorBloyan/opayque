@@ -229,7 +229,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
             onClick={() => setIsSpeedDialOpen((current) => !current)}
             aria-expanded={isSpeedDialOpen}
             aria-label="Toggle developer quick actions"
-            className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-black/90 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] transition-transform duration-200 hover:scale-105 active:scale-95"
+            className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-purple-700/95 text-white shadow-[0_30px_70px_rgba(80,0,140,0.45)] transition-transform duration-200 hover:scale-105 active:scale-95"
           >
             {isSpeedDialOpen ? <X size={24} /> : <Wrench size={24} />}
           </button>
