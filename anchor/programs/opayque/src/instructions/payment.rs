@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
-use crate::{ErrorCode, MerchantVault, ProtocolConfig, TerminalNonce, TreasuryAccount};
+use crate::{ErrorCode, MerchantVault, PaymentReceipt, ProtocolConfig, TerminalNonce, TreasuryAccount};
 
 #[derive(Accounts)]
 #[instruction(terminal_id: String)]
@@ -23,6 +23,7 @@ pub struct RegisterTerminalNonce<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(amount: u64, nonce: u64, memo: String)]
 pub struct ProcessPayment<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -41,6 +42,14 @@ pub struct ProcessPayment<'info> {
     pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(mut, seeds = [b"terminal_nonce", terminal_nonce.terminal_id.as_bytes(), merchant_vault.authority.as_ref()], bump = terminal_nonce.bump)]
     pub terminal_nonce: Account<'info, TerminalNonce>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + PaymentReceipt::LEN,
+        seeds = [b"payment_receipt", merchant_vault.authority.as_ref(), &nonce.to_le_bytes()],
+        bump
+    )]
+    pub payment_receipt: Account<'info, PaymentReceipt>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -126,12 +135,29 @@ pub fn process_payment(ctx: Context<ProcessPayment>, amount: u64, nonce: u64, me
     nonce_account.used = true;
     nonce_account.last_memo = memo;
 
+    let created_at = Clock::get()?.unix_timestamp as u64;
+    let memo_hash = anchor_lang::solana_program::hash::hash(nonce_account.last_memo.as_bytes()).to_bytes();
+    let receipt = &mut ctx.accounts.payment_receipt;
+    receipt.merchant = vault.merchant;
+    receipt.payer = ctx.accounts.payer.key();
+    receipt.amount = amount;
+    receipt.fee = fee;
+    receipt.merchant_amount = merchant_amount;
+    receipt.nonce = nonce;
+    receipt.created_at = created_at;
+    receipt.memo_hash = memo_hash;
+    receipt.bump = ctx.bumps.payment_receipt;
+
     emit!(crate::PaymentSettled {
         merchant: vault.authority,
+        payer: ctx.accounts.payer.key(),
+        receipt: receipt.key(),
         amount,
         fee,
         merchant_amount,
         nonce,
+        created_at,
+        memo_hash,
     });
 
     Ok(())

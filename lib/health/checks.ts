@@ -49,7 +49,8 @@ async function checkSupabase(): Promise<DependencyCheck> {
   const startedAt = Date.now();
   try {
     const client = createSupabaseServerClient();
-    const { error } = await withTimeout(client.from("merchants").select("id").limit(1));
+    const result = await withTimeout<{ error?: unknown }>(client.from("merchants").select("id").limit(1));
+    const error = result.error;
     return error
       ? { status: "unhealthy", latencyMs: Date.now() - startedAt, detail: "Supabase query failed" }
       : { status: "ok", latencyMs: Date.now() - startedAt };

@@ -87,6 +87,23 @@ impl TreasuryAccount {
 }
 
 #[account]
+pub struct PaymentReceipt {
+    pub merchant: Pubkey,
+    pub payer: Pubkey,
+    pub amount: u64,
+    pub fee: u64,
+    pub merchant_amount: u64,
+    pub nonce: u64,
+    pub created_at: u64,
+    pub memo_hash: [u8; 32],
+    pub bump: u8,
+}
+
+impl PaymentReceipt {
+    pub const LEN: usize = 32 + 32 + 8 + 8 + 8 + 8 + 8 + 32 + 1;
+}
+
+#[account]
 pub struct TerminalNonce {
     pub merchant: Pubkey,
     pub terminal_id: String,
@@ -106,10 +123,14 @@ impl TerminalNonce {
 #[event]
 pub struct PaymentSettled {
     pub merchant: Pubkey,
+    pub payer: Pubkey,
+    pub receipt: Pubkey,
     pub amount: u64,
     pub fee: u64,
     pub merchant_amount: u64,
     pub nonce: u64,
+    pub created_at: u64,
+    pub memo_hash: [u8; 32],
 }
 
 #[error_code]

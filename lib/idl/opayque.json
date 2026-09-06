@@ -96,6 +96,17 @@
         { "name": "opayque_treasury", "writable": true },
         { "name": "protocol_config" },
         { "name": "terminal_nonce", "writable": true },
+        {
+          "name": "payment_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [112, 97, 121, 109, 101, 110, 116, 95, 114, 101, 99, 101, 105, 112, 116] },
+              { "kind": "account", "path": "merchant_vault.authority" },
+              { "kind": "arg", "path": "nonce" }
+            ]
+          }
+        },
         { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
         { "name": "system_program", "address": "11111111111111111111111111111111" }
       ],
@@ -137,7 +148,8 @@
     { "name": "protocol_config", "discriminator": [207, 91, 250, 28, 152, 179, 215, 209] },
     { "name": "merchant_vault", "discriminator": [157, 184, 49, 10, 194, 166, 212, 234] },
     { "name": "treasury_account", "discriminator": [204, 140, 18, 173, 90, 152, 134, 123] },
-    { "name": "terminal_nonce", "discriminator": [206, 170, 127, 76, 222, 107, 181, 252] }
+    { "name": "terminal_nonce", "discriminator": [206, 170, 127, 76, 222, 107, 181, 252] },
+    { "name": "payment_receipt", "discriminator": [168, 198, 209, 4, 60, 235, 126, 109] }
   ],
   "types": [
     {
@@ -194,15 +206,36 @@
       }
     },
     {
+      "name": "payment_receipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "payer", "type": "pubkey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "fee", "type": "u64" },
+          { "name": "merchant_amount", "type": "u64" },
+          { "name": "nonce", "type": "u64" },
+          { "name": "created_at", "type": "u64" },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] } },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
       "name": "payment_settled",
       "type": {
         "kind": "struct",
         "fields": [
           { "name": "merchant", "type": "pubkey" },
+          { "name": "payer", "type": "pubkey" },
+          { "name": "receipt", "type": "pubkey" },
           { "name": "amount", "type": "u64" },
           { "name": "fee", "type": "u64" },
           { "name": "merchant_amount", "type": "u64" },
-          { "name": "nonce", "type": "u64" }
+          { "name": "nonce", "type": "u64" },
+          { "name": "created_at", "type": "u64" },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] } }
         ]
       }
     }
@@ -213,10 +246,14 @@
       "discriminator": [158, 182, 152, 76, 105, 23, 232, 135],
       "fields": [
         { "name": "merchant", "type": "pubkey", "index": false },
+          { "name": "payer", "type": "pubkey", "index": false },
+          { "name": "receipt", "type": "pubkey", "index": false },
         { "name": "amount", "type": "u64", "index": false },
         { "name": "fee", "type": "u64", "index": false },
         { "name": "merchant_amount", "type": "u64", "index": false },
-        { "name": "nonce", "type": "u64", "index": false }
+          { "name": "nonce", "type": "u64", "index": false },
+          { "name": "created_at", "type": "u64", "index": false },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] }, "index": false }
       ]
     }
   ],

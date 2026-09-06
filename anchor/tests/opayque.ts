@@ -17,6 +17,7 @@ describe("opayque program", () => {
   let merchantVaultPda: PublicKey;
   let treasuryPda: PublicKey;
   let noncePda: PublicKey;
+  let receiptPda: PublicKey;
 
   const fundKeypair = async (keypair: Keypair) => {
     const airdropSignature = await provider.connection.requestAirdrop(keypair.publicKey, 2 * LAMPORTS_PER_SOL);
@@ -33,6 +34,7 @@ describe("opayque program", () => {
     [merchantVaultPda] = PublicKey.findProgramAddressSync([Buffer.from("merchant_vault"), merchant.publicKey.toBuffer()], program.programId);
     [treasuryPda] = PublicKey.findProgramAddressSync([Buffer.from("opayque_treasury"), merchant.publicKey.toBuffer()], program.programId);
     [noncePda] = PublicKey.findProgramAddressSync([Buffer.from("terminal_nonce"), Buffer.from("terminal-001"), merchant.publicKey.toBuffer()], program.programId);
+    [receiptPda] = PublicKey.findProgramAddressSync([Buffer.from("payment_receipt"), merchant.publicKey.toBuffer(), new BN(7).toArrayLike(Buffer, "le", 8)], program.programId);
   });
 
   it("initializes a merchant vault", async () => {
@@ -88,7 +90,9 @@ describe("opayque program", () => {
         opayqueTreasury: treasuryPda,
         protocolConfig: protocolConfigPda,
         terminalNonce: noncePda,
+        paymentReceipt: receiptPda,
         systemProgram: SystemProgram.programId,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       })
       .signers([terminal])
       .rpc();
@@ -97,6 +101,12 @@ describe("opayque program", () => {
     const treasuryAccount = await program.account.treasuryAccount.fetch(treasuryPda);
     expect(vaultAccount.collectedBalance.toNumber()).to.equal(9_975_000);
     expect(treasuryAccount.collectedBalance.toNumber()).to.equal(25_000);
+    const receipt = await program.account.paymentReceipt.fetch(receiptPda);
+    expect(receipt.payer.toBase58()).to.equal(terminal.publicKey.toBase58());
+    expect(receipt.amount.toNumber()).to.equal(10_000_000);
+    expect(receipt.fee.toNumber()).to.equal(25_000);
+    expect(receipt.merchantAmount.toNumber()).to.equal(9_975_000);
+    expect(receipt.nonce.toNumber()).to.equal(7);
   });
 
   it("rejects replaying the same nonce", async () => {
@@ -109,7 +119,9 @@ describe("opayque program", () => {
           opayqueTreasury: treasuryPda,
           protocolConfig: protocolConfigPda,
           terminalNonce: noncePda,
+          paymentReceipt: receiptPda,
           systemProgram: SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
         })
         .signers([terminal])
         .rpc()
