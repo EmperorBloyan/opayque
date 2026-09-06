@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isRealMerchantId } from "@/lib/terminal/guards";
-import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
+import { hashDeviceToken, matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
 export async function GET(request: Request) {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseServerClient();
   const { data: terminal, error } = await supabase
     .from("terminals")
-    .select("id, merchant_id, device_token_hash, status")
+    .select("id, merchant_id, device_token_hash, device_token, status")
     .eq("id", terminalId)
     .maybeSingle();
 
@@ -26,8 +26,7 @@ export async function GET(request: Request) {
 
   if (
     !terminal ||
-    !terminal.device_token_hash ||
-    terminal.device_token_hash !== hashDeviceToken(deviceToken) ||
+    !matchesTerminalDeviceToken(terminal, deviceToken) ||
     ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())
   ) {
     return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });

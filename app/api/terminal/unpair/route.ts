@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
-import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
+import { hashDeviceToken, matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request) {
   try {
@@ -54,12 +54,13 @@ export async function POST(request: Request) {
     if (deviceToken) {
       const { data: tokenMatch, error: tokenError } = await supabase
         .from("terminals")
-        .select("id")
+        .select("id, device_token_hash, device_token")
         .eq("id", terminal.id)
-        .eq("device_token_hash", hashDeviceToken(deviceToken))
         .maybeSingle();
       if (tokenError) return NextResponse.json({ success: false, error: tokenError.message }, { status: 500 });
-      if (!tokenMatch) return NextResponse.json({ success: false, error: "Terminal authentication failed" }, { status: 401 });
+      if (!matchesTerminalDeviceToken(tokenMatch, deviceToken)) {
+        return NextResponse.json({ success: false, error: "Terminal authentication failed" }, { status: 401 });
+      }
     }
 
     const { data: deletedTerminal, error } = await supabase

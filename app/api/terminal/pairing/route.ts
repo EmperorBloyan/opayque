@@ -27,6 +27,73 @@ function normalizeWalletAddress(value: unknown): string {
   return value.trim();
 }
 
+async function insertCompatibleTerminalRow(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  merchantId: string,
+  terminalLabel: string,
+  deviceToken: string,
+  createdAt: string,
+): Promise<{ id: string } | null> {
+  const terminalId = randomUUID();
+  const commonFields = {
+    id: terminalId,
+    merchant_id: merchantId,
+    status: "online",
+    created_at: createdAt,
+  };
+
+  const insertCandidates = [
+    {
+      ...commonFields,
+      label: terminalLabel,
+      terminal_label: terminalLabel,
+      last_active: createdAt,
+      is_active: true,
+      device_token_hash: hashDeviceToken(deviceToken),
+    },
+    {
+      ...commonFields,
+      label: terminalLabel,
+      terminal_label: terminalLabel,
+      last_active: createdAt,
+      is_active: true,
+      device_token: deviceToken,
+    },
+    {
+      ...commonFields,
+      label: terminalLabel,
+      terminal_label: terminalLabel,
+      last_active: createdAt,
+      is_active: true,
+    },
+    {
+      ...commonFields,
+      label: terminalLabel,
+      last_active: createdAt,
+      is_active: true,
+      device_token: deviceToken,
+    },
+    {
+      ...commonFields,
+      label: terminalLabel,
+      terminal_label: terminalLabel,
+      device_token_hash: hashDeviceToken(deviceToken),
+    },
+  ];
+
+  let lastError: unknown = null;
+
+  for (const candidate of insertCandidates) {
+    const { data, error } = await supabase.from("terminals").insert(candidate).select("id").maybeSingle();
+    if (!error && data?.id) {
+      return data;
+    }
+    lastError = error ?? new Error("Terminal row insertion failed");
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Terminal row insertion failed");
+}
+
 export async function POST(request: Request) {
   try {
     const rateLimit = await strictLimit(
@@ -189,69 +256,14 @@ export async function POST(request: Request) {
         "Fleet Terminal";
 
       const nowIso = new Date().toISOString();
-      const terminalId = randomUUID();
-
-      // Minimal core fields first (always safe)
-      const coreUpdate = {
-        status: "online",
-        label: terminalLabel,
-        terminal_label: terminalLabel,
-      };
-
-      // Optional enrichment (may not exist on every schema)
       const deviceToken = randomBytes(32).toString("base64url");
-      const richUpdate = {
-        ...coreUpdate,
-        last_active: nowIso,
-        is_active: true,
-        device_token_hash: hashDeviceToken(deviceToken),
-      };
 
-      const richInsert = {
-        id: terminalId,
-        merchant_id: resolvedMerchantId,
-        label: terminalLabel,
-        terminal_label: terminalLabel,
-        status: "online",
-        created_at: nowIso,
-        last_active: nowIso,
-        is_active: true,
-        device_token_hash: hashDeviceToken(deviceToken),
-      };
-
-      let { error: terminalInsertError } = await adminSupabase
-        .from("terminals")
-        .insert(richInsert);
-
-      // Fallback to minimal insert when optional columns are unavailable.
-      if (terminalInsertError) {
-        const retry = await adminSupabase.from("terminals").insert({
-          id: terminalId,
-          merchant_id: resolvedMerchantId,
-          label: terminalLabel,
-          terminal_label: terminalLabel,
-          status: "online",
-          created_at: nowIso,
-          device_token_hash: hashDeviceToken(deviceToken),
-        });
-        terminalInsertError = retry.error;
-      }
-
-      // Older deployments may not have the descriptive terminal columns yet.
-      if (terminalInsertError) {
-        const legacyRetry = await adminSupabase.from("terminals").insert({
-          id: terminalId,
-          merchant_id: resolvedMerchantId,
-          label: terminalLabel,
-          status: "online",
-          created_at: nowIso,
-          device_token_hash: hashDeviceToken(deviceToken),
-        });
-        terminalInsertError = legacyRetry.error;
-      }
-
-      if (terminalInsertError) {
-        console.warn("Failed to insert terminal fleet row", terminalInsertError);
+      let terminalId: string;
+      try {
+        const persisted = await insertCompatibleTerminalRow(adminSupabase, resolvedMerchantId, terminalLabel, deviceToken, nowIso);
+        terminalId = persisted?.id ?? randomUUID();
+      } catch (insertError) {
+        console.warn("Failed to insert terminal fleet row", insertError);
         await adminSupabase
           .from("terminal_pairing_codes")
           .update({ status: "PENDING" })
