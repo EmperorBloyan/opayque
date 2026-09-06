@@ -379,7 +379,7 @@ export default function TerminalPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-terminal-token": terminalContext.deviceToken,
+          "x-terminal-token": terminalContext.deviceToken!,
         },
         body: JSON.stringify({
           terminalId: terminalContext.terminalId,

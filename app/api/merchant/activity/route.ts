@@ -3,7 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   const supabase = createSupabaseServerClient(request);
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const user = authData?.user ?? null;
   if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: merchant, error: merchantError } = await supabase
