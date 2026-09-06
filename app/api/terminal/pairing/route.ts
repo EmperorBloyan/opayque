@@ -237,8 +237,26 @@ export async function POST(request: Request) {
         terminalInsertError = retry.error;
       }
 
+      // Older deployments may not have the descriptive terminal columns yet.
+      if (terminalInsertError) {
+        const legacyRetry = await adminSupabase.from("terminals").insert({
+          id: terminalId,
+          merchant_id: resolvedMerchantId,
+          label: terminalLabel,
+          status: "online",
+          created_at: nowIso,
+          device_token_hash: hashDeviceToken(deviceToken),
+        });
+        terminalInsertError = legacyRetry.error;
+      }
+
       if (terminalInsertError) {
         console.warn("Failed to insert terminal fleet row", terminalInsertError);
+        await adminSupabase
+          .from("terminal_pairing_codes")
+          .update({ status: "PENDING" })
+          .eq("code", code)
+          .eq("status", "USED");
         return NextResponse.json({ success: false, error: "Terminal pairing could not be persisted. Please try again." }, { status: 500 });
       }
 

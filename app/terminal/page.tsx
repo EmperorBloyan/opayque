@@ -328,16 +328,31 @@ export default function TerminalPage() {
       const pairedTerminalId = typeof payload?.terminalId === "string" ? payload.terminalId : null;
       const pairedDeviceToken = typeof payload?.deviceToken === "string" ? payload.deviceToken : null;
       if (pairedTerminalId && pairedDeviceToken) {
-        window.localStorage.setItem("opayque_terminal_id", pairedTerminalId);
-        window.localStorage.setItem("opayque_terminal_token", pairedDeviceToken);
-        window.localStorage.setItem("opayque_terminal_label", resolvedTerminalLabel);
-        saveTerminalDeviceCredential({
+        const credential = {
           terminalId: pairedTerminalId,
           merchantId: resolvedMerchantId,
           deviceToken: pairedDeviceToken,
           merchantWallet: pairedWalletAddress,
           pairedAt: Date.now(),
-        });
+        };
+
+        try {
+          window.localStorage.setItem("opayque_terminal_id", pairedTerminalId);
+          window.localStorage.setItem("opayque_terminal_token", pairedDeviceToken);
+          window.localStorage.setItem("opayque_terminal_label", resolvedTerminalLabel);
+          saveTerminalDeviceCredential(credential);
+          const savedCredential = loadTerminalDeviceCredential();
+          if (
+            !savedCredential ||
+            savedCredential.terminalId !== pairedTerminalId ||
+            savedCredential.deviceToken !== pairedDeviceToken
+          ) {
+            throw new Error("Terminal credentials could not be verified in browser storage");
+          }
+        } catch {
+          throw new Error("Terminal paired on the server, but this browser could not save its credentials. Enable local storage and try again.");
+        }
+
         setTerminalId(pairedTerminalId);
         setTerminalToken(pairedDeviceToken);
       }
