@@ -66,34 +66,14 @@ export default function QuickstartPage() {
     try {
       let apiKey: string | null = null;
 
-      try {
-        const merchantRes = await fetch('/api/v1/merchant', {
-          method: 'GET',
-          credentials: 'include'
-        });
-
-        if (merchantRes.ok) {
-          const merchantPayload = await merchantRes.json();
-          const merchant = merchantPayload?.merchant;
-          const merchantStatus = typeof merchant?.api_access_status === "string" ? merchant.api_access_status.trim().toLowerCase() : "";
-          const merchantKey = typeof merchant?.api_key === "string" ? merchant.api_key.trim() : null;
-
-          const hasApprovedMerchantAccess = merchantStatus === "active" || merchantStatus === "approved";
-
-          if (merchantKey && hasApprovedMerchantAccess) {
-            apiKey = merchantKey;
-          }
-        }
-      } catch {
-        apiKey = null;
-      }
-
-      if (!apiKey && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         try {
           const savedKeysRaw = window.localStorage.getItem('opayque_api_keys');
           if (savedKeysRaw) {
             const savedKeys = JSON.parse(savedKeysRaw);
-            const selectedKey = Array.isArray(savedKeys) ? savedKeys.find((key: any) => key?.secret)?.secret : null;
+            const selectedKey = Array.isArray(savedKeys)
+              ? savedKeys.find((key: any) => typeof key?.secret === 'string' && key.secret.startsWith('osk_test_'))?.secret
+              : null;
             if (selectedKey) apiKey = selectedKey;
           }
         } catch {
@@ -112,6 +92,13 @@ export default function QuickstartPage() {
           if (createRes.ok) {
             const data = await createRes.json();
             apiKey = data?.rawSecretKey || null;
+            if (apiKey && typeof window !== 'undefined') {
+              const stored = JSON.parse(window.localStorage.getItem('opayque_api_keys') || '[]');
+              const next = Array.isArray(stored)
+                ? [{ id: String(data?.id || 'new-sandbox-key'), secret: apiKey, createdAt: new Date().toISOString(), environment: 'devnet' }, ...stored]
+                : [{ id: String(data?.id || 'new-sandbox-key'), secret: apiKey, createdAt: new Date().toISOString(), environment: 'devnet' }];
+              window.localStorage.setItem('opayque_api_keys', JSON.stringify(next));
+            }
           }
         } catch {
           apiKey = null;

@@ -31,9 +31,13 @@ function readSandboxKey() {
   try {
     const cached = JSON.parse(window.localStorage.getItem("opayque_api_keys") || "[]");
     if (!Array.isArray(cached)) return "";
-    const candidate = cached.find((key) =>
-      typeof key?.secret === "string" && key.secret.startsWith("osk_test_")
+    const candidates = cached.filter(
+      (key) => typeof key?.secret === "string" && key.secret.startsWith("osk_test_")
     );
+    const candidate = candidates[0];
+    if (!candidate?.secret) {
+      window.localStorage.removeItem("opayque_api_keys");
+    }
     return candidate?.secret || "";
   } catch {
     return "";
@@ -75,9 +79,14 @@ async function resolveTestApiKey(): Promise<string> {
   }
 
   try {
-    const response = await fetch("/api/v1/merchant", { credentials: "include" });
-    const payload = await response.json().catch(() => ({}));
-    const secret = payload?.merchant?.api_key;
+    const response = await fetch("/api/v1/keys", { credentials: "include" });
+    const payload = await response.json().catch(() => ({ keys: [] }));
+    const secret = Array.isArray(payload?.keys)
+      ? (payload.keys as any[]).find((key: any) => {
+          const value = String(key?.rawSecretKey || key?.secret || "");
+          return value.startsWith("osk_test_");
+        })?.rawSecretKey || (payload.keys as any[]).find((key: any) => String(key?.secret || "").startsWith("osk_test_"))?.secret
+      : null;
     if (typeof secret === "string" && secret.startsWith("osk_test_")) return secret;
   } catch {
     // The caller will show the missing-key state.
@@ -127,6 +136,11 @@ export default function DeveloperSandbox() {
         throw new Error(
           "Settlement wallet not configured. Save a settlement address in API Keys & Merchant Details to enable sandbox features."
         );
+      }
+
+      const validCachedKey = readSandboxKey();
+      if (validCachedKey) {
+        setApiKey(validCachedKey);
       }
 
       const loadedMerchant = payload.merchant as MerchantProfile;

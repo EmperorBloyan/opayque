@@ -110,7 +110,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
       }
 
-      const { data, error } = await supabase
+      const adminSupabase = createSupabaseServerClient();
+      const { data, error } = await adminSupabase
         .from("terminal_pairing_codes")
         .select("code, status, expires_at, merchant_id, terminal_label")
         .eq("code", code)
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
       }
 
       let merchantData: { id: string; wallet_address?: string | null; settlement_wallet_address?: string | null; merchant_name?: string | null; merchant_logo?: string | null } | null = null;
-      const { data: fetchedMerchantData, error: merchantError } = await supabase
+      const { data: fetchedMerchantData, error: merchantError } = await adminSupabase
         .from("merchants")
         .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
@@ -167,7 +168,7 @@ export async function POST(request: Request) {
       }
 
       // Mark pairing code as used
-      const { data: usedCode, error: updateError } = await supabase
+      const { data: usedCode, error: updateError } = await adminSupabase
         .from("terminal_pairing_codes")
         .update({ status: "USED", merchant_id: resolvedMerchantId })
         .eq("code", code)
@@ -217,7 +218,7 @@ export async function POST(request: Request) {
         device_token_hash: hashDeviceToken(deviceToken),
       };
 
-      let { error: terminalInsertError } = await supabase
+      let { error: terminalInsertError } = await adminSupabase
         .from("terminals")
         .insert(richInsert);
 

@@ -9,7 +9,7 @@ export async function requireTerminalDevice(request: Request, terminalId: string
   const token = request.headers.get("x-terminal-token")?.trim();
   if (!token || !terminalId) return { error: "Terminal authentication required", status: 401 as const };
 
-  const supabase = createSupabaseServerClient(request);
+  const supabase = createSupabaseServerClient();
   const { data: terminal, error } = await supabase
     .from("terminals")
     .select("id, merchant_id, status")

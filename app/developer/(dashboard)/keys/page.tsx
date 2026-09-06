@@ -45,16 +45,14 @@ function computeEffectiveMerchantStatus(merchant: any) {
     merchant?.secondary_email ||
     merchant?.settlement_wallet_address ||
     merchant?.website_url ||
-    merchant?.webhook_url ||
-    merchant?.api_key
+    merchant?.webhook_url
   );
 
-  const nextStatus = resolveMerchantAccessStatus(merchant?.api_access_status, merchant?.api_key);
-  const hasUsableKey = Boolean(merchant?.api_key && String(merchant.api_key).trim());
+  const nextStatus = resolveMerchantAccessStatus(merchant?.api_access_status, null);
 
   if (nextStatus === "approved") return "active";
-  if (nextStatus === "pending" && hasSavedMerchantProfile && hasUsableKey) return "active";
   if (nextStatus === "active" || nextStatus === "revoked") return nextStatus;
+  if (hasSavedMerchantProfile) return "active";
 
   return "pending";
 }
@@ -142,24 +140,9 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("id, api_key, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .select("id, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
             .eq("auth_user_id", user.id)
             .maybeSingle();
-
-          if (merchantData?.api_key) {
-            setKeyPairs((prev) => {
-              if (prev.length > 0) return prev;
-              const prefix = merchantData.api_key.startsWith("osk_test_") ? "osk_test_" : "osk_live_";
-              return [{
-                id: "db-key-1",
-                publishable: `${prefix}pub_saved`,
-                secret: merchantData.api_key,
-                createdAt: new Date().toISOString(),
-                lastUsed: "never",
-                environment: prefix.includes("test") ? "devnet" : "mainnet",
-              }];
-            });
-          }
 
           if (merchantData) {
             if (merchantData.id) {
@@ -409,7 +392,6 @@ export default function ApiKeysPage() {
       const data = await res.json();
       const normalizedStatus = computeEffectiveMerchantStatus(data?.merchant ?? {
         api_access_status: "active",
-        api_key: data?.merchant?.api_key || null,
         email: payload.email,
         merchant_name: payload.merchantName,
         merchant_logo: payload.merchantLogo,
