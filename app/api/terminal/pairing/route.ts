@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
+import { safeErrorMessage } from "@/lib/error-handler";
 
 function isValidMerchantId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
       });
 
       if (error) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing code creation failed") }, { status: 500 });
       }
 
       return NextResponse.json({ success: true, code: pairingCode, expiresAt, terminalLabel });
@@ -178,7 +179,7 @@ export async function POST(request: Request) {
 
       if (updateError || !usedCode) {
         return NextResponse.json(
-          { success: false, error: updateError?.message || "PAIRING CODE REJECTED" },
+          { success: false, error: safeErrorMessage(updateError, "PAIRING CODE REJECTED") },
           { status: updateError ? 500 : 409 }
         );
       }
@@ -188,7 +189,7 @@ export async function POST(request: Request) {
         "Fleet Terminal";
 
       const nowIso = new Date().toISOString();
-      const terminalId = `term_${resolvedMerchantId.slice(0, 8)}_${code}`;
+      const terminalId = randomUUID();
 
       // Minimal core fields first (always safe)
       const coreUpdate = {
@@ -224,7 +225,7 @@ export async function POST(request: Request) {
 
       // Fallback to minimal insert when optional columns are unavailable.
       if (terminalInsertError) {
-        const retry = await supabase.from("terminals").insert({
+        const retry = await adminSupabase.from("terminals").insert({
           id: terminalId,
           merchant_id: resolvedMerchantId,
           label: terminalLabel,
@@ -238,6 +239,7 @@ export async function POST(request: Request) {
 
       if (terminalInsertError) {
         console.warn("Failed to insert terminal fleet row", terminalInsertError);
+        return NextResponse.json({ success: false, error: "Terminal pairing could not be persisted. Please try again." }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -255,6 +257,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: false, error: "Unsupported action" }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Pairing failed" }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing failed") }, { status: 500 });
   }
 }

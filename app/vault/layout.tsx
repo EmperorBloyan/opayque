@@ -7,6 +7,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { createClient } from "@/lib/supabase/client";
 import { clearActiveSession } from "@/lib/crypto/session";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
+import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import {
   LucideLayoutDashboard,
@@ -50,11 +51,17 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     setIsHydratingMerchant(true);
     try {
       const res = await fetch("/api/v1/merchant", { credentials: "include" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 404) clearMerchantProfileCache();
+        return;
+      }
 
       const payload = await res.json();
       const merchant = payload?.merchant;
-      if (!merchant) return;
+      if (!merchant) {
+        clearMerchantProfileCache();
+        return;
+      }
       if (merchant.id) {
         bindAuthenticatedMerchantSession({
           merchantId: merchant.id,
@@ -66,12 +73,16 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         setMerchantName(name);
         setDraftName(name);
         localStorage.setItem("merchant_name", name);
+      } else {
+        localStorage.removeItem("merchant_name");
       }
       if (merchant.merchant_logo) {
         const logoUrl = merchant.merchant_logo;
         setLogo(logoUrl);
         setDraftLogo(logoUrl);
         localStorage.setItem("merchant_logo", logoUrl);
+      } else {
+        localStorage.removeItem("merchant_logo");
       }
       setDraftEmail(merchant.email ?? "");
       setDraftSecondaryEmail(merchant.secondary_email ?? "");
@@ -81,6 +92,8 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       setRefundWallet(merchant.refund_wallet_address ?? "");
       if (merchant.settlement_wallet_address) {
         localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+      } else {
+        localStorage.removeItem("settlement_wallet_address");
       }
     } catch (error) {
       console.warn("Failed to hydrate vault merchant profile", error);

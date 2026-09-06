@@ -21,14 +21,5 @@ export function resolveMerchantAccessStatus(
     return 'approved';
   }
 
-  const trimmedKey = typeof keyValue === 'string' ? keyValue.trim() : '';
-  if (trimmedKey && /^osk_(live|test)_[A-Za-z0-9_-]+$/i.test(trimmedKey)) {
-    return 'approved';
-  }
-
-  if (trimmedKey && /^opq_(live|test)_[A-Za-z0-9_-]+$/i.test(trimmedKey)) {
-    return 'approved';
-  }
-
   return 'pending';
 }

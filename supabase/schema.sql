@@ -30,12 +30,6 @@ create table if not exists merchants (
   screening_business_name text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
-  ,screening_status text not null default 'pending' check (screening_status in ('pending', 'approved', 'rejected', 'review'))
-  ,risk_score text
-  ,provider_ref text
-  ,screened_at timestamptz
-  ,screening_country text
-  ,screening_business_name text
 );
 
 create table if not exists api_keys (
@@ -44,8 +38,6 @@ create table if not exists api_keys (
   environment text not null check (environment in ('mainnet', 'sandbox')),
   prefix text not null,
   key_hash text not null,
-  status text not null default 'active' check (status in ('active', 'revoked')),
-  revoked_at timestamptz,
   status text not null default 'active' check (status in ('active', 'revoked')),
   revoked_at timestamptz,
   created_at timestamptz not null default now(),

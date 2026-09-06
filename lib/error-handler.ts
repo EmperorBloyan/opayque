@@ -33,6 +33,11 @@ export function handleApiError(error: any) {
   );
 }
 
+export function safeErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AppError) return error.message;
+  return fallback;
+}
+
 // Common payment errors
 export const PaymentErrors = {
   INSUFFICIENT_FUNDS: new AppError("Insufficient funds", 400, "INSUFFICIENT_FUNDS"),

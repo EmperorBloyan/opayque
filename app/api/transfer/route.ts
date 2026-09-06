@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 import * as Sentry from '@/lib/sentry';
 import { logLifecycle } from '@/lib/observability';
+import { resolveSettlementWallet } from '@/lib/merchant/wallets';
 
 const isDevnet = isDevnetNetwork();
 
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
       .select("settlement_wallet_address, wallet_address")
       .eq("id", intent.merchant_id)
       .maybeSingle();
-    const expectedRecipient = String(merchant.data?.settlement_wallet_address || merchant.data?.wallet_address || "");
+    const expectedRecipient = resolveSettlementWallet(merchant.data).address;
     if (!expectedRecipient || expectedRecipient !== recipientPubkey.toBase58()) {
       return NextResponse.json({ error: "Payment recipient does not match the merchant intent" }, { status: 400 });
     }

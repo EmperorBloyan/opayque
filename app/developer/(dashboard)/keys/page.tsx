@@ -7,6 +7,7 @@ import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
+import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
 import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
   AlertCircle,
@@ -206,7 +207,11 @@ export default function ApiKeysPage() {
             }
             if (merchant.website_url) setWebsiteUrl(merchant.website_url);
             if (merchant.webhook_url) setWebhookUrl(merchant.webhook_url);
+          } else {
+            clearMerchantProfileCache();
           }
+        } else if (merchantRes?.status === 401 || merchantRes?.status === 404) {
+          clearMerchantProfileCache();
         }
 
         if (keysRes && keysRes.ok) {

@@ -172,18 +172,10 @@ export async function PATCH(request: Request) {
         .select(MERCHANT_SELECT)
         .maybeSingle();
     } else {
-      dbResult = await supabase
-        .from("merchants")
-        .insert({
-          ...updates,
-          auth_user_id: user.id,
-          email: updates.email ?? user.email ?? null,
-          onboarding_status: "completed",
-          api_access_status: updates.api_access_status || "active",
-          created_at: new Date().toISOString(),
-        })
-        .select(MERCHANT_SELECT)
-        .maybeSingle();
+      return NextResponse.json(
+        { error: "Merchant profile not found. Complete onboarding before editing merchant details." },
+        { status: 404 }
+      );
     }
 
     const { data: merchant, error } = dbResult;

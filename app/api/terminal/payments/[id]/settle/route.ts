@@ -4,6 +4,7 @@ import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
+import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -50,7 +51,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
     }
 
-    const merchantWallet = String(merchant.settlement_wallet_address || merchant.wallet_address || "").trim();
+    const merchantWallet = resolveSettlementWallet(merchant).address;
     if (!merchantWallet) {
       return NextResponse.json({ success: false, error: "Merchant settlement wallet not configured" }, { status: 400 });
     }

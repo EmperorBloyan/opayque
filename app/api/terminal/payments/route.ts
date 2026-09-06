@@ -5,6 +5,7 @@ import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
 import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from "@/lib/solana/constants";
 import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
       .eq("id", terminal.merchant_id)
       .maybeSingle();
     if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
-    const recipientAddress = String(merchant.settlement_wallet_address || merchant.wallet_address || "").trim();
+    const recipientAddress = resolveSettlementWallet(merchant).address;
     if (!recipientAddress) return NextResponse.json({ success: false, error: "Merchant settlement wallet is not configured" }, { status: 409 });
     const environment = getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox";
 

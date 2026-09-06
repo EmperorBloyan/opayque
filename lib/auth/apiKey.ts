@@ -35,7 +35,7 @@ export async function authenticateApiKey(authHeader: string | null) {
     .eq('key_hash', keyHash)
     .maybeSingle();
 
-  if (!error && keyRecord?.merchant_id && keyRecord.status !== 'revoked' && !keyRecord.revoked_at) {
+  if (!error && keyRecord?.merchant_id && keyRecord.status === 'active' && !keyRecord.revoked_at) {
     supabaseAdmin.from('api_keys')
       .update({ last_used_at: new Date().toISOString() })
       .eq('key_hash', keyHash)

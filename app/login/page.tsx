@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
+import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
 import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
 
 function getSavedMerchantName() {
@@ -142,6 +143,7 @@ function LoginContent() {
         }
 
         if (!bound) {
+          clearMerchantProfileCache();
           setSetupRequired(true);
           setMessage(null);
           return;

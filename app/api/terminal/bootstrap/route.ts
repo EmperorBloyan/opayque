@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isRealMerchantId } from "@/lib/terminal/guards";
 import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
+import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
   }
 
-  const merchantWallet = (merchant.settlement_wallet_address || merchant.wallet_address || "").trim();
+  const merchantWallet = resolveSettlementWallet(merchant).address;
   if (!isRealMerchantId(merchant.id)) {
     return NextResponse.json({ success: false, error: "Merchant profile is not configured" }, { status: 409 });
   }

@@ -111,35 +111,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: merchantError.message }, { status: 500 });
   }
 
-  // Auto-create merchant if missing (prevents temp keys)
   if (!merchant?.id) {
-    const { data: created, error: createError } = await supabase
-      .from('merchants')
-      .insert([
-        {
-          auth_user_id: user.id,
-          email: user.email ?? null,
-          onboarding_status: 'pending',
-          api_access_status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
-      .select('id')
-      .maybeSingle();
-
-    if (createError || !created?.id) {
-      return NextResponse.json(
-        {
-          error:
-            createError?.message ||
-            'Merchant profile not found. Please complete merchant setup first.',
-        },
-        { status: 400 }
-      );
-    }
-
-    merchant = created;
+    return NextResponse.json(
+      { error: 'Merchant profile not found. Please complete merchant setup first.' },
+      { status: 409 }
+    );
   }
 
   // Generate secure key

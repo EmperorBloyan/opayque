@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { buildKeyHash, normalizeApiKeyHeader } from "@/lib/auth/apiKey";
+import { authenticateApiKey } from "@/lib/auth/apiKey";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getSolanaNetwork } from "@/lib/solana/constants";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
 import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -33,32 +34,6 @@ function getRequestOrigin(request: Request): string {
     AUD: 1.52,
   };
 
-async function authenticateMerchantApiKey(authHeader: string | null) {
-  const rawKey = normalizeApiKeyHeader(authHeader);
-  if (!rawKey) {
-    return { error: "Missing or invalid Authorization header" } as const;
-  }
-
-  const keyHash = buildKeyHash(rawKey);
-  const supabase = createSupabaseServerClient();
-
-  // Preferred: hashed key in api_keys
-  const { data: keyRecord, error } = await supabase
-    .from("api_keys")
-    .select("merchant_id, environment, status, revoked_at")
-    .eq("key_hash", keyHash)
-    .maybeSingle();
-
-  if (!error && keyRecord?.merchant_id && keyRecord.status === "active" && !keyRecord.revoked_at) {
-    return {
-      merchantId: keyRecord.merchant_id as string,
-      environment: (keyRecord.environment as string) ?? "sandbox",
-    };
-  }
-
-  return { error: "Invalid API Key" } as const;
-}
-
 export async function POST(request: Request) {
   try {
     const address = getClientAddress(request);
@@ -70,7 +45,7 @@ export async function POST(request: Request) {
       );
     }
     const authHeader = request.headers.get("authorization");
-    const auth = await authenticateMerchantApiKey(authHeader);
+    const auth = await authenticateApiKey(authHeader);
 
     if ("error" in auth) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -132,7 +107,7 @@ export async function POST(request: Request) {
     // Load merchant settlement wallet + display name
     const { data: merchant, error: merchantError } = await supabase
       .from("merchants")
-      .select("id, merchant_name, settlement_wallet_address")
+      .select("id, merchant_name, wallet_address, settlement_wallet_address")
       .eq("id", auth.merchantId)
       .maybeSingle();
 
@@ -143,7 +118,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const merchantWallet = String(merchant.settlement_wallet_address || "").trim();
+    const merchantWallet = resolveSettlementWallet(merchant).address;
     if (!merchantWallet) {
       return NextResponse.json(
         {
