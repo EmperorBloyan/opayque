@@ -151,14 +151,14 @@ export async function POST(request: Request) {
       if (merchantError || !merchantWalletAddress) {
         return NextResponse.json({
           success: false,
-          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
+          error: "Merchant has no settlement wallet. Save a settlement address in Vault → API Keys & Merchant Details, then generate a new code.",
         }, { status: 404 });
       }
 
       if (suppliedWalletAddress && suppliedWalletAddress !== merchantWalletAddress) {
         return NextResponse.json({
           success: false,
-          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
+          error: "Wallet mismatch. The wallet address from Vault does not match this terminal's session. Clear terminal storage and pair with a fresh code.",
         }, { status: 409 });
       }
 

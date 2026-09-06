@@ -113,8 +113,20 @@ export default function DeveloperSandbox() {
     try {
       const response = await fetch("/api/v1/merchant", { credentials: "include" });
       const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.merchant || !isRealMerchantId(payload.merchant.id)) {
-        throw new Error(response.status === 401 ? "Log in to use the developer sandbox." : "Merchant profile is unavailable.");
+      if (response.status === 401) {
+        throw new Error("Log in to use the developer sandbox.");
+      }
+
+      if (!payload?.merchant || !isRealMerchantId(payload.merchant.id)) {
+        throw new Error(
+          "Merchant profile not found. Complete onboarding in Vault → API Keys & Merchant Details to set your merchant name and settlement wallet."
+        );
+      }
+
+      if (!payload.merchant.settlement_wallet_address && !payload.merchant.wallet_address) {
+        throw new Error(
+          "Settlement wallet not configured. Save a settlement address in API Keys & Merchant Details to enable sandbox features."
+        );
       }
 
       const loadedMerchant = payload.merchant as MerchantProfile;

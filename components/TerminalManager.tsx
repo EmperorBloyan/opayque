@@ -959,6 +959,29 @@ export default function TerminalManager({
       return;
     }
 
+    let merchantResponse: Response;
+    try {
+      merchantResponse = await fetch("/api/v1/merchant", {
+        credentials: "include",
+      });
+    } catch (error) {
+      setToast("Unable to verify merchant. Please try again.");
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    const merchantPayload = await merchantResponse.json().catch(() => null);
+    const merchant = merchantPayload?.merchant;
+    const hasSettlementWallet =
+      (typeof merchant?.settlement_wallet_address === "string" && merchant.settlement_wallet_address.trim()) ||
+      (typeof merchant?.wallet_address === "string" && merchant.wallet_address.trim());
+
+    if (!hasSettlementWallet) {
+      setToast("Save a settlement wallet in API Keys & Merchant Details before pairing.");
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
     const defaultLabel = createDefaultTerminalLabel();
     setNewTerminalLabel(defaultLabel);
     setAuthCode("---");
