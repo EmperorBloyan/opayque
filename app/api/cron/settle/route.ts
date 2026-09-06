@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { initiateFiatPayout } from '@/lib/settlement/offramp';
 import * as Sentry from '@/lib/sentry';
-import { getOfframpConfig } from '@/lib/env/server';
+import { getOfframpProvider } from '@/lib/settlement/offramp';
 
 export async function POST(req: Request) {
   const auth = req.headers.get('authorization');
@@ -10,17 +9,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const providerConfigured = !getOfframpConfig().error;
-    if (!providerConfigured) {
+    const provider = getOfframpProvider();
+    if (!provider.isConfigured()) {
       return NextResponse.json({ success: true, processed: 0, reason: 'not_configured', results: [] });
     }
-    const pending: Array<{ merchantId: string; amount: number; currency: string; bankAccountId: string }> = [];
+    const pending: Array<{ merchantId: string; amountUsdc: number; destinationRef: string }> = [];
     let successCount = 0;
     const results: Array<{ merchantId: string; success: boolean; error?: string }> = [];
 
     for (const p of pending) {
-      const result = await initiateFiatPayout(p);
-      results.push({ merchantId: p.merchantId, success: result.success, error: result.error });
+      const result = await provider.createPayout(p);
+      results.push({ merchantId: p.merchantId, success: result.success, error: result.success ? undefined : result.message });
       if (result.success) successCount++;
     }
 

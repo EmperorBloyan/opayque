@@ -27,6 +27,8 @@ Wallet private keys, `RELAYER_PRIVATE_KEY`, `MAGICBLOCK_API_KEY`, `SUPABASE_SERV
 - **Replay and abuse:** payment intents are checked for payable status, amount, mint, recipient, and identity. Transfer, session, key creation, pairing, relayer, compliance, and webhook configuration routes use strict limits.
 - **Endpoint abuse and SSRF:** webhook destinations are merchant-bound and must be HTTPS. Do not fetch arbitrary merchant URLs without allowlisting and egress controls.
 - **RPC and upstream outages:** probes, timeout-bounded calls, transient retries, confirmation deadlines, and MagicBlock circuit breaking prevent indefinite hangs.
+- **Compliance boundary:** production defaults to the null compliance provider. Demo screening is labelled as such and never represents KYB/KYC. Sumsub secrets remain server-side; callbacks require a signature.
+- **Fiat boundary:** Opayque is non-custodial and does not store bank details or send fiat. Bridge is an optional external payout connector; unconfigured payout jobs return `not_configured` and do not claim success. Partner callbacks require a signature.
 
 ## Secret handling and rotation
 

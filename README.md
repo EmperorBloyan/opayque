@@ -221,7 +221,11 @@ Public pages include landing, login, checkout, and pay links. Vault, developer, 
 
 Terminal pairing lifecycle: a merchant generates a code in Vault, and staff enters it on the Terminal page. Staff can use `Return Home` to navigate to the landing page without ending the paired terminal session; `Open Terminal` restores the saved device credential. Only `Unpair` in Vault removes the terminal row and invalidates access. If the terminal is already removed, bootstrap validation clears the stale local credential and requires pairing again. In development, pairing and unpairing work without Upstash credentials; production keeps these operations fail-closed until `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are configured.
 
-Compliance screening is demo-only unless a real provider is configured. It is disabled in production by default and must not be described as KYB. Fiat settlement is also disabled unless `OFFRAMP_API_URL` and `OFFRAMP_API_KEY` are configured; the cron reports `not_configured` rather than claiming work was processed.
+Compliance screening is selected with `COMPLIANCE_PROVIDER=null|demo|sumsub` and defaults to `null` in production. The demo provider is explicitly labelled as demo-only and is never a KYB/KYC decision. Sumsub requires `SUMSUB_APP_TOKEN`, `SUMSUB_SECRET_KEY`, and `SUMSUB_WEBHOOK_SECRET`; its server-generated WebSDK token is passed to the hosted client flow and the secret never reaches the browser.
+
+Fiat conversion is optional and external. Opayque never holds fiat or sends bank transfers. The Bridge scaffold is enabled only when `BRIDGE_API_KEY` is set (with optional `BRIDGE_API_URL` and `BRIDGE_WEBHOOK_SECRET`); otherwise settlement cron returns `not_configured` and does no work. The Vault compliance page shows both provider states and keeps crypto settlement status separate from any later partner payout.
+
+Copy `.env.example` to your deployment secret store. Webhook endpoints are `/api/webhooks/sumsub` and `/api/webhooks/bridge`; configure each provider to sign callbacks and apply all Supabase migrations before enabling them.
 
 Supabase schema
 

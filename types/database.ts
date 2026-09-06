@@ -11,16 +11,6 @@ export interface MerchantRecord {
   created_at: string;
 }
 
-export interface MerchantBankAccountRecord {
-  id: string;
-  merchant_id: string;
-  iban: string;
-  routing: string;
-  auto_settle: boolean;
-  terms_accepted: boolean;
-  created_at: string;
-}
-
 export interface TerminalRecord {
   id: string;
   merchant_id: string;

@@ -5,12 +5,12 @@ export interface OfframpConfig {
 }
 
 export function getOfframpConfig(): { config?: OfframpConfig; error?: string } {
-  const apiUrl = process.env.FIAT_OFFRAMP_API_URL_PROD?.trim();
-  const apiKey = process.env.FIAT_OFFRAMP_API_KEY_PROD?.trim();
-  const webhookSecret = process.env.FIAT_OFFRAMP_WEBHOOK_SECRET_PROD?.trim();
+  const apiUrl = process.env.BRIDGE_API_URL?.trim() || "https://api.bridge.xyz/v0";
+  const apiKey = process.env.BRIDGE_API_KEY?.trim();
+  const webhookSecret = process.env.BRIDGE_WEBHOOK_SECRET?.trim();
 
   if (!apiUrl || !apiKey) {
-    return { error: 'Production off-ramp not configured: FIAT_OFFRAMP_API_URL_PROD or FIAT_OFFRAMP_API_KEY_PROD is missing' };
+    return { error: "External fiat payout partner is not configured" };
   }
 
   return { config: { apiUrl, apiKey, webhookSecret } };
