@@ -44,8 +44,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [walletUpdateLoading, setWalletUpdateLoading] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
+  const [isHydratingMerchant, setIsHydratingMerchant] = useState(true);
 
   const hydrateMerchantProfile = async () => {
+    setIsHydratingMerchant(true);
     try {
       const res = await fetch("/api/v1/merchant", { credentials: "include" });
       if (!res.ok) return;
@@ -82,6 +84,8 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       }
     } catch (error) {
       console.warn("Failed to hydrate vault merchant profile", error);
+    } finally {
+      setIsHydratingMerchant(false);
     }
   };
 
@@ -272,7 +276,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const displayVaultId = settlementWallet.trim() || publicKey?.toBase58() || "";
   const addressContent = displayVaultId
     ? `${displayVaultId.slice(0, 4)}...${displayVaultId.slice(-4)}`
-    : "No settlement wallet";
+    : isHydratingMerchant
+      ? "Loading merchant..."
+      : "No settlement wallet";
 
   if (isStandaloneCheckout) {
     return <>{children}</>;
@@ -449,7 +455,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                 <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
                   <div className="flex items-center gap-3">
-                    <p className="min-w-0 flex-1 truncate font-mono text-sm text-purple-200">{settlementWallet || "Not configured"}</p>
+                    <p className="min-w-0 flex-1 truncate font-mono text-sm text-purple-200">{isHydratingMerchant ? "Loading merchant..." : settlementWallet || "Not configured"}</p>
                     <button type="button" onClick={() => void copyWallet(settlementWallet)} disabled={!settlementWallet} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[10px] uppercase disabled:opacity-40">
                       {copiedWallet === settlementWallet ? <Check size={12} /> : <Copy size={12} />} Copy
                     </button>

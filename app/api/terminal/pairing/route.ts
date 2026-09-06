@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
       const { data: ownedMerchant, error: merchantLookupError } = await supabase
         .from("merchants")
-        .select("id")
+        .select("id, wallet_address, settlement_wallet_address")
         .eq("auth_user_id", user.id)
         .maybeSingle();
       if (merchantLookupError || !ownedMerchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
@@ -56,6 +56,15 @@ export async function POST(request: Request) {
       const ownedMerchantId = ownedMerchant.id;
 
       const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
+      const merchantWalletAddress = normalizeWalletAddress(
+        ownedMerchant.settlement_wallet_address ?? ownedMerchant.wallet_address ?? ""
+      );
+      if (!merchantWalletAddress) {
+        return NextResponse.json({
+          success: false,
+          error: "Save a settlement wallet in Vault before generating a pairing code.",
+        }, { status: 409 });
+      }
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
@@ -63,7 +72,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
       }
 
-      if (normalizedWalletAddress) {
+      if (normalizedWalletAddress && normalizedWalletAddress !== merchantWalletAddress) {
+        return NextResponse.json({
+          success: false,
+          error: "The pairing wallet does not match the merchant settlement wallet. Refresh Vault and try again.",
+        }, { status: 409 });
+      }
+
+      if (normalizedWalletAddress && normalizedWalletAddress === merchantWalletAddress && !ownedMerchant.wallet_address) {
         const { error: merchantUpdateError } = await supabase
           .from("merchants")
           .update({ wallet_address: normalizedWalletAddress, updated_at: new Date().toISOString() })
@@ -135,18 +151,6 @@ export async function POST(request: Request) {
       merchantData = fetchedMerchantData ?? null;
       const suppliedWalletAddress = normalizeWalletAddress(walletAddress);
       let merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
-
-      if (!merchantError && !merchantWalletAddress && suppliedWalletAddress && resolvedMerchantId) {
-        const { error: walletPatchError } = await supabase
-          .from("merchants")
-          .update({ wallet_address: suppliedWalletAddress, updated_at: new Date().toISOString() })
-          .eq("id", resolvedMerchantId);
-
-        if (!walletPatchError) {
-          merchantWalletAddress = suppliedWalletAddress;
-          merchantData = { ...(merchantData ?? { id: resolvedMerchantId }), wallet_address: suppliedWalletAddress };
-        }
-      }
 
       if (merchantError || !merchantWalletAddress) {
         return NextResponse.json({

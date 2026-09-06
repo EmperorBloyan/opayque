@@ -223,6 +223,14 @@ export default function DeveloperSandbox() {
       const resolvedSessionId = data?.session_id ?? data?.payment_intent_id ?? data?.data?.session_id;
       const resolvedPaymentUrl = data?.payment_url ?? data?.data?.payment_url;
       if (!response.ok || !resolvedSessionId || !resolvedPaymentUrl) {
+        if (response.status === 401 && data?.error === "Invalid API Key") {
+          throw new Error(
+            "Invalid test API key. Create a fresh osk_test_... secret in Developer → API Keys, clear the cached sandbox key, and reload."
+          );
+        }
+        if (response.status === 403 && data?.error === "API key environment does not match the configured Solana cluster") {
+          throw new Error("This sandbox requires an osk_test_... key. Create a new test key in Developer → API Keys.");
+        }
         throw new Error(data?.error || "The sandbox session could not be created.");
       }
 
