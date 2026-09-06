@@ -21,7 +21,13 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("Terminal bootstrap lookup failed", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      terminalId,
+    });
+    return NextResponse.json({ success: false, error: "Terminal authentication service is unavailable" }, { status: 503 });
   }
 
   if (
@@ -30,7 +36,7 @@ export async function GET(request: Request) {
     terminal.device_token_hash !== hashDeviceToken(deviceToken) ||
     ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())
   ) {
-    return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Terminal authentication failed. Pair this terminal again." }, { status: 401 });
   }
 
   const { data: merchant, error: merchantError } = await supabase

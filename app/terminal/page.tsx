@@ -266,6 +266,12 @@ export default function TerminalPage() {
       }
 
       if (!response.ok || !payload?.success) {
+        clearTerminalDeviceCredential();
+        window.localStorage.removeItem("opayque_terminal_id");
+        window.localStorage.removeItem("opayque_terminal_token");
+        setTerminalId(null);
+        setTerminalToken(null);
+        setStep("PAIRING");
         const message = response.status === 409
           ? "This pairing code is expired or already used. Generate a new code in Vault."
           : payload?.error || `Pairing request failed with status ${response.status}`;
@@ -386,6 +392,9 @@ export default function TerminalPage() {
     setIsGenerating(true);
     try {
       assertTerminalReady(terminalContext);
+      if (!terminalContext.terminalId || !terminalContext.deviceToken) {
+        throw new Error("Pair this terminal before generating a QR code");
+      }
 
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 12_000);

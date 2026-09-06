@@ -76,8 +76,12 @@ async function checkMagicBlock(): Promise<DependencyCheck> {
   if (!endpoint) return { status: "skipped", latencyMs: null, configured: "optional", detail: "MagicBlock is not configured" };
   const startedAt = Date.now();
   try {
-    const response = await withTimeout(fetch(endpoint, { method: "HEAD", cache: "no-store" }));
-    return { status: response.status < 500 ? "ok" : "degraded", latencyMs: Date.now() - startedAt, configured: "configured", endpoint: endpointHost(endpoint), detail: `HTTP ${response.status}` };
+    const response = await withTimeout(fetch(endpoint, {
+      method: "HEAD",
+      cache: "no-store",
+      headers: process.env.MAGICBLOCK_API_KEY ? { Authorization: `Bearer ${process.env.MAGICBLOCK_API_KEY}` } : undefined,
+    }));
+    return { status: response.ok ? "ok" : "degraded", latencyMs: Date.now() - startedAt, configured: "configured", endpoint: endpointHost(endpoint), detail: `HTTP ${response.status}` };
   } catch {
     return { status: "unhealthy", latencyMs: Date.now() - startedAt, configured: "configured", endpoint: endpointHost(endpoint), detail: "MagicBlock probe failed" };
   }
@@ -130,7 +134,7 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
     endpoints: rpcResults.map(({ url, error, ...result }) => ({ endpoint: endpointHost(url), ...result, ...(error ? { error: "RPC probe failed" } : {}) })),
   };
   const production = environment.environment === "production";
-  const critical = [supabase, rpc, magicBlock, redis, relayer].filter((check) => production ? check.status === "unhealthy" || check.status === "skipped" : check.status === "unhealthy");
+  const critical = [supabase, rpc, magicBlock, redis, relayer, anchorProgram].filter((check) => production ? check.status !== "ok" : check.status === "unhealthy");
   const degraded = [supabase, rpc, magicBlock, redis, relayer, anchorProgram].some((check) => check.status === "degraded");
   const status = critical.length > 0 ? "unhealthy" : degraded || !environment.ok ? "degraded" : "ok";
 

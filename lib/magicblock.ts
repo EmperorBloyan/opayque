@@ -195,7 +195,7 @@ export async function buildShieldedTransfer(
 
   const data = await response.json().catch(() => ({}));
 
-  if (!response.ok || !data?.transaction || typeof data.transaction !== "string") {
+  if (!response.ok || data?.mode !== "private" || !data?.transaction || typeof data.transaction !== "string") {
     console.error("Transfer API error:", data);
 
     let errorMessage = "Transfer API rejected the request.";
@@ -203,6 +203,8 @@ export async function buildShieldedTransfer(
     else if (typeof data?.error === "string") errorMessage = data.error;
     else if (data?.message || data?.error) {
       errorMessage = JSON.stringify(data.message || data.error);
+    } else if (data?.mode && data.mode !== "private") {
+      errorMessage = "Private transfer provider returned a non-private transaction.";
     } else if (!response.ok) {
       errorMessage = `Transfer failed (HTTP ${response.status})`;
     }

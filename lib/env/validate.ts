@@ -17,6 +17,13 @@ const environmentSchema = z.object({
   UPSTASH_REDIS_REST_URL: optionalUrl,
   UPSTASH_REDIS_REST_TOKEN: z.string().trim().min(1).optional(),
   NEXT_PUBLIC_OPAYQUE_PROGRAM_ID: z.string().trim().min(1).optional(),
+  COMPLIANCE_PROVIDER: z.enum(["null", "demo", "sumsub"]).optional(),
+  SUMSUB_APP_TOKEN: z.string().trim().min(1).optional(),
+  SUMSUB_SECRET_KEY: z.string().trim().min(1).optional(),
+  SUMSUB_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
+  BRIDGE_API_URL: optionalUrl,
+  BRIDGE_API_KEY: z.string().trim().min(1).optional(),
+  BRIDGE_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
 }).passthrough();
 
 export type EnvironmentName = "development" | "test" | "production";
@@ -47,7 +54,11 @@ const hasValue = (value: unknown): boolean => typeof value === "string" && value
 
 export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): EnvironmentValidation {
   const parsed = environmentSchema.safeParse(input);
-  const environment = parsed.success && input.NODE_ENV === "production" ? "production" : input.NODE_ENV === "test" ? "test" : "development";
+  const environment: EnvironmentName = input.NODE_ENV === "production"
+    ? "production"
+    : input.NODE_ENV === "test"
+      ? "test"
+      : "development";
   const network = input.NEXT_PUBLIC_SOLANA_NETWORK?.trim() || "devnet";
   const issues: EnvironmentIssue[] = [];
   const configured: Record<string, EnvironmentStatus> = {};
@@ -102,6 +113,16 @@ export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): Env
 
   if (environment === "production" && network !== "mainnet-beta") {
     issues.push({ key: "NEXT_PUBLIC_SOLANA_NETWORK", message: "Production must use mainnet-beta", severity: "error" });
+  }
+
+  if (input.COMPLIANCE_PROVIDER === "sumsub") {
+    for (const key of ["SUMSUB_APP_TOKEN", "SUMSUB_SECRET_KEY", "SUMSUB_WEBHOOK_SECRET"] as const) {
+      if (!hasValue(input[key])) issues.push({ key, message: `${key} is required when COMPLIANCE_PROVIDER=sumsub`, severity: environment === "production" ? "error" : "warning" });
+    }
+  }
+
+  if (hasValue(input.BRIDGE_API_KEY) && !hasValue(input.BRIDGE_WEBHOOK_SECRET)) {
+    issues.push({ key: "BRIDGE_WEBHOOK_SECRET", message: "BRIDGE_WEBHOOK_SECRET is required when Bridge payouts are enabled", severity: environment === "production" ? "error" : "warning" });
   }
 
   return {

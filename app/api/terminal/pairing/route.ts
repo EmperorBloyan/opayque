@@ -251,12 +251,25 @@ export async function POST(request: Request) {
       }
 
       if (terminalInsertError) {
-        console.warn("Failed to insert terminal fleet row", terminalInsertError);
-        await adminSupabase
+        console.error("Failed to persist terminal pairing", {
+          code: terminalInsertError.code,
+          message: terminalInsertError.message,
+          details: terminalInsertError.details,
+          hint: terminalInsertError.hint,
+          merchantId: resolvedMerchantId,
+          terminalId,
+        });
+        const { error: rollbackError } = await adminSupabase
           .from("terminal_pairing_codes")
           .update({ status: "PENDING" })
           .eq("code", code)
           .eq("status", "USED");
+        if (rollbackError) {
+          console.error("Failed to restore terminal pairing code", {
+            code: rollbackError.code,
+            message: rollbackError.message,
+          });
+        }
         return NextResponse.json({ success: false, error: "Terminal pairing could not be persisted. Please try again." }, { status: 500 });
       }
 
