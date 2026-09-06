@@ -71,7 +71,11 @@ export default function TerminalPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [isPairing, setIsPairing] = useState(false);
-  const [merchantName, setMerchantName] = useState("Opayque Merchant");
+  const [merchantName, setMerchantName] = useState(() => {
+    if (typeof window === "undefined") return "Opayque Merchant";
+    const savedName = window.localStorage.getItem("merchant_name")?.trim();
+    return savedName || "Opayque Merchant";
+  });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState<string>("");
   const [lockedUsdcAmount, setLockedUsdcAmount] = useState<string>("");
@@ -304,11 +308,10 @@ export default function TerminalPage() {
         window.localStorage.setItem("opayque_terminal_wallet", pairedWalletAddress);
       }
 
-      if (resolvedMerchantName) {
-        setMerchantName(resolvedMerchantName);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("merchant_name", resolvedMerchantName);
-        }
+      const effectiveMerchantName = (resolvedMerchantName || (typeof window !== "undefined" ? window.localStorage.getItem("merchant_name")?.trim() : "") || "Opayque Merchant").trim();
+      setMerchantName(effectiveMerchantName);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_name", effectiveMerchantName);
       }
 
       if (resolvedMerchantLogo) {
@@ -368,25 +371,36 @@ export default function TerminalPage() {
     setIsGenerating(true);
     try {
       assertTerminalReady(terminalContext);
+
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 12_000);
+
       const response = await fetch("/api/terminal/payments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-terminal-token": terminalContext.deviceToken,
+        },
         body: JSON.stringify({
           terminalId: terminalContext.terminalId,
-          deviceToken: terminalContext.deviceToken,
           amount: normalizedSettlementAmount,
           tokenSymbol: "USDC",
         }),
         signal: controller.signal,
       });
+
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success || !data?.id) {
         throw new Error(data?.error || "Unable to create payment");
       }
 
-      const pendingRecord = data as TransactionRecord & { tx_hash?: string | null; wallet_address?: string | null; token_symbol?: string | null; created_at?: string };
+      const pendingRecord = data as TransactionRecord & {
+        tx_hash?: string | null;
+        wallet_address?: string | null;
+        token_symbol?: string | null;
+        created_at?: string;
+      };
+
       const nextActivity = [{
         id: String(pendingRecord.id),
         status: "PENDING",
@@ -398,6 +412,7 @@ export default function TerminalPage() {
         walletAddress: terminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,
       }, ...readLocalActivity()];
+
       setRecentActivity(persistLocalActivity(nextActivity));
       setTransactionId(String(pendingRecord.id));
       setLatestTxHash(null);
@@ -408,13 +423,20 @@ export default function TerminalPage() {
           window.localStorage.setItem("opayque_pending_tx_id", String((data as TransactionRecord).id));
         }
       } catch {}
+
       setLockedAmount(numericAmount.toFixed(2));
       setLockedUsdcAmount(normalizedSettlementAmount.toFixed(6));
       setStep("PAYING");
       setPaymentStatus("PENDING");
       setToast("Pending transaction created");
     } catch (err) {
-      setToast(err instanceof DOMException && err.name === "AbortError" ? "Payment request timed out. Try again." : err instanceof Error ? err.message : "Unable to create payment");
+      setToast(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Payment request timed out. Try again."
+          : err instanceof Error
+          ? err.message
+          : "Unable to create payment"
+      );
     } finally {
       if (timeout) clearTimeout(timeout);
       setIsGenerating(false);
@@ -481,15 +503,19 @@ export default function TerminalPage() {
           if (storedCredential?.terminalId === storedId && storedCredential.deviceToken === storedToken) {
             setTerminalId(storedCredential.terminalId);
             setTerminalToken(storedCredential.deviceToken);
-            setMerchantName("Opayque Merchant");
+            const savedName = window.localStorage.getItem("merchant_name")?.trim();
+            if (savedName) {
+              setMerchantName(savedName);
+            }
             setStep("POS");
           }
-          const supabase = createSupabaseBrowserClient();
+
           (async () => {
             try {
               if (!storedToken) return;
               const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}&deviceToken=${encodeURIComponent(storedToken)}`);
               const payload = await response.json().catch(() => null);
+
               if (
                 response.ok &&
                 payload?.success &&
@@ -498,16 +524,18 @@ export default function TerminalPage() {
                 typeof payload.merchantWallet === "string" &&
                 payload.merchantWallet.trim()
               ) {
+                const nextName = String(payload.merchantName || window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant").trim();
                 saveTerminalDeviceCredential({
-                  terminalId: String(payload.terminalId),
+                  terminalId: String(payload.terminalId ?? storedId),
                   merchantId: String(payload.merchantId),
                   deviceToken: storedToken,
                   merchantWallet: String(payload.merchantWallet),
                   pairedAt: loadTerminalDeviceCredential()?.pairedAt ?? Date.now(),
                 });
-                setTerminalId(storedId);
+                setTerminalId(String(payload.terminalId ?? storedId));
                 setTerminalToken(storedToken);
-                setMerchantName(String(payload.merchantName || "Opayque Merchant"));
+                setMerchantName(nextName);
+                window.localStorage.setItem("merchant_name", nextName);
                 setAvatarPreview(payload.merchantLogo || null);
                 setStep("POS");
               } else if (response.status === 401) {

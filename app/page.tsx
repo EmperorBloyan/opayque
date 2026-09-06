@@ -101,9 +101,8 @@ export default function UnifiedLanding() {
 
   useEffect(() => {
     setMounted(true);
-    if (getActiveSession()) {
-      setIsAuthorizing(true);
-    }
+    // Do not treat an existing session as an in-flight vault authorization.
+    // The spinner should only be active while the user is actively authorizing.
   }, []);
 
   const handleVaultEntrance = async () => {
@@ -174,8 +173,9 @@ export default function UnifiedLanding() {
       router.push("/vault/registry");
     } catch (error) {
       clearActiveSession();
-      setIsAuthorizing(false);
       setAuthError(error instanceof Error ? error.message : "Wallet signing was rejected.");
+    } finally {
+      setIsAuthorizing(false);
     }
   };
 

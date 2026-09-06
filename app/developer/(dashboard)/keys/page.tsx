@@ -617,13 +617,6 @@ export default function ApiKeysPage() {
                   {sendingNotification ? "Sending..." : "Send access"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20"
-                >
-                  <LogOut size={14} /> Sign out
-                </button>
               </div>
 
               {(profileMessage || profileError || notificationMessage || notificationError) && (
@@ -782,6 +775,27 @@ export default function ApiKeysPage() {
           )}
         </section>
       </div>
+
+      <section className="mt-10 rounded-[2rem] border border-red-500/30 bg-red-950/20 p-6 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.34em] text-red-300/80">Danger zone</p>
+            <h3 className="text-2xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
+            <p className="max-w-2xl text-sm text-zinc-300">
+              Sign out completely from the vault. You can sign in again to re-register or continue with your existing credentials.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={isNavigating}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isNavigating ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
+      </section>
     </main>
   );
 }
