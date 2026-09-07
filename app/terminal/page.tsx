@@ -251,7 +251,9 @@ export default function TerminalPage() {
 
     try {
       const merchantId = activeSession?.merchantId;
-      const activeWalletAddress = activeSession?.walletAddress;
+      const activeWalletAddress = activeSession?.walletAddress && activeSession.walletAddress !== "email-auth"
+        ? activeSession.walletAddress
+        : undefined;
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -537,7 +539,9 @@ export default function TerminalPage() {
           (async () => {
             try {
               if (!storedToken) return;
-              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}&deviceToken=${encodeURIComponent(storedToken)}`);
+              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}`, {
+                headers: { "x-terminal-token": storedToken },
+              });
               const payload = await response.json().catch(() => null);
 
               if (

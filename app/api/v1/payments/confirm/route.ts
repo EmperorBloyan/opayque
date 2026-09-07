@@ -57,6 +57,9 @@ export async function POST(request: Request) {
     if (idempotencyKey && row.idempotency_key && row.idempotency_key !== idempotencyKey) {
       return NextResponse.json({ error: "Payment idempotency key does not match the intent" }, { status: 409 });
     }
+    if (row.signature && row.signature !== signature && row.status === "submitted") {
+      return NextResponse.json({ error: "Payment intent is already associated with another signature" }, { status: 409 });
+    }
     if (row.signature === signature && row.status === "confirmed") {
       return NextResponse.json({ success: true, idempotent: true, transaction: row });
     }
@@ -87,7 +90,9 @@ export async function POST(request: Request) {
     const verification = await verifySolanaTransaction({
       signature,
       expectedMerchantWallet: submitted.recipient_address,
+      expectedSender: submitted.sender_address,
       expectedAmount: Number(submitted.amount),
+      expectedAmountBaseUnits: submitted.amount_base_units ? BigInt(submitted.amount_base_units) : undefined,
       expectedTokenMint: submitted.mint,
       expectedTokenDecimals: 6,
       rpcUrl: await selectHealthyRpcUrl(),

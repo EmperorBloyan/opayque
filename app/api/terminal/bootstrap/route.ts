@@ -7,7 +7,7 @@ import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const terminalId = url.searchParams.get("terminalId")?.trim();
-  const deviceToken = url.searchParams.get("deviceToken")?.trim();
+  const deviceToken = request.headers.get("x-terminal-token")?.trim();
 
   if (!terminalId || !deviceToken) {
     return NextResponse.json({ success: false, error: "Terminal credentials are required" }, { status: 400 });

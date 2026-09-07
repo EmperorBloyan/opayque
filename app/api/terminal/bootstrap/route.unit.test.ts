@@ -9,7 +9,9 @@ vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: mocks.crea
 import { GET } from "./route";
 
 function request(terminalId = "terminal-1", deviceToken = "secret") {
-  return new Request(`http://localhost/api/terminal/bootstrap?terminalId=${terminalId}&deviceToken=${deviceToken}`);
+  return new Request(`http://localhost/api/terminal/bootstrap?terminalId=${terminalId}`, {
+    headers: { "x-terminal-token": deviceToken },
+  });
 }
 
 function client(terminal: Record<string, unknown> | null, merchant: Record<string, unknown> | null = null, error: Record<string, unknown> | null = null) {

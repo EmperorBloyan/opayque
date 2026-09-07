@@ -6,7 +6,9 @@ const DEFAULT_USDC_DECIMALS = 6;
 interface VerifyTxParams {
   signature: string;
   expectedMerchantWallet: string;
+  expectedSender?: string | null;
   expectedAmount: number;
+  expectedAmountBaseUnits?: bigint;
   expectedTokenMint?: string;
   expectedTokenDecimals?: number;
   rpcUrl?: string;
@@ -76,6 +78,21 @@ function getSolTransferBaseUnits(
   return totalReceived;
 }
 
+function hasExpectedSenderSolTransfer(
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
+  expectedSender: string,
+  expectedBaseUnits: bigint,
+): boolean {
+  const accountKeys = tx.transaction.message.accountKeys;
+  for (let index = 0; index < accountKeys.length; index += 1) {
+    if (accountKeys[index].pubkey.toBase58() !== expectedSender) continue;
+    const preBalance = BigInt(tx.meta?.preBalances?.[index] ?? 0);
+    const postBalance = BigInt(tx.meta?.postBalances?.[index] ?? 0);
+    return preBalance - postBalance >= expectedBaseUnits;
+  }
+  return false;
+}
+
 function getSplTransferBaseUnits(
   tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
   expectedMerchantWallet: string,
@@ -113,10 +130,40 @@ function getSplTransferBaseUnits(
   return totalReceived;
 }
 
+function hasExpectedSenderSplTransfer(
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
+  expectedSender: string,
+  expectedTokenMint: string,
+  expectedBaseUnits: bigint,
+): boolean {
+  if (!tx.meta?.preTokenBalances || !tx.meta.postTokenBalances) return false;
+
+  const preBalances = new Map<string, bigint>();
+  const postBalances = new Map<string, bigint>();
+  tx.meta.preTokenBalances.forEach((balance) => {
+    if (balance.owner === expectedSender && balance.mint === expectedTokenMint) {
+      preBalances.set(`${balance.accountIndex}`, BigInt(balance.uiTokenAmount.amount));
+    }
+  });
+  tx.meta.postTokenBalances.forEach((balance) => {
+    if (balance.owner === expectedSender && balance.mint === expectedTokenMint) {
+      postBalances.set(`${balance.accountIndex}`, BigInt(balance.uiTokenAmount.amount));
+    }
+  });
+
+  for (const index of new Set([...preBalances.keys(), ...postBalances.keys()])) {
+    const decrease = (preBalances.get(index) ?? 0n) - (postBalances.get(index) ?? 0n);
+    if (decrease >= expectedBaseUnits) return true;
+  }
+  return false;
+}
+
 export async function verifySolanaTransaction({
   signature,
   expectedMerchantWallet,
+  expectedSender,
   expectedAmount,
+  expectedAmountBaseUnits,
   expectedTokenMint,
   expectedTokenDecimals,
   rpcUrl,
@@ -142,23 +189,40 @@ export async function verifySolanaTransaction({
     if (expectedTokenMint) {
       const decimals = expectedTokenDecimals ?? DEFAULT_USDC_DECIMALS;
       actualTransferredBaseUnits = getSplTransferBaseUnits(tx, expectedMerchantWallet, expectedTokenMint);
-      expectedBaseUnits = parseHumanAmountToBaseUnits(expectedAmount, decimals);
+      expectedBaseUnits = expectedAmountBaseUnits ?? parseHumanAmountToBaseUnits(expectedAmount, decimals);
+      if (actualTransferredBaseUnits !== expectedBaseUnits) {
+        return {
+          verified: false,
+          status: 'underpaid',
+          reason: 'Received amount does not exactly match the payment intent',
+          slot,
+          blockTime,
+          fee,
+          actualTransferredBaseUnits,
+          expectedBaseUnits,
+        };
+      }
+      if (expectedSender && !hasExpectedSenderSplTransfer(tx, expectedSender, expectedTokenMint, expectedBaseUnits)) {
+        return { verified: false, status: 'failed', reason: 'Expected payment sender was not verified', slot, blockTime, fee, actualTransferredBaseUnits, expectedBaseUnits };
+      }
     } else {
       actualTransferredBaseUnits = getSolTransferBaseUnits(tx, expectedMerchantWallet);
-      expectedBaseUnits = parseHumanAmountToBaseUnits(expectedAmount, 9);
-    }
-
-    if (actualTransferredBaseUnits < expectedBaseUnits) {
-      return {
-        verified: false,
-        status: 'underpaid',
-        reason: 'Received amount is less than expected',
-        slot,
-        blockTime,
-        fee,
-        actualTransferredBaseUnits,
-        expectedBaseUnits,
-      };
+      expectedBaseUnits = expectedAmountBaseUnits ?? parseHumanAmountToBaseUnits(expectedAmount, 9);
+      if (actualTransferredBaseUnits !== expectedBaseUnits) {
+        return {
+          verified: false,
+          status: 'underpaid',
+          reason: 'Received amount does not exactly match the payment intent',
+          slot,
+          blockTime,
+          fee,
+          actualTransferredBaseUnits,
+          expectedBaseUnits,
+        };
+      }
+      if (expectedSender && !hasExpectedSenderSolTransfer(tx, expectedSender, expectedBaseUnits)) {
+        return { verified: false, status: 'failed', reason: 'Expected payment sender was not verified', slot, blockTime, fee, actualTransferredBaseUnits, expectedBaseUnits };
+      }
     }
 
     return {

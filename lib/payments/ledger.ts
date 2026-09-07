@@ -1,4 +1,5 @@
 import type { PaymentStatus } from "@/lib/types";
+import crypto from "node:crypto";
 
 const transitions: Record<PaymentStatus, readonly PaymentStatus[]> = {
   created: ["pending_signature", "submitted", "failed", "expired"],
@@ -23,6 +24,10 @@ export function normalizeIdempotencyKey(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const key = value.trim();
   return key && key.length <= 255 ? key : null;
+}
+
+export function buildPaymentRequestFingerprint(input: Record<string, unknown>): string {
+  return crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
 export function paymentEventName(status: PaymentStatus): string {

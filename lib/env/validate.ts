@@ -21,6 +21,7 @@ const environmentSchema = z.object({
   SUMSUB_APP_TOKEN: z.string().trim().min(1).optional(),
   SUMSUB_SECRET_KEY: z.string().trim().min(1).optional(),
   SUMSUB_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
+  SOLANA_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
   BRIDGE_API_URL: optionalUrl,
   BRIDGE_API_KEY: z.string().trim().min(1).optional(),
   BRIDGE_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
