@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getSolanaNetwork } from "@/lib/solana/constants";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
-import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
+import { buildPaymentRequestFingerprint, normalizeIdempotencyKey } from "@/lib/payments/ledger";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
@@ -130,6 +130,14 @@ export async function POST(request: Request) {
     }
 
     const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotency_key);
+    const requestFingerprint = buildPaymentRequestFingerprint({
+      orderId,
+      amountFiat,
+      displayCurrency,
+      settlementToken,
+      customerEmail,
+      description,
+    });
     if (idempotencyKey) {
       const { data: existing } = await supabase
         .from("payment_ledger")
@@ -138,6 +146,9 @@ export async function POST(request: Request) {
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
       if (existing?.checkout_session_id) {
+        if (existing.idempotency_fingerprint && existing.idempotency_fingerprint !== requestFingerprint) {
+          return NextResponse.json({ error: "Idempotency key was already used for a different payment" }, { status: 409 });
+        }
         const { data: existingSession } = await supabase
           .from("checkout_sessions")
           .select("id, solana_pay_url")
@@ -199,11 +210,29 @@ export async function POST(request: Request) {
         memo: description.slice(0, 256),
         environment: auth.environment,
         idempotency_key: idempotencyKey,
+        idempotency_fingerprint: requestFingerprint,
         status: "created",
       })
       .select("*")
       .maybeSingle();
     if (transactionError || !transaction) {
+      if (transactionError?.code === "23505" && idempotencyKey) {
+        const { data: existing } = await supabase
+          .from("payment_ledger")
+          .select("*")
+          .eq("merchant_id", auth.merchantId)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
+        if (existing?.idempotency_fingerprint === requestFingerprint && existing.checkout_session_id) {
+          const { data: existingSession } = await supabase
+            .from("checkout_sessions")
+            .select("solana_pay_url")
+            .eq("id", existing.checkout_session_id)
+            .maybeSingle();
+          return NextResponse.json({ success: true, payment_intent_id: existing.checkout_session_id, session_id: existing.checkout_session_id, payment_url: existingSession?.solana_pay_url || "", idempotent: true, transaction: existing });
+        }
+        return NextResponse.json({ error: "Idempotency key was already used for a different payment" }, { status: 409 });
+      }
       return NextResponse.json({ error: "Failed to create payment ledger intent" }, { status: 500 });
     }
     await dispatchWebhookEvent({ merchantId: auth.merchantId, environment: auth.environment === "mainnet" ? "mainnet" : "sandbox", eventType: "payment.created", payload: transaction });

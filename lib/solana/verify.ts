@@ -169,10 +169,10 @@ export async function verifySolanaTransaction({
   rpcUrl,
 }: VerifyTxParams): Promise<VerifyTxResult> {
   try {
-    const connection = new Connection(rpcUrl || await selectHealthyRpcUrl(), 'confirmed');
+    const connection = new Connection(rpcUrl || await selectHealthyRpcUrl(), 'finalized');
     const tx = await connection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
-      commitment: 'confirmed',
+      commitment: 'finalized',
     });
 
     if (!tx || !tx.meta || tx.meta.err) {
