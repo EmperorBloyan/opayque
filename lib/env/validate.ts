@@ -22,6 +22,9 @@ const environmentSchema = z.object({
   SUMSUB_SECRET_KEY: z.string().trim().min(1).optional(),
   SUMSUB_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
   SOLANA_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
+  WEBHOOK_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
+  WEBHOOK_DELIVERY_SECRET: z.string().trim().min(1).optional(),
+  CRON_SECRET: z.string().trim().min(1).optional(),
   BRIDGE_API_URL: optionalUrl,
   BRIDGE_API_KEY: z.string().trim().min(1).optional(),
   BRIDGE_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
@@ -49,6 +52,10 @@ const secretKeys = new Set([
   "MAGICBLOCK_API_KEY",
   "RELAYER_PRIVATE_KEY",
   "UPSTASH_REDIS_REST_TOKEN",
+  "CRON_SECRET",
+  "SOLANA_WEBHOOK_SECRET",
+  "WEBHOOK_ENCRYPTION_KEY",
+  "WEBHOOK_DELIVERY_SECRET",
 ]);
 
 const hasValue = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0;
@@ -82,6 +89,11 @@ export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): Env
     "RELAYER_PRIVATE_KEY",
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",
+    "WEBHOOK_ENCRYPTION_KEY",
+    "WEBHOOK_DELIVERY_SECRET",
+    "CRON_SECRET",
+    "SOLANA_WEBHOOK_SECRET",
+    "NEXT_PUBLIC_OPAYQUE_PROGRAM_ID",
   ]);
 
   const keys = [
@@ -97,6 +109,10 @@ export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): Env
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",
     "NEXT_PUBLIC_OPAYQUE_PROGRAM_ID",
+    "WEBHOOK_ENCRYPTION_KEY",
+    "WEBHOOK_DELIVERY_SECRET",
+    "CRON_SECRET",
+    "SOLANA_WEBHOOK_SECRET",
   ];
 
   for (const key of keys) {

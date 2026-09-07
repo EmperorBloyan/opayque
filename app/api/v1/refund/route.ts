@@ -104,8 +104,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: `Transaction already ${status}` }, { status: 409 });
     }
 
-    if (status && !["pending", "settled", "completed", "success", "paid"].includes(status)) {
-      return NextResponse.json({ success: false, error: `Cannot refund transaction in status: ${transaction.status}` }, { status: 400 });
+    if (status !== "confirmed") {
+      return NextResponse.json({ success: false, error: `Cannot refund transaction in status: ${transaction.status}` }, { status: 409 });
     }
 
     const originalAmount = Number(transaction.amount ?? 0);

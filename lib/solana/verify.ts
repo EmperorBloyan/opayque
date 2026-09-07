@@ -3,6 +3,14 @@ import { selectHealthyRpcUrl } from './rpc';
 
 const DEFAULT_USDC_DECIMALS = 6;
 
+type ParsedInstructionLike = {
+  program?: string;
+  parsed?: {
+    type?: string;
+    info?: Record<string, unknown>;
+  };
+};
+
 interface VerifyTxParams {
   signature: string;
   expectedMerchantWallet: string;
@@ -93,6 +101,20 @@ function hasExpectedSenderSolTransfer(
   return false;
 }
 
+function hasExpectedSolInstruction(
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
+  expectedSender: string,
+  expectedRecipient: string,
+  expectedBaseUnits: bigint,
+): boolean {
+  return tx.transaction.message.instructions.some((instruction) => {
+    const parsedInstruction = instruction as ParsedInstructionLike;
+    const info = parsedInstruction.parsed?.info;
+    if (parsedInstruction.program !== 'system' || parsedInstruction.parsed?.type !== 'transfer' || !info) return false;
+    return info.source === expectedSender && info.destination === expectedRecipient && BigInt(String(info.lamports)) === expectedBaseUnits;
+  });
+}
+
 function getSplTransferBaseUnits(
   tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
   expectedMerchantWallet: string,
@@ -158,6 +180,39 @@ function hasExpectedSenderSplTransfer(
   return false;
 }
 
+function hasExpectedSplInstruction(
+  tx: NonNullable<Awaited<ReturnType<Connection['getParsedTransaction']>>>,
+  expectedSender: string,
+  expectedRecipient: string,
+  expectedTokenMint: string,
+  expectedBaseUnits: bigint,
+): boolean {
+  const recipientTokenAccounts = new Set(
+    (tx.meta?.postTokenBalances ?? [])
+      .filter((balance) => balance.owner === expectedRecipient && balance.mint === expectedTokenMint)
+      .map((balance) => balance.accountIndex),
+  );
+  const senderTokenAccounts = new Set(
+    (tx.meta?.preTokenBalances ?? [])
+      .filter((balance) => balance.owner === expectedSender && balance.mint === expectedTokenMint)
+      .map((balance) => balance.accountIndex),
+  );
+  const accountKeys = tx.transaction.message.accountKeys;
+
+  return tx.transaction.message.instructions.some((instruction) => {
+    const parsedInstruction = instruction as ParsedInstructionLike;
+    const info = parsedInstruction.parsed?.info;
+    if (!info || !['spl-token', 'spl-token-2022'].includes(parsedInstruction.program ?? '')) return false;
+    if (!['transfer', 'transferChecked'].includes(parsedInstruction.parsed?.type ?? '')) return false;
+    const source = String(info.source ?? '');
+    const destination = String(info.destination ?? '');
+    const sourceIndex = accountKeys.findIndex((account) => account.pubkey.toBase58() === source);
+    const destinationIndex = accountKeys.findIndex((account) => account.pubkey.toBase58() === destination);
+    const tokenAmount = info.amount ?? (info.tokenAmount as { amount?: unknown } | undefined)?.amount;
+    return sourceIndex >= 0 && destinationIndex >= 0 && senderTokenAccounts.has(sourceIndex) && recipientTokenAccounts.has(destinationIndex) && String(info.mint ?? expectedTokenMint) === expectedTokenMint && BigInt(String(tokenAmount)) === expectedBaseUnits;
+  });
+}
+
 export async function verifySolanaTransaction({
   signature,
   expectedMerchantWallet,
@@ -202,7 +257,7 @@ export async function verifySolanaTransaction({
           expectedBaseUnits,
         };
       }
-      if (expectedSender && !hasExpectedSenderSplTransfer(tx, expectedSender, expectedTokenMint, expectedBaseUnits)) {
+      if (expectedSender && (!hasExpectedSenderSplTransfer(tx, expectedSender, expectedTokenMint, expectedBaseUnits) || !hasExpectedSplInstruction(tx, expectedSender, expectedMerchantWallet, expectedTokenMint, expectedBaseUnits))) {
         return { verified: false, status: 'failed', reason: 'Expected payment sender was not verified', slot, blockTime, fee, actualTransferredBaseUnits, expectedBaseUnits };
       }
     } else {
@@ -220,7 +275,7 @@ export async function verifySolanaTransaction({
           expectedBaseUnits,
         };
       }
-      if (expectedSender && !hasExpectedSenderSolTransfer(tx, expectedSender, expectedBaseUnits)) {
+      if (expectedSender && (!hasExpectedSenderSolTransfer(tx, expectedSender, expectedBaseUnits) || !hasExpectedSolInstruction(tx, expectedSender, expectedMerchantWallet, expectedBaseUnits))) {
         return { verified: false, status: 'failed', reason: 'Expected payment sender was not verified', slot, blockTime, fee, actualTransferredBaseUnits, expectedBaseUnits };
       }
     }

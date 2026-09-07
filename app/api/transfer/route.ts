@@ -7,6 +7,7 @@ import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 import * as Sentry from '@/lib/sentry';
 import { logLifecycle } from '@/lib/observability';
 import { resolveSettlementWallet } from '@/lib/merchant/wallets';
+import { parseAmountToBaseUnits } from '@/lib/payments/amount';
 
 const isDevnet = isDevnetNetwork();
 
@@ -16,13 +17,14 @@ export async function POST(request: Request) {
     const { sender, recipient, amount, mint, intent_id, memo } = body as {
       sender?: string;
       recipient?: string;
-      amount?: number;
+      amount?: number | string;
       mint?: string;
       intent_id?: string;
       memo?: string;
     };
 
-    if (!sender || !recipient || typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
+    const amountBaseUnits = parseAmountToBaseUnits(amount, 6);
+    if (!sender || !recipient || !amountBaseUnits) {
       return NextResponse.json(
         { error: 'Missing required transfer parameters (sender, recipient, amount)' },
         { status: 400 }
@@ -47,15 +49,14 @@ export async function POST(request: Request) {
     if (mintAddress !== expectedMint) {
       return NextResponse.json({ error: 'Only the configured network USDC mint is supported for private payments' }, { status: 400 });
     }
-    const amountBaseUnits = Math.round(amount * 1_000_000);
-    if (!Number.isSafeInteger(amountBaseUnits) || amountBaseUnits <= 0 || amountBaseUnits >= 1_000_000_000_000) {
+    if (amountBaseUnits >= 1_000_000_000_000n) {
       return NextResponse.json({ error: 'Payment amount must be a valid USDC amount' }, { status: 400 });
     }
     if (typeof memo === 'string' && memo.length > 64) {
       return NextResponse.json({ error: 'Payment memo must be 64 characters or fewer' }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient(request);
+    const supabase = createSupabaseServerClient();
     let intent: any = null;
     const ledgerLookup = await supabase
       .from("payment_ledger")
@@ -77,8 +78,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
     }
 
-    const expectedAmount = Number(intent.amount_token ?? intent.amount);
-    if (!Number.isFinite(expectedAmount) || Math.abs(expectedAmount - amount) > 0.000001) {
+    const expectedAmountBaseUnits = intent.amount_base_units !== null && intent.amount_base_units !== undefined
+      ? BigInt(intent.amount_base_units)
+      : parseAmountToBaseUnits(intent.amount_token ?? intent.amount, 6);
+    if (!expectedAmountBaseUnits || expectedAmountBaseUnits !== amountBaseUnits) {
       return NextResponse.json({ error: "Payment amount does not match the payment intent" }, { status: 400 });
     }
     const merchant = await supabase
@@ -101,13 +104,13 @@ export async function POST(request: Request) {
       sender: senderPubkey.toBase58(),
       recipient: recipientPubkey.toBase58(),
       mint: mintAddress,
-      amountBaseUnits,
+      amountBaseUnits: Number(amountBaseUnits),
       memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
     if (ledgerIntent?.id) {
       const { data: updatedIntent, error: intentUpdateError } = await supabase
         .from("payment_ledger")
-        .update({ status: "pending_signature", sender_address: senderPubkey.toBase58(), recipient_address: recipientPubkey.toBase58(), amount_base_units: amountBaseUnits, mint: mintAddress, updated_at: new Date().toISOString() })
+        .update({ status: "pending_signature", sender_address: senderPubkey.toBase58(), recipient_address: recipientPubkey.toBase58(), amount_base_units: Number(amountBaseUnits), mint: mintAddress, updated_at: new Date().toISOString() })
         .eq("id", ledgerIntent.id)
         .in("status", ["created", "pending_signature"])
         .select("id, merchant_id, amount, amount_base_units, mint, sender_address, recipient_address, signature, status, environment, created_at, updated_at")
@@ -128,7 +131,7 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     Sentry.captureException(error);
     logLifecycle("error", "private_transfer", "failed", getSolanaNetwork(), error instanceof Error ? error.name : "UnknownError");
-    const message = error instanceof Error ? error.message : 'Internal server error';
+    const message = error instanceof Error ? error.message : '';
     const status = /timed out|timeout/i.test(message)
       ? 504
       : /invalid public key|invalid.*amount|missing/i.test(message)
@@ -137,7 +140,7 @@ export async function POST(request: Request) {
           ? 502
           : 500;
     return NextResponse.json(
-      { error: message },
+      { error: status === 504 ? 'MagicBlock request timed out' : status === 400 ? 'Invalid private transfer request' : status === 502 ? 'Private transfer provider unavailable' : 'Unable to prepare private transfer' },
       { status }
     );
   }

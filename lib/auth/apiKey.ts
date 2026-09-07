@@ -26,6 +26,9 @@ export async function authenticateApiKey(authHeader: string | null) {
     return { error: 'Missing or invalid Authorization header' };
   }
 
+  const keyMatch = rawKey.match(/^osk_(live|test)(?:_pub)?_[A-Za-z0-9_-]{16,}$/i);
+  if (!keyMatch) return { error: 'Invalid API Key' };
+
   const supabaseAdmin = createSupabaseServerClient();
   const keyHash = buildKeyHash(rawKey);
 
@@ -36,13 +39,12 @@ export async function authenticateApiKey(authHeader: string | null) {
     .maybeSingle();
 
   if (!error && keyRecord?.merchant_id && keyRecord.status === 'active' && !keyRecord.revoked_at) {
-    supabaseAdmin.from('api_keys')
+    const { error: auditError } = await supabaseAdmin.from('api_keys')
       .update({ last_used_at: new Date().toISOString() })
       .eq('key_hash', keyHash)
       .then();
+    if (auditError) return { error: 'Unable to validate API Key' };
 
-    const keyMatch = rawKey.match(/^osk_(live|test)(?:_pub)?_[A-Za-z0-9_-]{16,}$/i);
-    if (!keyMatch) return { error: 'Invalid API Key' };
     const expectedEnvironment = keyMatch[1].toLowerCase() === 'live' ? 'mainnet' : 'sandbox';
     if ((keyRecord.environment ?? 'sandbox') !== expectedEnvironment) return { error: 'Invalid API Key' };
     return { merchantId: keyRecord.merchant_id, environment: keyRecord.environment ?? 'sandbox', keyType: rawKey.includes('_pub_') ? 'publishable' : 'secret' as const };

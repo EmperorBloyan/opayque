@@ -5,12 +5,14 @@ import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
 import * as Sentry from "@/lib/sentry";
+import crypto from "node:crypto";
+import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 
 const MAX_BATCH = 100;
 const STALE_AFTER_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,11 +30,24 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     const rpcUrl = await selectHealthyRpcUrl();
+    const workerId = crypto.randomUUID();
+    const claimCutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
     let matched = 0;
     let mismatch = 0;
     let notFound = 0;
 
     for (const row of rows ?? []) {
+      const claimedAt = new Date().toISOString();
+      const { data: claimed, error: claimError } = await supabase
+        .from("payment_ledger")
+        .update({ reconciliation_claimed_at: claimedAt, reconciliation_claimed_by: workerId })
+        .eq("id", row.id)
+        .or(`reconciliation_claimed_at.is.null,reconciliation_claimed_at.lt.${claimCutoff}`)
+        .select("id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) continue;
+
       let reconciliationStatus: "matched" | "mismatch" | "not_found" = "not_found";
       let notes = "No public signature is available for reconciliation";
       if (row.signature) {
@@ -58,8 +73,9 @@ export async function POST(request: Request) {
       }
       const { error: updateError } = await supabase
         .from("payment_ledger")
-        .update({ reconciliation_status: reconciliationStatus, last_reconciled_at: new Date().toISOString(), reconciliation_notes: notes })
-        .eq("id", row.id);
+        .update({ reconciliation_status: reconciliationStatus, last_reconciled_at: new Date().toISOString(), reconciliation_notes: notes, reconciliation_claimed_at: null, reconciliation_claimed_by: null })
+        .eq("id", row.id)
+        .eq("reconciliation_claimed_by", workerId);
       if (updateError) throw updateError;
       if (reconciliationStatus === "matched") matched += 1;
       if (reconciliationStatus === "mismatch") mismatch += 1;

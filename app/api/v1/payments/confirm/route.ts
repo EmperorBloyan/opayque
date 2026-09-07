@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "intent_id and a valid signature are required" }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient(request);
+    const supabase = createSupabaseServerClient();
     let merchantId: string | null = null;
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     if (row.signature && row.signature !== signature && row.status === "submitted") {
       return NextResponse.json({ error: "Payment intent is already associated with another signature" }, { status: 409 });
     }
+    if (!row.sender_address || (sender && sender !== row.sender_address)) {
+      return NextResponse.json({ error: "Payment intent sender does not match the authorized sender" }, { status: 409 });
+    }
     if (row.signature === signature && row.status === "confirmed") {
       return NextResponse.json({ success: true, idempotent: true, transaction: row });
     }
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const { data: submitted, error: submitError } = await supabase
       .from("payment_ledger")
-      .update({ status: "submitted", signature, sender_address: sender || row.sender_address, updated_at: now })
+      .update({ status: "submitted", signature, updated_at: now })
       .eq("id", intentId)
       .in("status", ["created", "pending_signature", "submitted"])
       .select("*")

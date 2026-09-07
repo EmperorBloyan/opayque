@@ -40,7 +40,7 @@ pub struct ProcessPayment<'info> {
     pub opayque_treasury: Account<'info, TreasuryAccount>,
     #[account(seeds = [b"protocol_config"], bump = protocol_config.bump)]
     pub protocol_config: Account<'info, ProtocolConfig>,
-    #[account(mut, seeds = [b"terminal_nonce", terminal_nonce.terminal_id.as_bytes(), merchant_vault.authority.as_ref()], bump = terminal_nonce.bump)]
+    #[account(mut, constraint = terminal_nonce.merchant == merchant_vault.authority @ ErrorCode::UnauthorizedAuthority, seeds = [b"terminal_nonce", terminal_nonce.terminal_id.as_bytes(), merchant_vault.authority.as_ref()], bump = terminal_nonce.bump)]
     pub terminal_nonce: Account<'info, TerminalNonce>,
     #[account(
         init,
@@ -77,7 +77,7 @@ pub fn register_terminal_nonce(
     nonce: u64,
     expires_at: u64,
 ) -> Result<()> {
-    require!(terminal_id.len() <= TerminalNonce::MAX_TERMINAL_ID_LEN, ErrorCode::InvalidStringLength);
+    require!(!terminal_id.is_empty() && terminal_id.len() <= TerminalNonce::MAX_TERMINAL_ID_LEN, ErrorCode::InvalidStringLength);
     require!(expires_at > Clock::get()?.unix_timestamp as u64, ErrorCode::NonceExpired);
 
     let nonce_account = &mut ctx.accounts.terminal_nonce;
@@ -93,6 +93,7 @@ pub fn register_terminal_nonce(
 
 pub fn process_payment(ctx: Context<ProcessPayment>, amount: u64, nonce: u64, memo: String) -> Result<()> {
     require!(!ctx.accounts.protocol_config.paused, ErrorCode::CircuitBreakerOpen);
+    require!(amount > 0, ErrorCode::InvalidAmount);
     require!(memo.len() <= TerminalNonce::MAX_MEMO_LEN, ErrorCode::InvalidStringLength);
 
     let nonce_account = &mut ctx.accounts.terminal_nonce;
@@ -165,6 +166,7 @@ pub fn process_payment(ctx: Context<ProcessPayment>, amount: u64, nonce: u64, me
 
 pub fn withdraw_vault_funds(ctx: Context<WithdrawVaultFunds>, amount: u64) -> Result<()> {
     require!(ctx.accounts.authority.key() == ctx.accounts.merchant_vault.authority, ErrorCode::UnauthorizedAuthority);
+    require!(amount > 0, ErrorCode::InvalidAmount);
 
     token::transfer(
         CpiContext::new(

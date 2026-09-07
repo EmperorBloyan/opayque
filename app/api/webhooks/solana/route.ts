@@ -72,6 +72,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data: { transaction: data, payload_hash: payloadHash } });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Webhook processing failed" }, { status: 500 });
+    console.error("Solana webhook processing failed", error instanceof Error ? error.name : "UnknownError");
+    return NextResponse.json({ success: false, error: "Webhook processing failed" }, { status: 500 });
   }
 }

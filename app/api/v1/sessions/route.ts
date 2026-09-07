@@ -5,7 +5,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
 import { getSolanaNetwork } from "@/lib/solana/constants";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
-import { buildPaymentRequestFingerprint, normalizeIdempotencyKey } from "@/lib/payments/ledger";
+import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
+import { parseAmountToBaseUnits } from "@/lib/payments/amount";
+import { buildPaymentRequestFingerprint } from "@/lib/payments/fingerprint";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
@@ -65,9 +67,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "order_id must be 128 characters or fewer" }, { status: 400 });
     }
 
-    const amountFiat = Number(
-      body?.amount_fiat ?? body?.amount ?? body?.amount_fiat_usd ?? 0
-    );
+    const amountFiatBaseUnits = parseAmountToBaseUnits(body?.amount_fiat ?? body?.amount ?? body?.amount_fiat_usd, 2);
+    const amountFiat = amountFiatBaseUnits ? Number(amountFiatBaseUnits) / 100 : 0;
 
     const customerEmail =
       typeof body?.customer_email === "string" && body.customer_email.trim()
@@ -94,8 +95,11 @@ export async function POST(request: Request) {
     const settlementAmount = displayCurrency === "USD" || displayCurrency === "USDC"
       ? amountFiat
       : rate ? amountFiat / rate : Number.NaN;
+    const settlementAmountBaseUnits = Number.isFinite(settlementAmount)
+      ? parseAmountToBaseUnits(settlementAmount.toFixed(6), 6)
+      : null;
 
-    if (!orderId || !Number.isFinite(amountFiat) || amountFiat <= 0 || !Number.isFinite(settlementAmount) || settlementAmount <= 0 || settlementAmount >= 1_000_000 || settlementToken !== "USDC") {
+    if (!orderId || !amountFiatBaseUnits || !settlementAmountBaseUnits || settlementAmountBaseUnits >= 1_000_000_000_000n || settlementToken !== "USDC") {
       return NextResponse.json(
         { error: `A valid ${displayCurrency} amount with an available FX rate is required; only USDC settlement is supported` },
         { status: 400 }
@@ -132,7 +136,7 @@ export async function POST(request: Request) {
     const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotency_key);
     const requestFingerprint = buildPaymentRequestFingerprint({
       orderId,
-      amountFiat,
+      amountFiatBaseUnits: amountFiatBaseUnits.toString(),
       displayCurrency,
       settlementToken,
       customerEmail,
@@ -166,7 +170,7 @@ export async function POST(request: Request) {
     const paymentUrl =
       `${origin}/checkout` +
       `?address=${encodeURIComponent(merchantWallet)}` +
-      `&amount=${encodeURIComponent(Number(settlementAmount.toFixed(6)).toFixed(6))}` +
+      `&amount=${encodeURIComponent((Number(settlementAmountBaseUnits) / 1_000_000).toFixed(6))}` +
       `&fiat_amount=${encodeURIComponent(amountFiat.toFixed(2))}` +
       `&currency=${encodeURIComponent(displayCurrency)}` +
       `&name=${encodeURIComponent(merchantName)}` +
@@ -180,9 +184,9 @@ export async function POST(request: Request) {
         id: sessionId,
         merchant_id: auth.merchantId,
         environment: auth.environment,
-        amount: Number(settlementAmount.toFixed(6)),
-        amount_fiat: Number(amountFiat.toFixed(2)),
-        amount_token: Number(settlementAmount.toFixed(6)),
+        amount: Number(settlementAmountBaseUnits) / 1_000_000,
+        amount_fiat: Number(amountFiatBaseUnits) / 100,
+        amount_token: Number(settlementAmountBaseUnits) / 1_000_000,
         currency: displayCurrency,
         settlement_token: settlementToken,
         customer_email: customerEmail,
@@ -202,8 +206,8 @@ export async function POST(request: Request) {
       .insert({
         merchant_id: auth.merchantId,
         checkout_session_id: sessionId,
-        amount: Number(settlementAmount.toFixed(6)),
-        amount_base_units: Math.round(settlementAmount * 1_000_000),
+        amount: Number(settlementAmountBaseUnits) / 1_000_000,
+        amount_base_units: Number(settlementAmountBaseUnits),
         mint: getAssetMintAddress("USDC", isDevnetNetwork()),
         token_symbol: "USDC",
         recipient_address: merchantWallet,
@@ -244,7 +248,7 @@ export async function POST(request: Request) {
       payment_url: paymentUrl,
       merchant_wallet: merchantWallet,
       amount_fiat: amountFiat,
-      amount_token: Number(settlementAmount.toFixed(6)),
+      amount_token: Number(settlementAmountBaseUnits) / 1_000_000,
       token: settlementToken,
       description,
       customer_email: customerEmail,

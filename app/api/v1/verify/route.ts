@@ -28,10 +28,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (session.status === 'completed') {
-      return NextResponse.json({ success: true, status: 'completed', message: 'Session already completed' });
-    }
-
     const { data: intent, error: intentError } = await supabaseAdmin
       .from('payment_ledger')
       .select('*')
@@ -39,6 +35,12 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (intentError || !intent) {
       return NextResponse.json({ error: 'Payment intent not found' }, { status: 409 });
+    }
+    if (session.status === 'completed') {
+      if (intent.status === 'confirmed' && intent.signature === transactionSignature) {
+        return NextResponse.json({ success: true, status: 'completed', idempotent: true });
+      }
+      return NextResponse.json({ error: 'Checkout session is already completed' }, { status: 409 });
     }
     if (intent.status === 'confirmed' && intent.signature === transactionSignature) {
       return NextResponse.json({ success: true, status: 'completed', idempotent: true });

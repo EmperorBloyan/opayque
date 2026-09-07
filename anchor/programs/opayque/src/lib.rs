@@ -151,4 +151,6 @@ pub enum ErrorCode {
     CircuitBreakerOpen,
     #[msg("unauthorized authority")]
     UnauthorizedAuthority,
+    #[msg("amount must be greater than zero")]
+    InvalidAmount,
 }

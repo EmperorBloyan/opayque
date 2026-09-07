@@ -26,13 +26,13 @@ describe("compliance providers", () => {
   });
 
   it("defaults production to the null provider", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     delete process.env.COMPLIANCE_PROVIDER;
     expect(getComplianceProvider().name).toBe("null");
   });
 
   it("rejects demo in production even when explicitly selected", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.COMPLIANCE_PROVIDER = "demo";
     expect(getComplianceProvider().name).toBe("null");
   });

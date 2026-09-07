@@ -12,7 +12,7 @@ describe("offramp providers", () => {
   it("fails closed when no external partner is configured", async () => {
     delete process.env.BRIDGE_API_KEY;
     const provider = new NullOfframpProvider();
-    const result = await provider.createPayout({ merchantId: "merchant-1", amountUsdc: 10, destinationRef: "external-account-1" });
+    const result = await provider.createPayout();
     expect(provider.isConfigured()).toBe(false);
     expect(result.status).toBe("not_configured");
     expect(result.message).toMatch(/external partner/i);

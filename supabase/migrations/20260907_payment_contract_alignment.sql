@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS public.checkout_sessions (
   settlement_token text NOT NULL DEFAULT 'USDC',
   customer_email text,
   reference_id text,
+  idempotency_key text,
+  idempotency_fingerprint text,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'expired')),
   solana_pay_url text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -67,8 +69,37 @@ ALTER TABLE public.payment_ledger
   ADD COLUMN IF NOT EXISTS reconciliation_status text NOT NULL DEFAULT 'pending',
   ADD COLUMN IF NOT EXISTS last_reconciled_at timestamptz,
   ADD COLUMN IF NOT EXISTS reconciliation_notes text,
+  ADD COLUMN IF NOT EXISTS reconciliation_claimed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS reconciliation_claimed_by text,
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.checkout_sessions
+  ADD COLUMN IF NOT EXISTS idempotency_key text,
+  ADD COLUMN IF NOT EXISTS idempotency_fingerprint text;
+
+UPDATE public.payment_ledger ledger
+SET amount_base_units = round(ledger.amount * 1000000)::bigint
+WHERE ledger.amount_base_units IS NULL AND ledger.amount IS NOT NULL;
+
+UPDATE public.payment_ledger ledger
+SET recipient_address = COALESCE(NULLIF(ledger.recipient_address, ''), merchant.settlement_wallet_address, merchant.wallet_address, '')
+FROM public.merchants merchant
+WHERE ledger.merchant_id = merchant.id AND COALESCE(ledger.recipient_address, '') = '';
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.payment_ledger WHERE amount_base_units IS NULL OR amount_base_units <= 0) THEN
+    RAISE EXCEPTION 'payment_ledger contains invalid amount_base_units values';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.payment_ledger WHERE recipient_address IS NULL OR recipient_address = '') THEN
+    RAISE EXCEPTION 'payment_ledger contains missing recipient_address values';
+  END IF;
+END $$;
+
+ALTER TABLE public.payment_ledger
+  ALTER COLUMN amount_base_units SET NOT NULL,
+  ALTER COLUMN recipient_address SET NOT NULL;
 
 DO $$
 BEGIN
@@ -87,12 +118,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_ledger_signature_unique
   ON public.payment_ledger(signature) WHERE signature IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS payment_ledger_merchant_idempotency_unique
   ON public.payment_ledger(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS checkout_sessions_merchant_idempotency_unique
+  ON public.checkout_sessions(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS payment_ledger_merchant_status
   ON public.payment_ledger(merchant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS payment_ledger_reconciliation
   ON public.payment_ledger(reconciliation_status, last_reconciled_at);
+CREATE INDEX IF NOT EXISTS payment_ledger_reconciliation_claim
+  ON public.payment_ledger(reconciliation_claimed_at);
 CREATE INDEX IF NOT EXISTS checkout_sessions_merchant_created
   ON public.checkout_sessions(merchant_id, created_at DESC);
+
+ALTER TABLE public.webhooks
+  ADD COLUMN IF NOT EXISTS secret_ciphertext text;
+
+CREATE TABLE IF NOT EXISTS public.webhook_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id text NOT NULL UNIQUE,
+  webhook_id uuid NOT NULL REFERENCES public.webhooks(id) ON DELETE CASCADE,
+  event_type text NOT NULL,
+  payload jsonb NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivering', 'delivered', 'failed')),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  last_error text,
+  delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (webhook_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS webhook_events_due_idx
+  ON public.webhook_events(status, next_attempt_at);
+ALTER TABLE public.webhook_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Merchant owners can view webhook events" ON public.webhook_events;
+CREATE POLICY "Merchant owners can view webhook events"
+  ON public.webhook_events FOR SELECT
+  USING (webhook_id IN (SELECT id FROM public.webhooks WHERE merchant_id IN (SELECT id FROM public.merchants WHERE auth_user_id = auth.uid())));
 
 CREATE OR REPLACE FUNCTION public.payment_ledger_updated_at()
 RETURNS TRIGGER AS $$
@@ -101,6 +163,49 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.enforce_payment_ledger_integrity()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.status = 'confirmed' AND NEW.status <> 'confirmed' THEN
+      RAISE EXCEPTION 'confirmed payment cannot leave confirmed state';
+    END IF;
+    IF OLD.status IN ('failed', 'expired') AND NEW.status <> OLD.status THEN
+      RAISE EXCEPTION 'terminal payment state cannot be rewritten';
+    END IF;
+    IF OLD.status = 'created' AND NEW.status NOT IN ('created', 'pending_signature', 'submitted', 'failed', 'expired') THEN
+      RAISE EXCEPTION 'invalid payment transition created -> %', NEW.status;
+    END IF;
+    IF OLD.status = 'pending_signature' AND NEW.status NOT IN ('pending_signature', 'submitted', 'failed', 'expired') THEN
+      RAISE EXCEPTION 'invalid payment transition pending_signature -> %', NEW.status;
+    END IF;
+    IF OLD.status = 'submitted' AND NEW.status NOT IN ('submitted', 'confirmed', 'failed', 'expired') THEN
+      RAISE EXCEPTION 'invalid payment transition submitted -> %', NEW.status;
+    END IF;
+    IF NEW.merchant_id <> OLD.merchant_id
+      OR NEW.checkout_session_id IS DISTINCT FROM OLD.checkout_session_id
+      OR NEW.terminal_id IS DISTINCT FROM OLD.terminal_id
+      OR NEW.amount IS DISTINCT FROM OLD.amount
+      OR NEW.amount_base_units IS DISTINCT FROM OLD.amount_base_units
+      OR NEW.mint IS DISTINCT FROM OLD.mint
+      OR NEW.token_symbol IS DISTINCT FROM OLD.token_symbol
+      OR NEW.recipient_address IS DISTINCT FROM OLD.recipient_address
+      OR NEW.environment IS DISTINCT FROM OLD.environment THEN
+      RAISE EXCEPTION 'payment identity fields are immutable';
+    END IF;
+    IF OLD.status = 'confirmed' AND NEW.signature IS DISTINCT FROM OLD.signature THEN
+      RAISE EXCEPTION 'confirmed payment signature is immutable';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS payment_ledger_integrity ON public.payment_ledger;
+CREATE TRIGGER payment_ledger_integrity
+  BEFORE INSERT OR UPDATE ON public.payment_ledger
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_payment_ledger_integrity();
 
 DROP TRIGGER IF EXISTS payment_ledger_set_updated_at ON public.payment_ledger;
 CREATE TRIGGER payment_ledger_set_updated_at
@@ -116,13 +221,15 @@ ALTER TABLE public.payment_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checkout_sessions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Merchant owners can manage payment ledger" ON public.payment_ledger;
-CREATE POLICY "Merchant owners can manage payment ledger"
-  ON public.payment_ledger FOR ALL
+DROP POLICY IF EXISTS "Merchant owners can read payment ledger" ON public.payment_ledger;
+CREATE POLICY "Merchant owners can read payment ledger"
+  ON public.payment_ledger FOR SELECT
   USING (merchant_id IN (SELECT id FROM public.merchants WHERE auth_user_id = auth.uid()))
-  WITH CHECK (merchant_id IN (SELECT id FROM public.merchants WHERE auth_user_id = auth.uid()));
+;
 
 DROP POLICY IF EXISTS "Merchant owners can manage checkout sessions" ON public.checkout_sessions;
-CREATE POLICY "Merchant owners can manage checkout sessions"
-  ON public.checkout_sessions FOR ALL
+DROP POLICY IF EXISTS "Merchant owners can read checkout sessions" ON public.checkout_sessions;
+CREATE POLICY "Merchant owners can read checkout sessions"
+  ON public.checkout_sessions FOR SELECT
   USING (merchant_id IN (SELECT id FROM public.merchants WHERE auth_user_id = auth.uid()))
-  WITH CHECK (merchant_id IN (SELECT id FROM public.merchants WHERE auth_user_id = auth.uid()));
+;

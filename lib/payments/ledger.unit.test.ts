@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { assertPaymentStatusTransition, buildPaymentRequestFingerprint, canTransitionPaymentStatus, normalizeIdempotencyKey, parseAmountToBaseUnits } from "./ledger";
+import { assertPaymentStatusTransition, canTransitionPaymentStatus, normalizeIdempotencyKey } from "./ledger";
+import { parseAmountToBaseUnits } from "./amount";
+import { buildPaymentRequestFingerprint } from "./fingerprint";
 
 describe("payment ledger invariants", () => {
   it("allows forward payment transitions and rejects terminal rewrites", () => {
