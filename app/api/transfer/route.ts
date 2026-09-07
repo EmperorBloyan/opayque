@@ -57,22 +57,15 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient();
-    let intent: any = null;
     const ledgerLookup = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, amount, status")
+      .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint")
       .eq("id", intent_id)
       .maybeSingle();
-    if (!ledgerLookup.error) intent = ledgerLookup.data;
-
-    if (!intent) {
-      const sessionIntent = await supabase
-        .from("checkout_sessions")
-        .select("id, merchant_id, amount, amount_token, status, settlement_token")
-        .eq("id", intent_id)
-        .maybeSingle();
-      if (!sessionIntent.error) intent = sessionIntent.data;
+    if (ledgerLookup.error) {
+      return NextResponse.json({ error: "Unable to load payment intent" }, { status: 500 });
     }
+    const intent = ledgerLookup.data;
 
     if (!intent || !["created", "pending_signature", "submitted"].includes(String(intent.status || "created").toLowerCase())) {
       return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
@@ -80,7 +73,7 @@ export async function POST(request: Request) {
 
     const expectedAmountBaseUnits = intent.amount_base_units !== null && intent.amount_base_units !== undefined
       ? BigInt(intent.amount_base_units)
-      : parseAmountToBaseUnits(intent.amount_token ?? intent.amount, 6);
+      : parseAmountToBaseUnits(intent.amount, 6);
     if (!expectedAmountBaseUnits || expectedAmountBaseUnits !== amountBaseUnits) {
       return NextResponse.json({ error: "Payment amount does not match the payment intent" }, { status: 400 });
     }
@@ -90,15 +83,9 @@ export async function POST(request: Request) {
       .eq("id", intent.merchant_id)
       .maybeSingle();
     const expectedRecipient = resolveSettlementWallet(merchant.data).address;
-    if (!expectedRecipient || expectedRecipient !== recipientPubkey.toBase58()) {
+    if (!expectedRecipient || intent.recipient_address !== expectedRecipient || intent.mint !== mintAddress || expectedRecipient !== recipientPubkey.toBase58()) {
       return NextResponse.json({ error: "Payment recipient does not match the merchant intent" }, { status: 400 });
     }
-
-    const ledgerIntent = ledgerLookup.data || (await supabase
-      .from("payment_ledger")
-      .select("id, merchant_id, status")
-      .eq("checkout_session_id", intent_id)
-      .maybeSingle()).data;
 
     const privateTransfer = await requestPrivateSplTransfer({
       sender: senderPubkey.toBase58(),
@@ -107,13 +94,13 @@ export async function POST(request: Request) {
       amountBaseUnits: Number(amountBaseUnits),
       memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
     });
-    if (ledgerIntent?.id) {
-      const { data: updatedIntent, error: intentUpdateError } = await supabase
+    {
+      const { error: intentUpdateError } = await supabase
         .from("payment_ledger")
-        .update({ status: "pending_signature", sender_address: senderPubkey.toBase58(), recipient_address: recipientPubkey.toBase58(), amount_base_units: Number(amountBaseUnits), mint: mintAddress, updated_at: new Date().toISOString() })
-        .eq("id", ledgerIntent.id)
+        .update({ status: "pending_signature", sender_address: senderPubkey.toBase58(), updated_at: new Date().toISOString() })
+        .eq("id", intent.id)
         .in("status", ["created", "pending_signature"])
-        .select("id, merchant_id, amount, amount_base_units, mint, sender_address, recipient_address, signature, status, environment, created_at, updated_at")
+        .select("id")
         .maybeSingle();
       if (intentUpdateError) throw intentUpdateError;
     }

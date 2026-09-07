@@ -58,6 +58,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!merchantWallet) {
       return NextResponse.json({ success: false, error: "Merchant settlement wallet not configured" }, { status: 400 });
     }
+    if (transaction.recipient_address !== merchantWallet) {
+      return NextResponse.json({ success: false, error: "Payment recipient does not match the merchant settlement wallet" }, { status: 409 });
+    }
 
     assertProductionConfig();
     const rpcUrl = await selectHealthyRpcUrl();

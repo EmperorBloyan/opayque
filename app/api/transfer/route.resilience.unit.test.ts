@@ -49,7 +49,7 @@ function query(result: unknown, error: unknown = null) {
 }
 
 function configureSupabase() {
-  const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, status: "created" });
+  const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT });
   const merchantQuery = query({ settlement_wallet_address: RECIPIENT, wallet_address: null });
   const updateQuery = query({ id: "ledger-1", status: "pending_signature" });
   const from = vi.fn()
@@ -83,7 +83,6 @@ describe("transfer route resilience", () => {
     mocks.requestPrivateSplTransfer.mockRejectedValue(new Error("MagicBlock request timed out"));
 
     const response = await POST(request());
-
     expect(response.status).toBe(504);
     expect(await response.json()).toMatchObject({ error: "MagicBlock request timed out" });
     expect(updateQuery.update).not.toHaveBeenCalled();
@@ -101,11 +100,11 @@ describe("transfer route resilience", () => {
     const recovered = await POST(request({ intent_id: "intent-2" }));
     expect(recovered.status).toBe(200);
     expect(await recovered.json()).toMatchObject({ success: true, transaction: "tx", mode: "private" });
-    expect(second.updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending_signature", amount_base_units: 1_250_000 }));
+    expect(second.updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending_signature", sender_address: SENDER }));
   });
 
   it("rejects a replayed or terminal intent before calling MagicBlock", async () => {
-    const terminalIntent = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, status: "confirmed" });
+    const terminalIntent = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "confirmed", recipient_address: RECIPIENT, mint: MINT });
     mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValue(terminalIntent) });
 
     const response = await POST(request());

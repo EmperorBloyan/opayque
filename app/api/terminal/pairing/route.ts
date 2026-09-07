@@ -13,18 +13,12 @@ function createPairingCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const random = randomBytes(6);
   let code = "";
-  for (let index = 0; index < 6; index += 1) {
-    code += chars[random[index] % chars.length];
-  }
+  for (let index = 0; index < 6; index += 1) code += chars[random[index] % chars.length];
   return code;
 }
 
 function normalizeWalletAddress(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value.trim();
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export async function POST(request: Request) {
@@ -33,244 +27,121 @@ export async function POST(request: Request) {
       `terminal:pairing:${getClientAddress(request)}`,
       process.env.NODE_ENV === "production"
     );
-    if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many pairing requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: rateLimit.error || "Too many pairing requests" },
+        { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const action = typeof body?.action === "string" ? body.action : "create";
     const merchantId = typeof body?.merchant_id === "string" ? body.merchant_id : null;
     const walletAddress = typeof body?.wallet_address === "string" ? body.wallet_address.trim() : null;
-    const code = typeof body?.code === "string" ? body.code.toUpperCase() : null;
-
-    const supabase = await createSupabaseServerClient(request);
+    const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : null;
+    const supabase = createSupabaseServerClient(request);
 
     if (action === "create") {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-      const { data: ownedMerchant, error: merchantLookupError } = await supabase
+
+      const { data: merchant, error: merchantError } = await supabase
         .from("merchants")
         .select("id, wallet_address, settlement_wallet_address")
         .eq("auth_user_id", user.id)
         .maybeSingle();
-      if (merchantLookupError || !ownedMerchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
-      if (isValidMerchantId(merchantId) && merchantId !== ownedMerchant.id) {
+      if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
+      if (isValidMerchantId(merchantId) && merchantId !== merchant.id) {
         return NextResponse.json({ success: false, error: "Merchant does not belong to the authenticated session" }, { status: 403 });
       }
-      const ownedMerchantId = ownedMerchant.id;
 
-      const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
-      const merchantWalletAddress = normalizeWalletAddress(
-        ownedMerchant.settlement_wallet_address ?? ownedMerchant.wallet_address ?? ""
-      );
-      if (!merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "Save a settlement wallet in Vault before generating a pairing code.",
-        }, { status: 409 });
+      const merchantWallet = normalizeWalletAddress(merchant.settlement_wallet_address || merchant.wallet_address);
+      if (!merchantWallet) {
+        return NextResponse.json({ success: false, error: "Save a settlement wallet in Vault before generating a pairing code." }, { status: 409 });
       }
-      const pairingCode = createPairingCode();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      if (walletAddress && walletAddress !== merchantWallet) {
+        return NextResponse.json({ success: false, error: "The pairing wallet does not match the merchant settlement wallet." }, { status: 409 });
+      }
+
       const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
       if (terminalLabel && terminalLabel.length > 80) {
         return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
       }
 
-      if (normalizedWalletAddress && normalizedWalletAddress !== merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "The pairing wallet does not match the merchant settlement wallet. Refresh Vault and try again.",
-        }, { status: 409 });
-      }
-
-      if (normalizedWalletAddress && normalizedWalletAddress === merchantWalletAddress && !ownedMerchant.wallet_address) {
-        const { error: merchantUpdateError } = await supabase
-          .from("merchants")
-          .update({ wallet_address: normalizedWalletAddress, updated_at: new Date().toISOString() })
-          .eq("id", ownedMerchantId);
-
-        if (merchantUpdateError) {
-          console.warn("Failed to link merchant wallet to pairing record", merchantUpdateError);
-        }
-      }
-
-      const { error } = await supabase.from("terminal_pairing_codes").insert({
+      const adminSupabase = createSupabaseServerClient();
+      const pairingCode = createPairingCode();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { error } = await adminSupabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
-        merchant_id: ownedMerchantId,
+        merchant_id: merchant.id,
         status: "PENDING",
         expires_at: expiresAt,
         terminal_label: terminalLabel,
       });
-
-      if (error) {
-        return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing code creation failed") }, { status: 500 });
-      }
+      if (error) return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing code creation failed") }, { status: 500 });
 
       return NextResponse.json({ success: true, code: pairingCode, expiresAt, terminalLabel });
     }
 
     if (action === "verify") {
-      if (!code) {
-        return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
-      }
+      if (!code) return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
 
       const adminSupabase = createSupabaseServerClient();
-      const { data, error } = await adminSupabase
+      const { data: pairing, error: pairingError } = await adminSupabase
         .from("terminal_pairing_codes")
         .select("code, status, expires_at, merchant_id, terminal_label")
         .eq("code", code)
-        .single();
+        .maybeSingle();
+      if (pairingError || !pairing) return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
 
-      if (error || !data) {
-        return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 404 });
-      }
-
-      const expiresAtMs = new Date(data.expires_at).getTime();
-      const isExpired = Number.isNaN(expiresAtMs) || Date.now() >= expiresAtMs;
-      const isPending = data.status === "PENDING";
-
-      if (!isPending || isExpired) {
+      const expiresAt = new Date(pairing.expires_at).getTime();
+      if (pairing.status !== "PENDING" || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
         return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
       }
 
       const requestedMerchantId = isValidMerchantId(merchantId) ? merchantId : null;
-      const storedMerchantId = isValidMerchantId(data.merchant_id) ? data.merchant_id : null;
-
+      const storedMerchantId = isValidMerchantId(pairing.merchant_id) ? pairing.merchant_id : null;
       if (requestedMerchantId && storedMerchantId && requestedMerchantId !== storedMerchantId) {
         return NextResponse.json({ success: false, error: "This pairing code belongs to a different vault merchant." }, { status: 409 });
       }
+      const resolvedMerchantId = storedMerchantId || requestedMerchantId;
+      if (!resolvedMerchantId) return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
 
-      const resolvedMerchantId = storedMerchantId ?? requestedMerchantId;
-
-      if (!resolvedMerchantId) {
-        return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
-      }
-
-      let merchantData: { id: string; wallet_address?: string | null; settlement_wallet_address?: string | null; merchant_name?: string | null; merchant_logo?: string | null } | null = null;
-      const { data: fetchedMerchantData, error: merchantError } = await adminSupabase
+      const { data: merchant, error: merchantError } = await adminSupabase
         .from("merchants")
         .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
-        .single();
-
-      merchantData = fetchedMerchantData ?? null;
-      const suppliedWalletAddress = normalizeWalletAddress(walletAddress);
-      let merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
-
-      if (merchantError || !merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "Merchant has no settlement wallet. Save a settlement address in Vault → API Keys & Merchant Details, then generate a new code.",
-        }, { status: 404 });
-      }
-
-      if (suppliedWalletAddress && suppliedWalletAddress !== merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "Wallet mismatch. The wallet address from Vault does not match this terminal's session. Clear terminal storage and pair with a fresh code.",
-        }, { status: 409 });
-      }
-
-      // Mark pairing code as used
-      const { data: usedCode, error: updateError } = await adminSupabase
-        .from("terminal_pairing_codes")
-        .update({ status: "USED", merchant_id: resolvedMerchantId })
-        .eq("code", code)
-        .eq("status", "PENDING")
-        .select("code")
         .maybeSingle();
-
-      if (updateError || !usedCode) {
-        return NextResponse.json(
-          { success: false, error: safeErrorMessage(updateError, "PAIRING CODE REJECTED") },
-          { status: updateError ? 500 : 409 }
-        );
+      const merchantWallet = normalizeWalletAddress(merchant?.settlement_wallet_address || merchant?.wallet_address);
+      if (merchantError || !merchant || !merchantWallet) {
+        return NextResponse.json({ success: false, error: "Merchant has no settlement wallet. Save a settlement address and generate a new code." }, { status: 404 });
+      }
+      if (walletAddress && walletAddress !== merchantWallet) {
+        return NextResponse.json({ success: false, error: "Wallet mismatch. Pair with a fresh code from the correct vault." }, { status: 409 });
       }
 
-      const terminalLabel =
-        (typeof data.terminal_label === "string" && data.terminal_label.trim()) ||
-        "Fleet Terminal";
-
-      const nowIso = new Date().toISOString();
       const terminalId = randomUUID();
-
-      // Minimal core fields first (always safe)
-      const coreUpdate = {
-        status: "online",
-        label: terminalLabel,
-        terminal_label: terminalLabel,
-      };
-
-      // Optional enrichment (may not exist on every schema)
       const deviceToken = randomBytes(32).toString("base64url");
-      const richUpdate = {
-        ...coreUpdate,
-        last_active: nowIso,
-        is_active: true,
-        device_token_hash: hashDeviceToken(deviceToken),
-      };
+      const terminalLabel = typeof pairing.terminal_label === "string" && pairing.terminal_label.trim()
+        ? pairing.terminal_label.trim()
+        : "Fleet Terminal";
+      const { data: redeemed, error: redemptionError } = await adminSupabase.rpc("redeem_terminal_pairing", {
+        p_code: code,
+        p_merchant_id: resolvedMerchantId,
+        p_terminal_id: terminalId,
+        p_terminal_label: terminalLabel,
+        p_device_token_hash: hashDeviceToken(deviceToken),
+      });
 
-      const richInsert = {
-        id: terminalId,
-        merchant_id: resolvedMerchantId,
-        label: terminalLabel,
-        terminal_label: terminalLabel,
-        status: "online",
-        created_at: nowIso,
-        last_active: nowIso,
-        is_active: true,
-        device_token_hash: hashDeviceToken(deviceToken),
-      };
-
-      let { error: terminalInsertError } = await adminSupabase
-        .from("terminals")
-        .insert(richInsert);
-
-      // Fallback to minimal insert when optional columns are unavailable.
-      if (terminalInsertError) {
-        const retry = await adminSupabase.from("terminals").insert({
-          id: terminalId,
-          merchant_id: resolvedMerchantId,
-          label: terminalLabel,
-          terminal_label: terminalLabel,
-          status: "online",
-          created_at: nowIso,
-          device_token_hash: hashDeviceToken(deviceToken),
-        });
-        terminalInsertError = retry.error;
-      }
-
-      // Older deployments may not have the descriptive terminal columns yet.
-      if (terminalInsertError) {
-        const legacyRetry = await adminSupabase.from("terminals").insert({
-          id: terminalId,
-          merchant_id: resolvedMerchantId,
-          label: terminalLabel,
-          status: "online",
-          created_at: nowIso,
-          device_token_hash: hashDeviceToken(deviceToken),
-        });
-        terminalInsertError = legacyRetry.error;
-      }
-
-      if (terminalInsertError) {
-        console.error("Failed to persist terminal pairing", {
-          code: terminalInsertError.code,
-          message: terminalInsertError.message,
-          details: terminalInsertError.details,
-          hint: terminalInsertError.hint,
-          merchantId: resolvedMerchantId,
-          terminalId,
-        });
-        const { error: rollbackError } = await adminSupabase
-          .from("terminal_pairing_codes")
-          .update({ status: "PENDING" })
-          .eq("code", code)
-          .eq("status", "USED");
-        if (rollbackError) {
-          console.error("Failed to restore terminal pairing code", {
-            code: rollbackError.code,
-            message: rollbackError.message,
-          });
-        }
-        return NextResponse.json({ success: false, error: "Terminal pairing could not be persisted. Please try again." }, { status: 500 });
+      if (redemptionError || !redeemed?.[0]) {
+        const message = redemptionError?.message?.includes("PAIRING_CODE_REJECTED")
+          ? "PAIRING CODE REJECTED"
+          : redemptionError?.message?.includes("PAIRING_MERCHANT_MISMATCH")
+            ? "This pairing code belongs to a different vault merchant."
+            : redemptionError?.message?.includes("PAIRING_REQUEST_INVALID")
+              ? "Invalid pairing request."
+            : "Terminal pairing could not be persisted. Please try again.";
+        return NextResponse.json({ success: false, error: message }, { status: message === "PAIRING CODE REJECTED" || message === "Invalid pairing request." ? 409 : 500 });
       }
 
       return NextResponse.json({
@@ -279,10 +150,10 @@ export async function POST(request: Request) {
         terminalId,
         deviceToken,
         merchantId: resolvedMerchantId,
-        walletAddress: merchantWalletAddress,
-        merchantName: merchantData?.merchant_name ?? null,
-        merchantLogo: merchantData?.merchant_logo ?? null,
-        terminalLabel,
+        walletAddress: merchantWallet,
+        merchantName: merchant.merchant_name ?? null,
+        merchantLogo: merchant.merchant_logo ?? null,
+        terminalLabel: redeemed[0].terminal_label,
       });
     }
 

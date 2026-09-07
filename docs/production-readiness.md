@@ -38,22 +38,18 @@ Solana is the settlement network. MagicBlock is the configured private transacti
 
 ### CRITICAL
 
-- The checked-in schema/migrations define and evolve `transactions`, while application routes and clients consistently use `payment_ledger`. `checkout_sessions` is also used by routes but is not created by the checked-in schema. A fresh or incompletely migrated environment cannot reliably process payments.
-- `/api/webhooks/solana` accepts a client-supplied merchant ID, status, amount, and signature without a provider signature or machine credential. This is an unauthenticated financial-record insertion boundary.
+- No critical application-code issue is currently known from the completed local review. Live database, chain, provider, and deployment evidence remains outstanding.
 
 ### HIGH
 
-- Payment confirmation verifies recipient and an amount threshold but does not bind the expected sender or require exact transfer facts. A transaction containing an unrelated or over-sized transfer can be accepted.
-- Reconciliation currently marks a signature as matched when the signature exists and is not failed; it does not independently verify merchant, sender, recipient, mint, and exact amount.
-- Idempotency lookup is merchant-scoped, but several create paths do not atomically return the existing result on a uniqueness race and do not compare a request fingerprint for same-key/different-request reuse.
-- Webhook delivery is attempted before a durable event/outbox record exists. Delivery IDs are generated per attempt and delivery logs do not provide a unique event/delivery key or durable retry state. The HMAC uses the stored secret hash as signing material rather than a separately protected webhook secret.
+- Live Supabase RLS isolation, Solana settlement verification, and private-provider behavior remain unverified outside this repository.
+- Dependency audit findings and deployment-level secret/recovery validation remain unresolved release gates.
 
 ### MEDIUM
 
-- Several payment and checkout routes parse financial values through JavaScript `number` and floating-point rounding before converting to base units.
-- The expiry job updates eligible rows without an explicit locking/claim mechanism, so concurrent workers can race on work and emit duplicate events.
-- The middleware assumes Supabase public configuration is present and does not add response security headers or an explicit production CSP policy.
-- CI type-checks and builds, but lint is explicitly allowed to fail and unit/integration/security/Anchor tests are not required in the workflow.
+- Some UI lint warnings remain for image optimization and React hook dependency hygiene.
+- The expiry and reconciliation jobs still require live multi-worker validation against Supabase concurrency semantics.
+- CI cannot prove live RLS, blockchain settlement, or private-provider guarantees from source alone.
 
 ### LOW
 
@@ -79,6 +75,11 @@ Solana is the settlement network. MagicBlock is the configured private transacti
 - Tightened on-chain verification to require exact, intent-bound facts before confirmation.
 - Locked the Solana webhook boundary behind an authenticated provider signature.
 - Added focused unit tests for lifecycle, amount, idempotency, authorization, and verification invariants.
+- Applied response security headers consistently in middleware, including redirect responses.
+- Bound the Solana provider webhook to an existing payment intent with exact merchant, recipient, mint, and amount matching; it can no longer create arbitrary ledger records.
+- Required private transfer construction to use an existing payment ledger intent and match its immutable recipient and mint.
+- Added explicit terminal settlement recipient binding and merchant ownership checks for offramp status.
+- Added middleware security-header regression coverage to the configured unit-test suite.
 
 Items in this section are only considered complete when the corresponding migration/code and validation command are present in the repository.
 
