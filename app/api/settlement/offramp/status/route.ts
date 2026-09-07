@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOfframpProvider } from "@/lib/settlement/offramp";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const supabase = createSupabaseServerClient(request);
   const { data: { user }, error: authError } = await supabase.auth.getUser();

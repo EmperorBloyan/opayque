@@ -49,5 +49,9 @@ Evidence must be attached before checking an item. An unchecked item is not a pa
 ## Current Evidence
 
 - Unit tests are available locally for selected lifecycle, auth, terminal, rate-limit, and provider boundaries.
+- Local evidence: `yarn test:unit` passes 21 test files and 73 tests; `yarn tsc --noEmit` passes; `yarn build` passes; `yarn lint` passes with warnings.
+- E2E discovery passes for 3 critical paths; execution is blocked in this container by the missing Chromium system library `libatk-1.0.so.0`.
+- CI now runs frozen Yarn installation, TypeScript, lint, unit tests, dependency audit, secret scan, build, and Anchor compilation/tests.
 - Remote RLS, production blockchain, provider privacy, deployment secrets, and recovery evidence are not available from source inspection alone.
+- The dependency audit currently fails on unresolved transitive advisories and must be cleared before release.
 - Until those checks have evidence, the release status is **FAIL / NOT PRODUCTION READY**.

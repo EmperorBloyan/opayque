@@ -62,6 +62,16 @@ Solana is the settlement network. MagicBlock is the configured private transacti
 
 ## 5. Completed Fixes
 
+- Repaired the Yarn lockfile and restored a reproducible local dependency install.
+- Added database-backed payment ledger/session contracts, uniqueness indexes, lifecycle enforcement, immutable payment identity fields, and read-only merchant RLS access for financial records.
+- Applied exact base-unit amount parsing across payment creation, transfer construction, token instructions, and withdrawal construction.
+- Added deterministic idempotency fingerprints and uniqueness-race recovery across terminal, API session, and checkout creation.
+- Tightened finalized Solana verification with exact amounts and parsed transfer instructions bound to sender/recipient/mint.
+- Added reconciliation leases and mismatch-preserving verification.
+- Removed checkout confirmation and sender-binding bypasses.
+- Added encrypted webhook secrets, durable webhook events, authenticated delivery, timeout handling, retry state, and event idempotency.
+- Centralized merchant-session and cron authorization helpers.
+- Added restrictive security headers, production environment gates, CI test/security stages, and invariant tests.
 - Added an explicit architecture, threat, risk, and blocker record in this document.
 - Added a canonical database migration plan to align application table names and establish checkout-session/ledger integrity constraints.
 - Centralized lifecycle transition rules and retained terminal-state protection.
@@ -75,6 +85,9 @@ Items in this section are only considered complete when the corresponding migrat
 ## 6. Remaining Production Blockers
 
 - A real Supabase environment must apply every migration and execute authenticated-client cross-tenant RLS tests. This repository cannot prove remote RLS behavior without configured database credentials.
+- Playwright tests are discoverable but require the container's Chromium system dependency `libatk-1.0.so.0`; browser execution is blocked until the image installs Playwright Linux dependencies.
+- The dependency audit still reports high/critical transitive findings, including packages that require a Next.js major upgrade or have no upstream patch. These require an isolated dependency-upgrade project and compatibility testing.
+- Webhook secret migration requires rotating existing webhook configurations because old rows contain hashes but not decryptable secret ciphertext.
 - Solana confirmation and reconciliation require an integration environment with known transactions for the configured network. Unit tests cannot prove RPC/provider behavior.
 - MagicBlock privacy guarantees remain provider-dependent. The exact provider contract, operator visibility, and production failure behavior must be validated with the production account and documented evidence.
 - Anchor deployment authority, upgrade policy, devnet/mainnet addresses, and malicious-input tests require an Anchor/Rust toolchain and a configured validator.

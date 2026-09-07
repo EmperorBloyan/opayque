@@ -13,6 +13,10 @@ export function canTransitionPaymentStatus(from: PaymentStatus, to: PaymentStatu
   return from === to || transitions[from].includes(to);
 }
 
+export function isPaymentStatus(value: unknown): value is PaymentStatus {
+  return typeof value === "string" && ["created", "pending_signature", "submitted", "confirmed", "failed", "expired"].includes(value);
+}
+
 export function assertPaymentStatusTransition(from: PaymentStatus, to: PaymentStatus): void {
   if (!canTransitionPaymentStatus(from, to)) {
     throw new Error(`Invalid payment status transition: ${from} -> ${to}`);

@@ -5,7 +5,7 @@ import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
-import { assertPaymentStatusTransition } from "@/lib/payments/ledger";
+import { assertPaymentStatusTransition, isPaymentStatus } from "@/lib/payments/ledger";
 import { authenticateApiKey } from "@/lib/auth/apiKey";
 
 function webhookPayload(row: any) {
@@ -69,7 +69,8 @@ export async function POST(request: Request) {
     if (!["created", "pending_signature", "submitted"].includes(String(row.status))) {
       return NextResponse.json({ error: "Payment intent is no longer payable" }, { status: 409 });
     }
-    assertPaymentStatusTransition(String(row.status) as any, "submitted");
+    if (!isPaymentStatus(row.status)) return NextResponse.json({ error: "Payment intent has an invalid status" }, { status: 409 });
+    assertPaymentStatusTransition(row.status, "submitted");
 
     const now = new Date().toISOString();
     const { data: submitted, error: submitError } = await supabase
