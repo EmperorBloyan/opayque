@@ -49,6 +49,7 @@ async function insertCompatibleTerminalRow(
       terminal_label: terminalLabel,
       last_active: createdAt,
       is_active: true,
+      device_token: deviceToken,
       device_token_hash: hashDeviceToken(deviceToken),
     },
     {
@@ -62,13 +63,6 @@ async function insertCompatibleTerminalRow(
     {
       ...commonFields,
       label: terminalLabel,
-      terminal_label: terminalLabel,
-      last_active: createdAt,
-      is_active: true,
-    },
-    {
-      ...commonFields,
-      label: terminalLabel,
       last_active: createdAt,
       is_active: true,
       device_token: deviceToken,
@@ -78,6 +72,11 @@ async function insertCompatibleTerminalRow(
       label: terminalLabel,
       terminal_label: terminalLabel,
       device_token_hash: hashDeviceToken(deviceToken),
+    },
+    {
+      ...commonFields,
+      terminal_label: terminalLabel,
+      device_token: deviceToken,
     },
   ];
 
@@ -269,7 +268,10 @@ export async function POST(request: Request) {
           .update({ status: "PENDING" })
           .eq("code", code)
           .eq("status", "USED");
-        return NextResponse.json({ success: false, error: "Terminal pairing could not be persisted. Please try again." }, { status: 500 });
+        return NextResponse.json({
+          success: false,
+          error: safeErrorMessage(insertError, "Terminal pairing could not be persisted. Please try again."),
+        }, { status: 500 });
       }
 
       return NextResponse.json({

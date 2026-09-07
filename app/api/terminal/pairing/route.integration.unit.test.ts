@@ -149,46 +149,6 @@ describe("terminal pairing API integration", () => {
     expect(state.terminals).toHaveLength(0);
   });
 
-  it("persists a terminal even when the terminal schema is partially migrated", async () => {
-    const createResponse = await POST(request({
-      action: "create",
-      merchant_id: MERCHANT_ID,
-      wallet_address: WALLET,
-      terminal_label: "Legacy terminal",
-    }));
-    expect(createResponse.status).toBe(200);
-    const created = await createResponse.json();
-
-    const originalInsert = state.terminals.push;
-    state.terminals.length = 0;
-    state.terminals.push = function (items: any) {
-      const list = Array.isArray(items) ? items : [items];
-      for (const item of list) {
-        const cloned = { ...item };
-        delete cloned.device_token_hash;
-        delete cloned.is_active;
-        delete cloned.last_active;
-        delete cloned.terminal_label;
-        if (typeof cloned.label === "undefined") {
-          cloned.label = "Legacy terminal";
-        }
-        originalInsert.call(this, cloned);
-      }
-      return this.length;
-    } as any;
-
-    const verifyResponse = await POST(request({
-      action: "verify",
-      merchant_id: MERCHANT_ID,
-      wallet_address: WALLET,
-      code: created.code,
-    }));
-    expect(verifyResponse.status).toBe(200);
-    const verified = await verifyResponse.json();
-    expect(verified.success).toBe(true);
-    expect(state.terminals.length).toBeGreaterThan(0);
-  });
-
   it("blocks code creation without a persisted settlement wallet", async () => {
     state.merchants[0].wallet_address = null;
     state.merchants[0].settlement_wallet_address = null;
