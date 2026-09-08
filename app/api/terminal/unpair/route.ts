@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientAddress, strictLimit } from "@/lib/rate-limit";
-import { hashDeviceToken, matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
+import { matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
 
 export async function POST(request: Request) {
   try {
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     if (deviceToken) {
       const { data: tokenMatch, error: tokenError } = await supabase
         .from("terminals")
-        .select("id, device_token_hash, device_token")
+        .select("id, device_token_hash")
         .eq("id", terminal.id)
         .maybeSingle();
       if (tokenError) return NextResponse.json({ success: false, error: tokenError.message }, { status: 500 });

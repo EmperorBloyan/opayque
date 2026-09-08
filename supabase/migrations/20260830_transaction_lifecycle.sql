@@ -12,6 +12,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS transactions_signature_unique
   ON public.transactions(signature)
   WHERE signature IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS onchain_transactions_signature_unique
-  ON public.onchain_transactions(signature)
-  WHERE signature IS NOT NULL;
+DO $$
+BEGIN
+  IF to_regclass('public.onchain_transactions') IS NOT NULL THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS onchain_transactions_signature_unique
+      ON public.onchain_transactions(signature)
+      WHERE signature IS NOT NULL;
+  END IF;
+END $$;

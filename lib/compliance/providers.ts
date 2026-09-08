@@ -30,7 +30,7 @@ export class NullComplianceProvider implements ComplianceProvider {
     return false;
   }
 
-  async screenMerchant(): Promise<ComplianceResult> {
+  async screenMerchant(_input: ScreenMerchantInput): Promise<ComplianceResult> {
     return {
       status: "not_configured",
       riskScore: null,

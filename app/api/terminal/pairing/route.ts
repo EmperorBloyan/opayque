@@ -42,55 +42,19 @@ async function insertCompatibleTerminalRow(
     created_at: createdAt,
   };
 
-  const insertCandidates = [
-    {
-      ...commonFields,
-      label: terminalLabel,
-      terminal_label: terminalLabel,
-      last_active: createdAt,
-      is_active: true,
-      device_token: deviceToken,
-      device_token_hash: hashDeviceToken(deviceToken),
-    },
-    {
-      ...commonFields,
-      label: terminalLabel,
-      terminal_label: terminalLabel,
-      last_active: createdAt,
-      is_active: true,
-      device_token: deviceToken,
-    },
-    {
-      ...commonFields,
-      label: terminalLabel,
-      last_active: createdAt,
-      is_active: true,
-      device_token: deviceToken,
-    },
-    {
-      ...commonFields,
-      label: terminalLabel,
-      terminal_label: terminalLabel,
-      device_token_hash: hashDeviceToken(deviceToken),
-    },
-    {
-      ...commonFields,
-      terminal_label: terminalLabel,
-      device_token: deviceToken,
-    },
-  ];
+  const { data, error } = await supabase.from("terminals").insert({
+    ...commonFields,
+    label: terminalLabel,
+    terminal_label: terminalLabel,
+    last_active: createdAt,
+    is_active: true,
+    device_token_hash: hashDeviceToken(deviceToken),
+  }).select("id").maybeSingle();
 
-  let lastError: unknown = null;
-
-  for (const candidate of insertCandidates) {
-    const { data, error } = await supabase.from("terminals").insert(candidate).select("id").maybeSingle();
-    if (!error && data?.id) {
-      return data;
-    }
-    lastError = error ?? new Error("Terminal row insertion failed");
+  if (error || !data?.id) {
+    throw error ?? new Error("Terminal row insertion failed");
   }
-
-  throw lastError instanceof Error ? lastError : new Error("Terminal row insertion failed");
+  return data;
 }
 
 export async function POST(request: Request) {

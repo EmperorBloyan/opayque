@@ -67,7 +67,7 @@ describe("terminal device authentication", () => {
     await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({ terminal, supabase });
   });
 
-  it("accepts legacy terminal device tokens stored before hashing was introduced", async () => {
+  it("rejects terminals without a hashed device token", async () => {
     const terminal = { id: "terminal-1", merchant_id: "merchant-1", status: "online", device_token: "secret" };
     const maybeSingle = vi.fn().mockResolvedValue({ data: terminal, error: null });
     const query = {
@@ -79,6 +79,9 @@ describe("terminal device authentication", () => {
     createSupabaseServerClient.mockReturnValue(supabase);
 
     const request = new Request("http://localhost", { headers: { "x-terminal-token": "secret" } });
-    await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({ terminal, supabase });
+    await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({
+      error: "Terminal authentication failed",
+      status: 401,
+    });
   });
 });

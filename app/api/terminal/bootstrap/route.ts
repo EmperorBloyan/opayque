@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isRealMerchantId } from "@/lib/terminal/guards";
-import { hashDeviceToken, matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
+import { matchesTerminalDeviceToken } from "@/lib/terminal/deviceAuth";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
 export async function GET(request: Request) {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseServerClient();
   const { data: terminal, error } = await supabase
     .from("terminals")
-    .select("id, merchant_id, device_token_hash, device_token, status")
+    .select("id, merchant_id, device_token_hash, status")
     .eq("id", terminalId)
     .maybeSingle();
 

@@ -315,7 +315,7 @@ export default function TerminalManager({
           label: row.terminal_label || row.label || "Terminal Node",
           status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
           lastSeen: new Date(when).getTime(),
-          accessCode: row.device_token || row.access_code || createAccessCode(),
+          accessCode: row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
