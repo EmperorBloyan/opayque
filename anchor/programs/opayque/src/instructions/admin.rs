@@ -20,6 +20,7 @@ pub struct ToggleCircuitBreaker<'info> {
 }
 
 pub fn initialize_protocol(ctx: Context<InitializeProtocol>, admin: Pubkey) -> Result<()> {
+    require_keys_eq!(ctx.accounts.payer.key(), admin, crate::ErrorCode::UnauthorizedAuthority);
     let config = &mut ctx.accounts.protocol_config;
     config.admin = admin;
     config.paused = false;

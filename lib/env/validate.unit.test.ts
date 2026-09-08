@@ -31,4 +31,26 @@ describe("environment validation", () => {
     expect(result.configured.SUPABASE_SERVICE_ROLE_KEY).toBe("configured");
     expect(result.configured.MAGICBLOCK_API_KEY).toBe("configured");
   });
+
+  it("keeps malformed production configuration fail-closed", () => {
+    const result = validateEnvironment({ NODE_ENV: "production", NEXT_PUBLIC_SOLANA_NETWORK: "not-a-network" });
+    expect(result.environment).toBe("production");
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.severity === "error")).toBe(true);
+  });
+
+  it("requires complete explicitly enabled provider configuration", () => {
+    const result = validateEnvironment({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_SOLANA_NETWORK: "mainnet-beta",
+      COMPLIANCE_PROVIDER: "sumsub",
+      BRIDGE_API_KEY: "bridge-key",
+    });
+    expect(result.issues.map((issue) => issue.key)).toEqual(expect.arrayContaining([
+      "SUMSUB_APP_TOKEN",
+      "SUMSUB_SECRET_KEY",
+      "SUMSUB_WEBHOOK_SECRET",
+      "BRIDGE_WEBHOOK_SECRET",
+    ]));
+  });
 });

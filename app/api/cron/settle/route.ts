@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import * as Sentry from '@/lib/sentry';
 import { getOfframpProvider } from '@/lib/settlement/offramp';
+import { isAuthorizedCronRequest } from '@/lib/auth/cron';
 
 export async function POST(req: Request) {
-  const auth = req.headers.get('authorization');
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

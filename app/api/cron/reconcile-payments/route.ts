@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { assertProductionConfig } from "@/lib/solana/constants";
 import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
-import { Connection } from "@solana/web3.js";
+import { verifySolanaTransaction } from "@/lib/solana/verify";
+import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
 import * as Sentry from "@/lib/sentry";
+import crypto from "node:crypto";
+import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 
 const MAX_BATCH = 100;
 const STALE_AFTER_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -19,7 +22,7 @@ export async function POST(request: Request) {
     const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
     const { data: rows, error } = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, signature, status, reconciliation_status, last_reconciled_at")
+      .select("id, merchant_id, signature, status, amount, amount_base_units, sender_address, recipient_address, mint, token_symbol, reconciliation_status, last_reconciled_at")
       .in("status", ["submitted", "confirmed", "failed"])
       .or(`reconciliation_status.eq.pending,last_reconciled_at.lt.${cutoff}`)
       .order("created_at", { ascending: true })
@@ -27,31 +30,52 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     const rpcUrl = await selectHealthyRpcUrl();
-    const connection = new Connection(rpcUrl, "confirmed");
+    const workerId = crypto.randomUUID();
+    const claimCutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
     let matched = 0;
     let mismatch = 0;
     let notFound = 0;
 
     for (const row of rows ?? []) {
+      const claimedAt = new Date().toISOString();
+      const { data: claimed, error: claimError } = await supabase
+        .from("payment_ledger")
+        .update({ reconciliation_claimed_at: claimedAt, reconciliation_claimed_by: workerId })
+        .eq("id", row.id)
+        .or(`reconciliation_claimed_at.is.null,reconciliation_claimed_at.lt.${claimCutoff}`)
+        .select("id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) continue;
+
       let reconciliationStatus: "matched" | "mismatch" | "not_found" = "not_found";
       let notes = "No public signature is available for reconciliation";
       if (row.signature) {
-        const result = await connection.getSignatureStatuses([row.signature], { searchTransactionHistory: true });
-        const status = result.value[0];
-        if (!status) {
-          notes = "Signature was not found on the selected Solana RPC";
-        } else if (status.err) {
-          reconciliationStatus = "mismatch";
-          notes = "On-chain signature reports an execution error";
-        } else {
+        const verification = await verifySolanaTransaction({
+          signature: row.signature,
+          expectedMerchantWallet: row.recipient_address,
+          expectedSender: row.sender_address,
+          expectedAmount: Number(row.amount),
+          expectedAmountBaseUnits: row.amount_base_units ? BigInt(row.amount_base_units) : undefined,
+          expectedTokenMint: row.token_symbol === "USDC" ? (row.mint || getAssetMintAddress("USDC", isDevnetNetwork())) : undefined,
+          expectedTokenDecimals: row.token_symbol === "USDC" ? 6 : 9,
+          rpcUrl,
+        });
+        if (verification.verified) {
           reconciliationStatus = "matched";
-          notes = "Signature is publicly observable; private transfer visibility is not inferred";
+          notes = "Settlement facts match the payment intent at finalized commitment";
+        } else if (/not found|failed or not found/i.test(verification.reason)) {
+          notes = "Signature was not found on the selected Solana RPC";
+        } else {
+          reconciliationStatus = "mismatch";
+          notes = verification.reason;
         }
       }
       const { error: updateError } = await supabase
         .from("payment_ledger")
-        .update({ reconciliation_status: reconciliationStatus, last_reconciled_at: new Date().toISOString(), reconciliation_notes: notes })
-        .eq("id", row.id);
+        .update({ reconciliation_status: reconciliationStatus, last_reconciled_at: new Date().toISOString(), reconciliation_notes: notes, reconciliation_claimed_at: null, reconciliation_claimed_by: null })
+        .eq("id", row.id)
+        .eq("reconciliation_claimed_by", workerId);
       if (updateError) throw updateError;
       if (reconciliationStatus === "matched") matched += 1;
       if (reconciliationStatus === "mismatch") mismatch += 1;

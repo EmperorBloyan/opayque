@@ -20,7 +20,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const supabase = createSupabaseServerClient(request);
     const { data: transaction, error: transactionError } = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, terminal_id, amount, token_symbol, status")
+      .select("id, merchant_id, terminal_id, amount, amount_base_units, mint, sender_address, recipient_address, token_symbol, status, signature")
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -40,6 +40,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!["created", "pending_signature", "submitted"].includes(transaction.status)) {
       return NextResponse.json({ success: false, error: "Terminal transaction is no longer pending" }, { status: 409 });
     }
+    if (transaction.status === "submitted" && transaction.signature && transaction.signature !== signature) {
+      return NextResponse.json({ success: false, error: "Terminal transaction is already associated with another signature" }, { status: 409 });
+    }
 
     const { data: merchant, error: merchantError } = await supabase
       .from("merchants")
@@ -55,6 +58,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!merchantWallet) {
       return NextResponse.json({ success: false, error: "Merchant settlement wallet not configured" }, { status: 400 });
     }
+    if (transaction.recipient_address !== merchantWallet) {
+      return NextResponse.json({ success: false, error: "Payment recipient does not match the merchant settlement wallet" }, { status: 409 });
+    }
 
     assertProductionConfig();
     const rpcUrl = await selectHealthyRpcUrl();
@@ -65,11 +71,24 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ success: false, error: "Only USDC terminal payments are supported" }, { status: 400 });
     }
 
+    const { data: submitted, error: submitError } = await supabase
+      .from("payment_ledger")
+      .update({ signature, status: "submitted", updated_at: new Date().toISOString() })
+      .eq("id", transactionId)
+      .in("status", ["created", "pending_signature", "submitted"])
+      .select("id, merchant_id, amount, amount_base_units, mint, sender_address, recipient_address, signature, status")
+      .maybeSingle();
+    if (submitError || !submitted) {
+      return NextResponse.json({ success: false, error: "Terminal transaction changed; retry settlement" }, { status: 409 });
+    }
+
     const verification = await verifySolanaTransaction({
       signature,
       expectedMerchantWallet: merchantWallet,
-      expectedAmount: Number(transaction.amount),
-      expectedTokenMint: getAssetMintAddress("USDC", isDevnet),
+      expectedSender: submitted.sender_address,
+      expectedAmount: Number(submitted.amount),
+      expectedAmountBaseUnits: submitted.amount_base_units ? BigInt(submitted.amount_base_units) : undefined,
+      expectedTokenMint: submitted.mint || getAssetMintAddress("USDC", isDevnet),
       expectedTokenDecimals: 6,
       rpcUrl,
     });
@@ -91,7 +110,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       .update({ signature, status: "confirmed", confirmed_at: new Date().toISOString(), reconciliation_status: "matched", updated_at: new Date().toISOString() })
       .eq("id", transactionId)
       .in("status", ["created", "pending_signature", "submitted"])
-      .select("id, status, signature")
+      .select("id, merchant_id, status, signature")
       .maybeSingle();
 
     if (updateError) {
@@ -119,6 +138,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Unable to settle terminal payment" }, { status: 500 });
+    console.error("Terminal payment settlement failed", error instanceof Error ? error.name : "UnknownError");
+    return NextResponse.json({ success: false, error: "Unable to settle terminal payment" }, { status: 500 });
   }
 }

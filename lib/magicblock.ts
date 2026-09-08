@@ -3,6 +3,7 @@ import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolan
 import { getPriorityFeeConfig } from "@/lib/solana/priorityFee";
 import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { logLifecycle } from "@/lib/observability";
+import { parseAmountToBaseUnits } from "@/lib/payments/amount";
 
 export const PAYMENTS_API =
   process.env.NEXT_PUBLIC_MAGICBLOCK_API || "https://payments.magicblock.app";
@@ -123,6 +124,10 @@ export async function requestPrivateSplTransfer({
   }
 
   const payload = await response.json().catch(() => ({}));
+  if (payload?.visibility !== "private" || payload?.mode === "public") {
+    recordMagicBlockFailure(new Error("MagicBlockPrivateModeNotProven"));
+    throw new Error("Private transfer provider did not prove private visibility");
+  }
   const transaction = typeof payload === "string"
     ? payload
     : payload?.transactionBase64 || payload?.transaction || payload?.serializedTransaction || payload?.data?.transactionBase64 || payload?.data?.transaction;
@@ -195,7 +200,7 @@ export async function buildShieldedTransfer(
 
   const data = await response.json().catch(() => ({}));
 
-  if (!response.ok || !data?.transaction || typeof data.transaction !== "string") {
+  if (!response.ok || data?.mode !== "private" || !data?.transaction || typeof data.transaction !== "string") {
     console.error("Transfer API error:", data);
 
     let errorMessage = "Transfer API rejected the request.";
@@ -203,6 +208,8 @@ export async function buildShieldedTransfer(
     else if (typeof data?.error === "string") errorMessage = data.error;
     else if (data?.message || data?.error) {
       errorMessage = JSON.stringify(data.message || data.error);
+    } else if (data?.mode && data.mode !== "private") {
+      errorMessage = "Private transfer provider returned a non-private transaction.";
     } else if (!response.ok) {
       errorMessage = `Transfer failed (HTTP ${response.status})`;
     }
@@ -236,6 +243,10 @@ export async function buildWithdraw(
   destination: string,
   amount: number
 ): Promise<VersionedTransaction> {
+  const amountBaseUnits = parseAmountToBaseUnits(amount, 6);
+  if (!amountBaseUnits || amountBaseUnits > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Invalid withdrawal amount");
+  }
   const response = await fetchWithTimeout(
     `${PAYMENTS_API}/withdraw`,
     {
@@ -244,7 +255,7 @@ export async function buildWithdraw(
       body: JSON.stringify({
         sender: merchantPubkey,
         destination,
-        amount: Math.floor(amount * 1_000_000),
+        amount: Number(amountBaseUnits),
         mint: USDC_MINT.toBase58(),
       }),
     },

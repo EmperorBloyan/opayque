@@ -5,7 +5,7 @@ import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { verifySolanaTransaction } from "@/lib/solana/verify";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
-import { assertPaymentStatusTransition } from "@/lib/payments/ledger";
+import { assertPaymentStatusTransition, isPaymentStatus } from "@/lib/payments/ledger";
 import { authenticateApiKey } from "@/lib/auth/apiKey";
 
 function webhookPayload(row: any) {
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "intent_id and a valid signature are required" }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient(request);
+    const supabase = createSupabaseServerClient();
     let merchantId: string | null = null;
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -57,18 +57,25 @@ export async function POST(request: Request) {
     if (idempotencyKey && row.idempotency_key && row.idempotency_key !== idempotencyKey) {
       return NextResponse.json({ error: "Payment idempotency key does not match the intent" }, { status: 409 });
     }
+    if (row.signature && row.signature !== signature && row.status === "submitted") {
+      return NextResponse.json({ error: "Payment intent is already associated with another signature" }, { status: 409 });
+    }
+    if (!row.sender_address || (sender && sender !== row.sender_address)) {
+      return NextResponse.json({ error: "Payment intent sender does not match the authorized sender" }, { status: 409 });
+    }
     if (row.signature === signature && row.status === "confirmed") {
       return NextResponse.json({ success: true, idempotent: true, transaction: row });
     }
     if (!["created", "pending_signature", "submitted"].includes(String(row.status))) {
       return NextResponse.json({ error: "Payment intent is no longer payable" }, { status: 409 });
     }
-    assertPaymentStatusTransition(String(row.status) as any, "submitted");
+    if (!isPaymentStatus(row.status)) return NextResponse.json({ error: "Payment intent has an invalid status" }, { status: 409 });
+    assertPaymentStatusTransition(row.status, "submitted");
 
     const now = new Date().toISOString();
     const { data: submitted, error: submitError } = await supabase
       .from("payment_ledger")
-      .update({ status: "submitted", signature, sender_address: sender || row.sender_address, updated_at: now })
+      .update({ status: "submitted", signature, updated_at: now })
       .eq("id", intentId)
       .in("status", ["created", "pending_signature", "submitted"])
       .select("*")
@@ -87,7 +94,9 @@ export async function POST(request: Request) {
     const verification = await verifySolanaTransaction({
       signature,
       expectedMerchantWallet: submitted.recipient_address,
+      expectedSender: submitted.sender_address,
       expectedAmount: Number(submitted.amount),
+      expectedAmountBaseUnits: submitted.amount_base_units ? BigInt(submitted.amount_base_units) : undefined,
       expectedTokenMint: submitted.mint,
       expectedTokenDecimals: 6,
       rpcUrl: await selectHealthyRpcUrl(),

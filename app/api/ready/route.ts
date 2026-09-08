@@ -11,6 +11,6 @@ export async function GET() {
       checks: report.checks,
       environment: report.environment,
     },
-    { status: report.status === "unhealthy" ? 503 : 200 },
+    { status: report.status === "ok" ? 200 : 503 },
   );
 }

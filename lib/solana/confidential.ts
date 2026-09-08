@@ -6,6 +6,7 @@ import {
   createTransferInstruction,
 } from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
+import { parseAmountToBaseUnits } from "@/lib/payments/amount";
 
 type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction">;
 
@@ -81,12 +82,16 @@ export async function createPublicPaymentInstruction(
     const sourceTokenAccount = getAssociatedTokenAddressSync(mint, sender);
     const destinationTokenAccount = getAssociatedTokenAddressSync(mint, recipient);
     const sourceMint = await getMint(connection, mint);
+    const amountBaseUnits = parseAmountToBaseUnits(amount, sourceMint.decimals);
+    if (!amountBaseUnits || amountBaseUnits > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("Invalid token amount");
+    }
 
     const transferInstruction = createTransferInstruction(
       sourceTokenAccount,
       destinationTokenAccount,
       sender,
-      Math.floor(amount * 10 ** sourceMint.decimals),
+      Number(amountBaseUnits),
       [],
       TOKEN_PROGRAM_ID
     );

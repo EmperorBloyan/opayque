@@ -13,7 +13,7 @@ describe("terminal readiness and ownership guards", () => {
 
   it("prefers complete device credentials", () => {
     const context = resolveTerminalContext({
-      device: { terminalId: "term-1", merchantId, deviceToken: "secret", merchantWallet: "wallet" },
+      device: { terminalId: "term-1", merchantId, deviceToken: "secret", merchantWallet: "wallet", pairedAt: Date.now() },
       session: { merchantId, walletAddress: "session-wallet" },
     });
 
@@ -29,7 +29,7 @@ describe("terminal readiness and ownership guards", () => {
 
   it("fails closed for incomplete or invalid credentials", () => {
     const context = resolveTerminalContext({
-      device: { terminalId: "term-1", merchantId, deviceToken: "", merchantWallet: "wallet" },
+      device: { terminalId: "term-1", merchantId, deviceToken: "", merchantWallet: "wallet", pairedAt: Date.now() },
       ownerMerchantId: merchantId,
     });
 

@@ -43,9 +43,12 @@ export interface ProductionConfigIssue {
 }
 
 export function getProductionConfigIssues(): ProductionConfigIssue[] {
-  if (process.env.NODE_ENV !== "production" || !isMainnetNetwork()) return [];
+  if (process.env.NODE_ENV !== "production") return [];
 
   const issues: ProductionConfigIssue[] = [];
+  if (!isMainnetNetwork()) {
+    issues.push({ key: "NEXT_PUBLIC_SOLANA_NETWORK", message: "Production must use mainnet-beta" });
+  }
   if (!process.env.NEXT_PUBLIC_RPC_URL?.trim() && !process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) {
     issues.push({ key: "NEXT_PUBLIC_RPC_URL", message: "A dedicated mainnet RPC URL is required" });
   }

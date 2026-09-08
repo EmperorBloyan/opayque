@@ -251,7 +251,9 @@ export default function TerminalPage() {
 
     try {
       const merchantId = activeSession?.merchantId;
-      const activeWalletAddress = activeSession?.walletAddress;
+      const activeWalletAddress = activeSession?.walletAddress && activeSession.walletAddress !== "email-auth"
+        ? activeSession.walletAddress
+        : undefined;
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -266,6 +268,12 @@ export default function TerminalPage() {
       }
 
       if (!response.ok || !payload?.success) {
+        clearTerminalDeviceCredential();
+        window.localStorage.removeItem("opayque_terminal_id");
+        window.localStorage.removeItem("opayque_terminal_token");
+        setTerminalId(null);
+        setTerminalToken(null);
+        setStep("PAIRING");
         const message = response.status === 409
           ? "This pairing code is expired or already used. Generate a new code in Vault."
           : payload?.error || `Pairing request failed with status ${response.status}`;
@@ -386,6 +394,9 @@ export default function TerminalPage() {
     setIsGenerating(true);
     try {
       assertTerminalReady(terminalContext);
+      if (!terminalContext.terminalId || !terminalContext.deviceToken) {
+        throw new Error("Pair this terminal before generating a QR code");
+      }
 
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 12_000);
@@ -528,7 +539,9 @@ export default function TerminalPage() {
           (async () => {
             try {
               if (!storedToken) return;
-              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}&deviceToken=${encodeURIComponent(storedToken)}`);
+              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}`, {
+                headers: { "x-terminal-token": storedToken },
+              });
               const payload = await response.json().catch(() => null);
 
               if (

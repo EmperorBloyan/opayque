@@ -1,13 +1,19 @@
 {
   "name": "opayque",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "resolutions": {
+    "ws": "8.21.3",
+    "toml": "5.0.0",
+    "browserslist": "4.28.9"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "NODE_OPTIONS=\"--max-old-space-size=4096\" next build",
     "start": "next start",
     "lint": "next lint",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test": "yarn test:unit",
@@ -58,6 +64,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.12.7",

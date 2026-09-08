@@ -1,6 +1,30 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+export function applySecurityHeaders(response: NextResponse) {
+  const headers = response.headers;
+
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  headers.set(
+    "Content-Security-Policy",
+    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src 'self' https://*.walletconnect.com https://*.reown.com"
+  );
+
+  if (process.env.NODE_ENV === "production") {
+    headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains"
+    );
+  }
+
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -53,7 +77,7 @@ export async function middleware(request: NextRequest) {
     const nextTarget = request.nextUrl.pathname;
     const redirectUrl = new URL("/login", request.url);
     redirectUrl.searchParams.set("next", nextTarget);
-    return NextResponse.redirect(redirectUrl);
+    return applySecurityHeaders(NextResponse.redirect(redirectUrl));
   }
 
   let merchant: { id: string; settlement_wallet_address?: string | null } | null =
@@ -74,14 +98,14 @@ export async function middleware(request: NextRequest) {
     const redirectUrl = new URL("/onboarding", request.url);
     redirectUrl.searchParams.set("next", request.nextUrl.pathname);
     redirectUrl.searchParams.set("setup", "1");
-    return NextResponse.redirect(redirectUrl);
+    return applySecurityHeaders(NextResponse.redirect(redirectUrl));
   }
 
   // Authenticated with merchant → leave onboarding
   if (user && isOnboardingPage && merchant) {
     const nextTarget =
       request.nextUrl.searchParams.get("next") || "/vault/registry";
-    return NextResponse.redirect(new URL(nextTarget, request.url));
+    return applySecurityHeaders(NextResponse.redirect(new URL(nextTarget, request.url)));
   }
 
   // Authenticated user on /login:
@@ -91,10 +115,10 @@ export async function middleware(request: NextRequest) {
   if (user && isLoginRoute && !forceLogin) {
     const nextTarget =
       request.nextUrl.searchParams.get("next") || "/vault/registry";
-    return NextResponse.redirect(new URL(nextTarget, request.url));
+    return applySecurityHeaders(NextResponse.redirect(new URL(nextTarget, request.url)));
   }
 
-  return response;
+  return applySecurityHeaders(response);
 }
 
 export const config = {

@@ -4,6 +4,8 @@ import { isRealMerchantId } from "@/lib/terminal/guards";
 import { requireTerminalDevice } from "@/lib/terminal/deviceAuth";
 import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from "@/lib/solana/constants";
 import { normalizeIdempotencyKey } from "@/lib/payments/ledger";
+import { parseAmountToBaseUnits } from "@/lib/payments/amount";
+import { buildPaymentRequestFingerprint } from "@/lib/payments/fingerprint";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 
@@ -11,12 +13,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const terminalId = typeof body?.terminalId === "string" ? body.terminalId.trim() : "";
-    const amount = Number(body?.amount);
+    const amountInput = body?.amount;
     const tokenSymbol = typeof body?.tokenSymbol === "string" ? body.tokenSymbol.trim().toUpperCase() : "";
     const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotencyKey);
-    const normalizedAmount = Number(amount.toFixed(6));
+    const amountBaseUnits = parseAmountToBaseUnits(amountInput, 6);
+    const normalizedAmount = amountBaseUnits ? Number(amountBaseUnits) / 1_000_000 : 0;
+    const requestFingerprint = buildPaymentRequestFingerprint({ amountBaseUnits: amountBaseUnits?.toString() ?? null, tokenSymbol });
 
-    if (!terminalId || !Number.isFinite(normalizedAmount) || normalizedAmount <= 0 || normalizedAmount >= 1_000_000 || tokenSymbol !== "USDC") {
+    if (!terminalId || !amountBaseUnits || normalizedAmount >= 1_000_000 || tokenSymbol !== "USDC") {
       return NextResponse.json({ success: false, error: "Valid terminal payment details are required" }, { status: 400 });
     }
 
@@ -36,7 +40,12 @@ export async function POST(request: Request) {
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
       if (existingError) return NextResponse.json({ success: false, error: existingError.message }, { status: 500 });
-      if (existing) return NextResponse.json({ success: true, ...existing, idempotent: true });
+      if (existing) {
+        if (existing.idempotency_fingerprint && existing.idempotency_fingerprint !== requestFingerprint) {
+          return NextResponse.json({ success: false, error: "Idempotency key was already used for a different payment" }, { status: 409 });
+        }
+        return NextResponse.json({ success: true, ...existing, idempotent: true });
+      }
     }
 
     const { data: merchant, error: merchantError } = await supabase
@@ -57,17 +66,30 @@ export async function POST(request: Request) {
         signature: null,
         token_symbol: tokenSymbol,
         amount: normalizedAmount,
-        amount_base_units: Math.round(normalizedAmount * 1_000_000),
+        amount_base_units: Number(amountBaseUnits),
         mint: getAssetMintAddress("USDC", isDevnetNetwork()),
         recipient_address: recipientAddress,
         environment,
         idempotency_key: idempotencyKey,
+        idempotency_fingerprint: requestFingerprint,
         status: "created",
       })
       .select()
       .single();
 
     if (error || !data) {
+      if (error?.code === "23505" && idempotencyKey) {
+        const { data: existing } = await supabase
+          .from("payment_ledger")
+          .select("*")
+          .eq("merchant_id", terminal.merchant_id)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
+        if (existing?.idempotency_fingerprint === requestFingerprint) {
+          return NextResponse.json({ success: true, ...existing, idempotent: true });
+        }
+        return NextResponse.json({ success: false, error: "Idempotency key was already used for a different payment" }, { status: 409 });
+      }
       return NextResponse.json({ success: false, error: error?.message || "Failed to create pending transaction" }, { status: 500 });
     }
 
@@ -80,6 +102,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, ...data });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Failed to create payment" }, { status: 500 });
+    console.error("Terminal payment creation failed", error instanceof Error ? error.name : "UnknownError");
+    return NextResponse.json({ success: false, error: "Failed to create payment" }, { status: 500 });
   }
 }

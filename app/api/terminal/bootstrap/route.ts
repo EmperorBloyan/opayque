@@ -7,7 +7,7 @@ import { resolveSettlementWallet } from "@/lib/merchant/wallets";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const terminalId = url.searchParams.get("terminalId")?.trim();
-  const deviceToken = url.searchParams.get("deviceToken")?.trim();
+  const deviceToken = request.headers.get("x-terminal-token")?.trim();
 
   if (!terminalId || !deviceToken) {
     return NextResponse.json({ success: false, error: "Terminal credentials are required" }, { status: 400 });
@@ -21,7 +21,13 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("Terminal bootstrap lookup failed", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      terminalId,
+    });
+    return NextResponse.json({ success: false, error: "Terminal authentication service is unavailable" }, { status: 503 });
   }
 
   if (
@@ -29,7 +35,7 @@ export async function GET(request: Request) {
     !matchesTerminalDeviceToken(terminal, deviceToken) ||
     ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())
   ) {
-    return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Terminal authentication failed. Pair this terminal again." }, { status: 401 });
   }
 
   const { data: merchant, error: merchantError } = await supabase

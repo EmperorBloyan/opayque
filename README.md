@@ -251,7 +251,7 @@ npm start
 
 Tests
 
-`yarn test:unit` runs focused auth, pairing, and payment reliability tests. `yarn tsc --noEmit` runs the full TypeScript check. `yarn anchor:idl` rebuilds the Anchor program and copies its generated IDL into `lib/idl/opayque.json`; it requires Rust and Anchor CLI.
+`yarn test:unit` runs deterministic Vitest suites. `yarn test:coverage` runs the same suites with V8 coverage (target 80% statements for security-critical libraries before release). `yarn test:e2e` runs Playwright critical paths and requires a configured local app. `yarn tsc --noEmit` runs the full TypeScript check. `yarn anchor:idl` rebuilds the Anchor program and copies its generated IDL into `lib/idl/opayque.json`; it requires Rust and Anchor CLI.
 
 Stack hygiene
 
@@ -331,6 +331,11 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
 - [ ] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
 - [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
 - [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
+- [ ] `yarn test:coverage` meets the release threshold for auth, terminal, ledger, webhook, rate-limit, environment, and private-transfer modules.
+- [ ] Run Playwright merchant onboarding, terminal pairing/reload/bootstrap, checkout, and Developer Hub flows against mocked external services.
+- [ ] Verify terminal pairing creates `terminals.device_token_hash`; test a fresh pairing after applying all migrations and confirm QR generation sends the matching `x-terminal-token`.
+- [ ] Verify signed Sumsub/Bridge webhook fixtures update only provider status and never store government IDs or bank-account details.
+- [ ] Confirm production `COMPLIANCE_PROVIDER` is `null` or a fully configured real provider; demo screening is never enabled in production.
 
 Launch decision: **NO-GO for mainnet until every unchecked item above and every unchecked post-deploy check below is completed.** A passing local build or unit suite cannot verify production secrets, Supabase advisories, provider authentication, rate-limit configuration, cron delivery, backups, or rollback.
 

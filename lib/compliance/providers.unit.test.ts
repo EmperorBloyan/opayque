@@ -5,10 +5,11 @@ const originalProvider = process.env.COMPLIANCE_PROVIDER;
 const originalNodeEnv = process.env.NODE_ENV;
 
 afterEach(() => {
-  if (originalProvider === undefined) delete process.env.COMPLIANCE_PROVIDER;
-  else process.env.COMPLIANCE_PROVIDER = originalProvider;
-  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = originalNodeEnv;
+  const environment = process.env as Record<string, string | undefined>;
+  if (originalProvider === undefined) delete environment.COMPLIANCE_PROVIDER;
+  else environment.COMPLIANCE_PROVIDER = originalProvider;
+  if (originalNodeEnv === undefined) delete environment.NODE_ENV;
+  else environment.NODE_ENV = originalNodeEnv;
 });
 
 describe("compliance providers", () => {
@@ -25,13 +26,13 @@ describe("compliance providers", () => {
   });
 
   it("defaults production to the null provider", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     delete process.env.COMPLIANCE_PROVIDER;
     expect(getComplianceProvider().name).toBe("null");
   });
 
   it("rejects demo in production even when explicitly selected", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.COMPLIANCE_PROVIDER = "demo";
     expect(getComplianceProvider().name).toBe("null");
   });

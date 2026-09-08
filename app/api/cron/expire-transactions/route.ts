@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import * as Sentry from "@/lib/sentry";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 
 const EXPIRY_WINDOW_MS = 15 * 60 * 1000;
 const MAX_BATCH = 500;
 
 export async function POST(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

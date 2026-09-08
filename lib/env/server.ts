@@ -9,8 +9,8 @@ export function getOfframpConfig(): { config?: OfframpConfig; error?: string } {
   const apiKey = process.env.BRIDGE_API_KEY?.trim();
   const webhookSecret = process.env.BRIDGE_WEBHOOK_SECRET?.trim();
 
-  if (!apiUrl || !apiKey) {
-    return { error: "External fiat payout partner is not configured" };
+  if (!apiKey || !webhookSecret) {
+    return { error: "External fiat payout partner requires BRIDGE_API_KEY and BRIDGE_WEBHOOK_SECRET" };
   }
 
   return { config: { apiUrl, apiKey, webhookSecret } };
