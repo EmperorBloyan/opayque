@@ -336,7 +336,7 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
 - [ ] Verify terminal pairing creates `terminals.device_token_hash`; test a fresh pairing after applying all migrations and confirm QR generation sends the matching `x-terminal-token`.
 - [ ] Verify signed Sumsub/Bridge webhook fixtures update only provider status and never store government IDs or bank-account details.
 - [ ] Confirm production `COMPLIANCE_PROVIDER` is `null` or a fully configured real provider; demo screening is never enabled in production.
-
+  
 Launch decision: **NO-GO for mainnet until every unchecked item above and every unchecked post-deploy check below is completed.** A passing local build or unit suite cannot verify production secrets, Supabase advisories, provider authentication, rate-limit configuration, cron delivery, backups, or rollback.
 
 Preview and Production environments
