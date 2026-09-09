@@ -393,8 +393,12 @@ export default function TerminalPage() {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     setIsGenerating(true);
     try {
-      assertTerminalReady(terminalContext);
-      if (!terminalContext.terminalId || !terminalContext.deviceToken) {
+      const currentTerminalContext = resolveTerminalContext({
+        device: loadTerminalDeviceCredential(),
+        session: getActiveSession(),
+      });
+      assertTerminalReady(currentTerminalContext);
+      if (!currentTerminalContext.terminalId || !currentTerminalContext.deviceToken) {
         throw new Error("Pair this terminal before generating a QR code");
       }
 
@@ -405,10 +409,10 @@ export default function TerminalPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-terminal-token": terminalContext.deviceToken!,
+          "x-terminal-token": currentTerminalContext.deviceToken,
         },
         body: JSON.stringify({
-          terminalId: terminalContext.terminalId,
+          terminalId: currentTerminalContext.terminalId,
           amount: normalizedSettlementAmount,
           tokenSymbol: "USDC",
         }),
@@ -417,6 +421,14 @@ export default function TerminalPage() {
 
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success || !data?.id) {
+        if (response.status === 401) {
+          clearTerminalDeviceCredential();
+          window.localStorage.removeItem("opayque_terminal_id");
+          window.localStorage.removeItem("opayque_terminal_token");
+          setTerminalId(null);
+          setTerminalToken(null);
+          setStep("PAIRING");
+        }
         throw new Error(data?.error || "Unable to create payment");
       }
 
@@ -435,7 +447,7 @@ export default function TerminalPage() {
         fiatAmount: numericAmount,
         displayCurrency: currency,
         time: pendingRecord.created_at ?? new Date().toISOString(),
-        walletAddress: terminalContext.merchantWallet,
+        walletAddress: currentTerminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,
       }, ...readLocalActivity()];
 
