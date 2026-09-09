@@ -117,75 +117,81 @@ alter table terminal_pairing_codes enable row level security;
 create policy "Authenticated merchant can manage own profile"
   on merchants
   for all
-  using (auth.uid() = auth_user_id)
-  with check (auth.uid() = auth_user_id);
+  to authenticated
+  using ((select auth.uid()) = auth_user_id)
+  with check ((select auth.uid()) = auth_user_id);
 
 create policy "Merchant owners can manage api keys"
   on api_keys
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );
 
 create policy "Merchant owners can manage webhooks"
   on webhooks
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );
 
 create policy "Merchant owners can manage terminals"
   on terminals
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );
 
 create policy "Merchant owners can manage transactions"
   on transactions
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );
 
 create policy "Merchant owners can manage pairing codes"
   on terminal_pairing_codes
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );

@@ -43,7 +43,9 @@ export interface ProductionConfigIssue {
 }
 
 export function getProductionConfigIssues(): ProductionConfigIssue[] {
-  if (process.env.NODE_ENV !== "production") return [];
+  const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV;
+  const isPreview = vercelEnv === "preview";
+  if (process.env.NODE_ENV !== "production" || isPreview) return [];
 
   const issues: ProductionConfigIssue[] = [];
   if (!isMainnetNetwork()) {

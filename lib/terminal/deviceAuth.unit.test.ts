@@ -48,7 +48,12 @@ describe("terminal device authentication", () => {
   });
 
   it("accepts only a matching hashed token and active terminal", async () => {
-    const terminal = { id: "terminal-1", merchant_id: "merchant-1", status: "online" };
+    const terminal = {
+      id: "terminal-1",
+      merchant_id: "merchant-1",
+      status: "online",
+      device_token_hash: hashDeviceToken("secret"),
+    };
     const maybeSingle = vi.fn().mockResolvedValue({ data: terminal, error: null });
     const query = {
       select: vi.fn().mockReturnThis(),
@@ -60,6 +65,23 @@ describe("terminal device authentication", () => {
 
     const request = new Request("http://localhost", { headers: { "x-terminal-token": "secret" } });
     await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({ terminal, supabase });
-    expect(query.eq).toHaveBeenCalledWith("device_token_hash", hashDeviceToken("secret"));
+  });
+
+  it("rejects terminals without a hashed device token", async () => {
+    const terminal = { id: "terminal-1", merchant_id: "merchant-1", status: "online", device_token: "secret" };
+    const maybeSingle = vi.fn().mockResolvedValue({ data: terminal, error: null });
+    const query = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle,
+    };
+    const supabase = { from: vi.fn().mockReturnValue(query) };
+    createSupabaseServerClient.mockReturnValue(supabase);
+
+    const request = new Request("http://localhost", { headers: { "x-terminal-token": "secret" } });
+    await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({
+      error: "Terminal authentication failed",
+      status: 401,
+    });
   });
 });

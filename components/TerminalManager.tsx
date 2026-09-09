@@ -232,6 +232,7 @@ export default function TerminalManager({
   } | null>(null);
 
   const fleetChannelRef = useRef<any | null>(null);
+  const pairingRequestRef = useRef(false);
 
   const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();
@@ -314,7 +315,7 @@ export default function TerminalManager({
           label: row.terminal_label || row.label || "Terminal Node",
           status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
           lastSeen: new Date(when).getTime(),
-          accessCode: row.device_token || row.access_code || createAccessCode(),
+          accessCode: row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
@@ -334,6 +335,9 @@ export default function TerminalManager({
   // --- REFACTORED PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
+      if (pairingRequestRef.current) return;
+      pairingRequestRef.current = true;
+
       let merchantResponse: Response;
       try {
         merchantResponse = await fetch("/api/v1/merchant", {
@@ -361,6 +365,7 @@ export default function TerminalManager({
       }
 
       if (!isValidUuid(merchantIdForPairing)) {
+        pairingRequestRef.current = false;
         setToast("Invalid merchant context. Please re-authorize.");
         setTimeout(() => setToast(null), 3000);
         return;
@@ -407,6 +412,7 @@ export default function TerminalManager({
         setTimeLeft("00M 00S");
       } finally {
         setIsRefreshingCode(false);
+        pairingRequestRef.current = false;
       }
     },
     [newTerminalLabel, resolvedMerchantId]
@@ -955,6 +961,8 @@ export default function TerminalManager({
   }, [isPairingOpen, loadFromSupabase, resolvedMerchantId]);
 
   const pairNewTerminal = async () => {
+    if (pairingRequestRef.current || isRefreshingCode) return;
+
     if (!resolvedMerchantId) {
       setToast("Merchant session loading, please wait...");
       setTimeout(() => setToast(null), 3000);

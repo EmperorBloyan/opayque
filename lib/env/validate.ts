@@ -62,6 +62,9 @@ const hasValue = (value: unknown): boolean => typeof value === "string" && value
 
 export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): EnvironmentValidation {
   const parsed = environmentSchema.safeParse(input);
+  const vercelEnv = input.VERCEL_ENV || input.NEXT_PUBLIC_VERCEL_ENV;
+  const isPreview = vercelEnv === "preview";
+  const isStrictProduction = input.NODE_ENV === "production" && !isPreview;
   const environment: EnvironmentName = input.NODE_ENV === "production"
     ? "production"
     : input.NODE_ENV === "test"
@@ -75,7 +78,7 @@ export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): Env
     for (const issue of parsed.error.issues) {
       const key = issue.path.join(".") || "environment";
       configured[key] = "invalid";
-      issues.push({ key, message: issue.message, severity: environment === "production" ? "error" : "warning" });
+      issues.push({ key, message: issue.message, severity: isStrictProduction ? "error" : "warning" });
     }
   }
 
@@ -121,25 +124,25 @@ export function validateEnvironment(input: NodeJS.ProcessEnv = process.env): Env
       configured[key] = "configured";
       continue;
     }
-    const required = environment === "production" && requiredInProduction.has(key);
+    const required = isStrictProduction && requiredInProduction.has(key);
     configured[key] = required ? "missing" : "optional";
     if (required) {
       issues.push({ key, message: `${key} is required in production`, severity: "error" });
     }
   }
 
-  if (environment === "production" && network !== "mainnet-beta") {
+  if (isStrictProduction && network !== "mainnet-beta") {
     issues.push({ key: "NEXT_PUBLIC_SOLANA_NETWORK", message: "Production must use mainnet-beta", severity: "error" });
   }
 
   if (input.COMPLIANCE_PROVIDER === "sumsub") {
     for (const key of ["SUMSUB_APP_TOKEN", "SUMSUB_SECRET_KEY", "SUMSUB_WEBHOOK_SECRET"] as const) {
-      if (!hasValue(input[key])) issues.push({ key, message: `${key} is required when COMPLIANCE_PROVIDER=sumsub`, severity: environment === "production" ? "error" : "warning" });
+      if (!hasValue(input[key])) issues.push({ key, message: `${key} is required when COMPLIANCE_PROVIDER=sumsub`, severity: isStrictProduction ? "error" : "warning" });
     }
   }
 
   if (hasValue(input.BRIDGE_API_KEY) && !hasValue(input.BRIDGE_WEBHOOK_SECRET)) {
-    issues.push({ key: "BRIDGE_WEBHOOK_SECRET", message: "BRIDGE_WEBHOOK_SECRET is required when Bridge payouts are enabled", severity: environment === "production" ? "error" : "warning" });
+    issues.push({ key: "BRIDGE_WEBHOOK_SECRET", message: "BRIDGE_WEBHOOK_SECRET is required when Bridge payouts are enabled", severity: isStrictProduction ? "error" : "warning" });
   }
 
   return {

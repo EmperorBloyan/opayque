@@ -1,9 +1,6 @@
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- 1. DEVELOPER PROJECTS & CREDENTIALS TABLE
 CREATE TABLE IF NOT EXISTS public.developer_projects (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     project_name TEXT NOT NULL DEFAULT 'Default Project',
     destination_wallet TEXT NOT NULL,
@@ -18,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.developer_projects (
 
 -- 2. WEBHOOK DELIVERY LOGS TABLE
 CREATE TABLE IF NOT EXISTS public.webhook_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID REFERENCES public.developer_projects(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     order_id TEXT NOT NULL,

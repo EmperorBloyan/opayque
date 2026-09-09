@@ -231,6 +231,14 @@ Supabase schema
 
 Apply `supabase/schema.sql` in the Supabase SQL Editor for a fresh project, then apply every file in `supabase/migrations/` in filename order. Server routes that need privileged writes use `SUPABASE_SERVICE_ROLE_KEY`; browser and authenticated merchant flows use the user session and remain subject to RLS. Never expose the service-role key or store raw API keys.
 
+Fresh staging bootstrap
+
+For a new Supabase project, link it first and apply the baseline before pushing the migration history. `supabase db push` only applies tracked migrations; the repository migrations depend on the baseline objects in `supabase/schema.sql`. Run `npx supabase db query --linked --file supabase/schema.sql`, then `npx supabase db push`. Verify the linked project reference before both commands. Use staging-only credentials and Solana devnet; never run these commands against the production project.
+
+Staging status (2026-09-08)
+
+The Supabase staging project `app-staging` (`caajooihrtzaugtddrdk`, North EU / Stockholm) has the complete repository migration history through `20260911`. Schema verification passed: all expected application tables exist, RLS is enabled, anonymous table grants are zero, owner policies do not target `PUBLIC`, and both trigger functions use `search_path = public`. HTTP smoke tests remain pending until a staging application URL and staging-only runtime credentials are deployed.
+
 Run
 
 npm run dev
@@ -304,6 +312,13 @@ Point NEXT_PUBLIC_APP_URL at the production domain
 
 Production checklist
 
+Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled devnet use; not approved for mainnet yet.** The application builds successfully, the application controls and database hardening are present in the repository, but live Supabase, Vercel, provider, and operational checks below must be completed before a production launch.
+
+- [x] Repository security migration is committed in `supabase/migrations/20260908_security_hardening_reproducible.sql`.
+- [x] Legacy `pairing_codes` cleanup, `anon` revocation, owner-policy replacement, function search paths, and foreign-key indexing are represented in the migration.
+- [x] Leaked-password protection was enabled in Supabase; re-run Security Advisor in the production project to confirm the advisory is cleared.
+- [x] Focused terminal pairing tests pass locally.
+
 - [x] `.env.example` documents public and server-only variables; service-role, relayer, cron, MagicBlock, Upstash, off-ramp, and Sentry auth credentials are server-only.
 - [x] TypeScript, unit tests, and the Next production build pass locally with bounded Node memory.
 - [x] `/api/health` checks the configured Solana RPC and Supabase connectivity without returning provider details.
@@ -311,7 +326,7 @@ Production checklist
 - [ ] Configure Vercel Preview with devnet RPC/mint and Production with mainnet RPC/mint only when mainnet gates are complete.
 - [ ] Verify the MagicBlock private path on devnet with a real provider response and correct send RPC.
 - [ ] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
-- [ ] Apply and verify Supabase migrations/RLS in the production project.
+- [ ] Apply and verify all Supabase migrations, including `20260908_security_hardening_reproducible.sql`, in the production project.
 - [ ] Configure and verify Upstash distributed rate limiting in each deployed environment.
 - [ ] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
 - [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
@@ -321,18 +336,23 @@ Production checklist
 - [ ] Verify terminal pairing creates `terminals.device_token_hash`; test a fresh pairing after applying all migrations and confirm QR generation sends the matching `x-terminal-token`.
 - [ ] Verify signed Sumsub/Bridge webhook fixtures update only provider status and never store government IDs or bank-account details.
 - [ ] Confirm production `COMPLIANCE_PROVIDER` is `null` or a fully configured real provider; demo screening is never enabled in production.
+  
+Launch decision: **NO-GO for mainnet until every unchecked item above and every unchecked post-deploy check below is completed.** A passing local build or unit suite cannot verify production secrets, Supabase advisories, provider authentication, rate-limit configuration, cron delivery, backups, or rollback.
 
 Preview and Production environments
 
 Use separate Vercel environment values. Preview should use `NEXT_PUBLIC_SOLANA_NETWORK=devnet`, a devnet RPC, devnet USDC, and non-production relayer/provider credentials. Production should remain disabled for mainnet merchants until every unchecked gate above is verified; when enabled, use `mainnet-beta`, a mainnet RPC, mainnet USDC, and separate rotated secrets. Never reuse Preview secrets in Production.
 
 Post-deploy checks
-[ ] Login binds merchant session  
-[ ] Registry loads without infinite “verifying”  
-[ ] Terminal pairing updates fleet  
-[ ] Terminal `Return Home` preserves pairing and `Open Terminal` restores access
-[ ] Vault `Unpair` permanently removes the terminal from Hardware Fleet
-[ ] Checkout does not hang on SHIELDING (error or success within timeout)  
+- [ ] Login binds merchant session
+- [ ] Registry loads without infinite “verifying”
+- [ ] Terminal pairing updates fleet
+- [ ] Terminal `Return Home` preserves pairing and `Open Terminal` restores access
+- [ ] Vault `Unpair` permanently removes the terminal from Hardware Fleet
+- [ ] Checkout does not hang on SHIELDING (error or success within timeout)
+- [ ] Supabase Security Advisor is clear except for explicitly accepted findings
+- [ ] Production backup/PITR restore and rollback are tested
+- [ ] Old deployment credentials are rejected after rotation
 [ ] Embed/checkout links resolve (no 404)  
 
 Design Language
