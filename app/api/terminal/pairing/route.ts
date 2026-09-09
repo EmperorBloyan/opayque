@@ -80,7 +80,16 @@ export async function POST(request: Request) {
       });
       if (error) return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing code creation failed") }, { status: 500 });
 
-      return NextResponse.json({ success: true, code: pairingCode, expiresAt, terminalLabel });
+      return NextResponse.json(
+        { success: true, code: pairingCode, expiresAt, terminalLabel },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
+      );
     }
 
     if (action === "verify") {

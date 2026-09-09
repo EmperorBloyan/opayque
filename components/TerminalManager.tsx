@@ -377,12 +377,14 @@ export default function TerminalManager({
         const response = await fetch("/api/terminal/pairing", {
           method: "POST",
           credentials: "include",
+          cache: "no-store",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create",
             merchant_id: merchantIdForPairing,
             wallet_address: walletAddressForPairing,
             terminal_label: terminalLabel,
+            generated_at: Date.now(),
           }),
         });
 

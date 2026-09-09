@@ -123,6 +123,20 @@ describe("terminal pairing API integration", () => {
     mocks.createSupabaseServerClient.mockImplementation((request?: Request) => createClient(request ? { id: "user-1" } : null));
   });
 
+  it("marks pairing-code generation as non-cacheable to avoid stale QR reuse", async () => {
+    const createResponse = await POST(request({
+      action: "create",
+      merchant_id: MERCHANT_ID,
+      wallet_address: WALLET,
+      terminal_label: "Counter 1",
+    }));
+    expect(createResponse.status).toBe(200);
+    expect(createResponse.headers.get("cache-control") ?? "").toContain("no-store");
+    const created = await createResponse.json();
+    expect(created).toMatchObject({ success: true, terminalLabel: "Counter 1" });
+    expect(state.pairingCodes).toHaveLength(1);
+  });
+
   it("creates and redeems a pairing code into one persisted terminal", async () => {
     const createResponse = await POST(request({
       action: "create",
