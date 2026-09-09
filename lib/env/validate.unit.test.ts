@@ -22,6 +22,27 @@ describe("environment validation", () => {
     ]));
   });
 
+  it("allows devnet Preview deployments to use staging infrastructure", () => {
+    const result = validateEnvironment({
+      NODE_ENV: "production",
+      VERCEL_ENV: "preview",
+      NEXT_PUBLIC_SOLANA_NETWORK: "devnet",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+  });
+
+  it("supports the public Preview environment fallback", () => {
+    const result = validateEnvironment({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_VERCEL_ENV: "preview",
+      NEXT_PUBLIC_SOLANA_NETWORK: "devnet",
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("does not expose secret values in configuration metadata", () => {
     const result = validateEnvironment({
       NODE_ENV: "development",
