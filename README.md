@@ -1,5 +1,9 @@
 Opayque
 
+## Merchant transfer mode
+
+Merchants choose a default transfer mode in their profile: private uses the MagicBlock path and fails closed if private construction is unavailable; standard uses an explicit public Solana USDC transfer. The mode is snapshotted when a hosted checkout intent is created, so changing the merchant default does not alter in-flight payments. Customers do not choose the mode at checkout.
+
 Privacy is the prerequisite for institutional commerce.
 
 Opayque is a non-custodial merchant settlement layer on Solana. It supports a MagicBlock private-payment path when configured, while public Solana transfers remain publicly observable.

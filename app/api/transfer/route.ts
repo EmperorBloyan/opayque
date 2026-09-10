@@ -1,26 +1,29 @@
 import { NextResponse } from 'next/server';
 import { PublicKey } from '@solana/web3.js';
 import { requestPrivateSplTransfer } from '@/lib/magicblock';
-import { getAssetMintAddress, getSolanaNetwork, isDevnetNetwork } from '@/lib/solana/constants';
+import { getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrl, isDevnetNetwork } from '@/lib/solana/constants';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 import * as Sentry from '@/lib/sentry';
 import { logLifecycle } from '@/lib/observability';
 import { resolveSettlementWallet } from '@/lib/merchant/wallets';
 import { parseAmountToBaseUnits } from '@/lib/payments/amount';
+import { normalizeTransferMode } from '@/lib/payments/transferMode';
+import { buildPublicUsdcTransfer } from '@/lib/solana/publicTransfer';
 
 const isDevnet = isDevnetNetwork();
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { sender, recipient, amount, mint, intent_id, memo } = body as {
+    const { sender, recipient, amount, mint, intent_id, memo, mode } = body as {
       sender?: string;
       recipient?: string;
       amount?: number | string;
       mint?: string;
       intent_id?: string;
       memo?: string;
+      mode?: string;
     };
 
     const amountBaseUnits = parseAmountToBaseUnits(amount, 6);
@@ -45,9 +48,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment intent is required" }, { status: 400 });
     }
     const expectedMint = getAssetMintAddress('USDC', isDevnet);
+    const requestedMode = normalizeTransferMode(mode);
     const mintAddress = typeof mint === 'string' && mint.length > 0 ? new PublicKey(mint).toBase58() : expectedMint;
     if (mintAddress !== expectedMint) {
-      return NextResponse.json({ error: 'Only the configured network USDC mint is supported for private payments' }, { status: 400 });
+      return NextResponse.json({ error: 'Only the configured network USDC mint is supported for hosted payments' }, { status: 400 });
     }
     if (amountBaseUnits >= 1_000_000_000_000n) {
       return NextResponse.json({ error: 'Payment amount must be a valid USDC amount' }, { status: 400 });
@@ -59,7 +63,7 @@ export async function POST(request: Request) {
     const supabase = createSupabaseServerClient();
     const ledgerLookup = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint")
+      .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint, transfer_mode")
       .eq("id", intent_id)
       .maybeSingle();
     if (ledgerLookup.error) {
@@ -69,6 +73,10 @@ export async function POST(request: Request) {
 
     if (!intent || !["created", "pending_signature", "submitted"].includes(String(intent.status || "created").toLowerCase())) {
       return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
+    }
+    const transferMode = normalizeTransferMode(intent.transfer_mode);
+    if (requestedMode !== transferMode) {
+      return NextResponse.json({ error: "Transfer mode does not match the payment intent" }, { status: 409 });
     }
 
     const expectedAmountBaseUnits = intent.amount_base_units !== null && intent.amount_base_units !== undefined
@@ -87,13 +95,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment recipient does not match the merchant intent" }, { status: 400 });
     }
 
-    const privateTransfer = await requestPrivateSplTransfer({
-      sender: senderPubkey.toBase58(),
-      recipient: recipientPubkey.toBase58(),
-      mint: mintAddress,
-      amountBaseUnits: Number(amountBaseUnits),
-      memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
-    });
+    const transfer = transferMode === "private"
+      ? await requestPrivateSplTransfer({
+          sender: senderPubkey.toBase58(),
+          recipient: recipientPubkey.toBase58(),
+          mint: mintAddress,
+          amountBaseUnits: Number(amountBaseUnits),
+          memo: typeof memo === 'string' ? memo.slice(0, 64) : intent_id.slice(0, 64),
+        })
+      : await buildPublicUsdcTransfer({
+          sender: senderPubkey.toBase58(),
+          recipient: recipientPubkey.toBase58(),
+          mint: mintAddress,
+          amountBaseUnits: Number(amountBaseUnits),
+          rpcUrl: getSolanaRpcUrl(),
+        });
     {
       const { error: intentUpdateError } = await supabase
         .from("payment_ledger")
@@ -104,15 +120,15 @@ export async function POST(request: Request) {
         .maybeSingle();
       if (intentUpdateError) throw intentUpdateError;
     }
-    logLifecycle("info", "private_transfer", "submit_ready", getSolanaNetwork());
+    logLifecycle("info", `${transferMode}_transfer`, "submit_ready", getSolanaNetwork());
 
     return NextResponse.json({
       success: true,
-      transaction: privateTransfer.transaction,
-      blockhash: privateTransfer.blockhash,
-      lastValidBlockHeight: privateTransfer.lastValidBlockHeight,
-      rpcUrl: privateTransfer.rpcUrl,
-      mode: 'private',
+      transaction: transfer.transaction,
+      blockhash: transfer.blockhash,
+      lastValidBlockHeight: transfer.lastValidBlockHeight,
+      rpcUrl: transfer.rpcUrl,
+      mode: transferMode,
       cluster: getSolanaNetwork() === 'mainnet-beta' ? 'mainnet' : 'devnet',
     });
   } catch (error: unknown) {

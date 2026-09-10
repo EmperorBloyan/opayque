@@ -5,6 +5,7 @@ import { normalizeIdempotencyKey } from '@/lib/payments/ledger';
 import { parseAmountToBaseUnits } from '@/lib/payments/amount';
 import { buildPaymentRequestFingerprint } from '@/lib/payments/fingerprint';
 import { getAssetMintAddress, isDevnetNetwork } from '@/lib/solana/constants';
+import { normalizeTransferMode } from '@/lib/payments/transferMode';
 
 function getRequestOrigin(request: Request): string {
   const protocol = request.headers.get('x-forwarded-proto') || 'https';
@@ -38,27 +39,28 @@ export async function POST(request: Request) {
     if (idempotencyKey) {
       const { data: existing, error: existingError } = await supabaseAdmin
         .from('checkout_sessions')
-        .select('id, idempotency_fingerprint, solana_pay_url, status, reference_id')
+        .select('id, idempotency_fingerprint, solana_pay_url, status, reference_id, transfer_mode')
         .eq('merchant_id', auth.merchantId)
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existingError) return NextResponse.json({ error: 'Unable to resolve idempotency key' }, { status: 500 });
       if (existing) {
         if (existing.idempotency_fingerprint !== requestFingerprint) return NextResponse.json({ error: 'Idempotency key was already used for a different checkout' }, { status: 409 });
-        return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, idempotent: true });
+        return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, transferMode: normalizeTransferMode(existing.transfer_mode), idempotent: true });
       }
     }
 
     // 2. Fetch merchant wallet address for the Solana Pay URL
     const { data: merchant } = await supabaseAdmin
       .from('merchants')
-      .select('settlement_wallet_address')
+      .select('settlement_wallet_address, default_transfer_mode')
       .eq('id', auth.merchantId)
       .single();
 
     if (!merchant?.settlement_wallet_address) {
       return NextResponse.json({ error: 'Merchant settlement wallet not configured' }, { status: 400 });
     }
+    const transferMode = normalizeTransferMode(merchant.default_transfer_mode);
 
     // 3. Create Checkout Session
     const { data: session, error } = await supabaseAdmin
@@ -76,14 +78,15 @@ export async function POST(request: Request) {
         idempotency_key: idempotencyKey,
         idempotency_fingerprint: requestFingerprint,
         status: 'pending',
+        transfer_mode: transferMode,
       }])
       .select()
       .single();
 
     if (error) {
       if (error.code === '23505' && idempotencyKey) {
-        const { data: existing } = await supabaseAdmin.from('checkout_sessions').select('id, idempotency_fingerprint, solana_pay_url, status, reference_id').eq('merchant_id', auth.merchantId).eq('idempotency_key', idempotencyKey).maybeSingle();
-        if (existing?.idempotency_fingerprint === requestFingerprint) return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, idempotent: true });
+        const { data: existing } = await supabaseAdmin.from('checkout_sessions').select('id, idempotency_fingerprint, solana_pay_url, status, reference_id, transfer_mode').eq('merchant_id', auth.merchantId).eq('idempotency_key', idempotencyKey).maybeSingle();
+        if (existing?.idempotency_fingerprint === requestFingerprint) return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, transferMode: normalizeTransferMode(existing.transfer_mode), idempotent: true });
         return NextResponse.json({ error: 'Idempotency key was already used for a different checkout' }, { status: 409 });
       }
       return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 });
@@ -110,22 +113,24 @@ export async function POST(request: Request) {
       idempotency_key: idempotencyKey,
       idempotency_fingerprint: requestFingerprint,
       status: 'created',
+      transfer_mode: transferMode,
     });
     if (ledgerError) {
       await supabaseAdmin.from('checkout_sessions').delete().eq('id', session.id);
       if (ledgerError.code === '23505' && idempotencyKey) {
-        const { data: existing } = await supabaseAdmin.from('checkout_sessions').select('id, solana_pay_url, status, reference_id').eq('merchant_id', auth.merchantId).eq('idempotency_key', idempotencyKey).maybeSingle();
-        if (existing) return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, idempotent: true });
+        const { data: existing } = await supabaseAdmin.from('checkout_sessions').select('id, solana_pay_url, status, reference_id, transfer_mode').eq('merchant_id', auth.merchantId).eq('idempotency_key', idempotencyKey).maybeSingle();
+        if (existing) return NextResponse.json({ id: existing.id, url: existing.solana_pay_url, solanaPayUrl: existing.solana_pay_url, status: existing.status, referenceId: existing.reference_id, transferMode: normalizeTransferMode(existing.transfer_mode), idempotent: true });
       }
       return NextResponse.json({ error: 'Failed to create payment intent' }, { status: 500 });
     }
 
     return NextResponse.json({
       id: session.id,
-      url: `${getRequestOrigin(request)}/checkout?address=${encodeURIComponent(merchant.settlement_wallet_address)}&amount=${encodeURIComponent(normalizedAmount.toFixed(6))}&fiat_amount=${encodeURIComponent(normalizedAmount.toFixed(2))}&currency=${encodeURIComponent(normalizedCurrency)}&token=USDC&session=${encodeURIComponent(session.id)}`,
+      url: `${getRequestOrigin(request)}/checkout?address=${encodeURIComponent(merchant.settlement_wallet_address)}&amount=${encodeURIComponent(normalizedAmount.toFixed(6))}&fiat_amount=${encodeURIComponent(normalizedAmount.toFixed(2))}&currency=${encodeURIComponent(normalizedCurrency)}&token=USDC&session=${encodeURIComponent(session.id)}&mode=${encodeURIComponent(transferMode)}`,
       solanaPayUrl,
       status: session.status,
       referenceId: session.reference_id,
+      transferMode,
     });
   } catch (error: unknown) {
     return NextResponse.json({ error: 'Unable to create checkout' }, { status: 500 });

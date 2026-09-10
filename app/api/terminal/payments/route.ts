@@ -8,6 +8,7 @@ import { parseAmountToBaseUnits } from "@/lib/payments/amount";
 import { buildPaymentRequestFingerprint } from "@/lib/payments/fingerprint";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
+import { normalizeTransferMode } from "@/lib/payments/transferMode";
 
 export async function POST(request: Request) {
   try {
@@ -50,12 +51,13 @@ export async function POST(request: Request) {
 
     const { data: merchant, error: merchantError } = await supabase
       .from("merchants")
-      .select("settlement_wallet_address, wallet_address")
+      .select("settlement_wallet_address, wallet_address, default_transfer_mode")
       .eq("id", terminal.merchant_id)
       .maybeSingle();
     if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
     const recipientAddress = resolveSettlementWallet(merchant).address;
     if (!recipientAddress) return NextResponse.json({ success: false, error: "Merchant settlement wallet is not configured" }, { status: 409 });
+    const transferMode = normalizeTransferMode(merchant.default_transfer_mode);
     const environment = getSolanaNetwork() === "mainnet-beta" ? "mainnet" : "sandbox";
 
     const { data, error } = await supabase
@@ -73,6 +75,7 @@ export async function POST(request: Request) {
         idempotency_key: idempotencyKey,
         idempotency_fingerprint: requestFingerprint,
         status: "created",
+        transfer_mode: transferMode,
       })
       .select()
       .single();

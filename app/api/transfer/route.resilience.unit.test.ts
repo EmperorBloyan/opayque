@@ -7,22 +7,26 @@ const MINT = "11111111111111111111111111111111";
 
 const mocks = vi.hoisted(() => ({
   requestPrivateSplTransfer: vi.fn(),
+  buildPublicUsdcTransfer: vi.fn(),
   createSupabaseServerClient: vi.fn(),
   strictLimit: vi.fn(),
   getClientAddress: vi.fn(() => "127.0.0.1"),
   getAssetMintAddress: vi.fn(() => MINT),
   getSolanaNetwork: vi.fn(() => "devnet"),
+  getSolanaRpcUrl: vi.fn(() => "http://rpc.test"),
   isDevnetNetwork: vi.fn(() => true),
   captureException: vi.fn(),
   logLifecycle: vi.fn(),
 }));
 
 vi.mock("@/lib/magicblock", () => ({ requestPrivateSplTransfer: mocks.requestPrivateSplTransfer }));
+vi.mock("@/lib/solana/publicTransfer", () => ({ buildPublicUsdcTransfer: mocks.buildPublicUsdcTransfer }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: mocks.createSupabaseServerClient }));
 vi.mock("@/lib/rate-limit", () => ({ strictLimit: mocks.strictLimit, getClientAddress: mocks.getClientAddress }));
 vi.mock("@/lib/solana/constants", () => ({
   getAssetMintAddress: mocks.getAssetMintAddress,
   getSolanaNetwork: mocks.getSolanaNetwork,
+  getSolanaRpcUrl: mocks.getSolanaRpcUrl,
   isDevnetNetwork: mocks.isDevnetNetwork,
 }));
 vi.mock("@/lib/sentry", () => ({ captureException: mocks.captureException }));
@@ -66,6 +70,7 @@ describe("transfer route resilience", () => {
     vi.clearAllMocks();
     mocks.strictLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     mocks.requestPrivateSplTransfer.mockResolvedValue({ transaction: "tx", blockhash: "blockhash", lastValidBlockHeight: 10, rpcUrl: "rpc" });
+      mocks.buildPublicUsdcTransfer.mockResolvedValue({ transaction: "public-tx", blockhash: "blockhash", lastValidBlockHeight: 10, rpcUrl: "rpc", mode: "public" });
   });
 
   it("fails closed on rate-limit exhaustion before reading or mutating the ledger", async () => {
@@ -110,6 +115,31 @@ describe("transfer route resilience", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(409);
+    expect(mocks.requestPrivateSplTransfer).not.toHaveBeenCalled();
+  });
+
+  it("builds a public transfer without calling MagicBlock when the intent is public", async () => {
+    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public" });
+    const merchantQuery = query({ settlement_wallet_address: RECIPIENT, wallet_address: null });
+    const updateQuery = query({ id: "ledger-1", status: "pending_signature" });
+    mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValueOnce(intentQuery).mockReturnValueOnce(merchantQuery).mockReturnValueOnce(updateQuery) });
+
+    const response = await POST(request({ mode: "public" }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: true, mode: "public", transaction: "public-tx" });
+    expect(mocks.buildPublicUsdcTransfer).toHaveBeenCalledWith(expect.objectContaining({ amountBaseUnits: 1_250_000 }));
+    expect(mocks.requestPrivateSplTransfer).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mode that differs from the snapshotted intent", async () => {
+    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public" });
+    mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValue(intentQuery) });
+
+    const response = await POST(request({ mode: "private" }));
+
+    expect(response.status).toBe(409);
+    expect(mocks.buildPublicUsdcTransfer).not.toHaveBeenCalled();
     expect(mocks.requestPrivateSplTransfer).not.toHaveBeenCalled();
   });
 });

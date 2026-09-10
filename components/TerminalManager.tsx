@@ -26,6 +26,7 @@ import {
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
 import { sendPayment } from "@/lib/solana/sendPayment";
 import type { Terminal } from "@/lib/types";
+import type { TransferMode } from "@/lib/payments/transferMode";
 import PairingModal from "./PairingModal";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -224,6 +225,7 @@ export default function TerminalManager({
     signature?: string;
   } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>("private");
 
   // Runtime Error Recovery State
   const [errorState, setErrorState] = useState<{
@@ -638,6 +640,48 @@ export default function TerminalManager({
       throw new Error("Wallet connection is required");
     }
 
+    if (transferMode === "private") {
+      if (!sessionId) throw new Error("Private terminal payments require a payment intent");
+      const response = await fetch("/api/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: publicKey.toBase58(),
+          recipient: merchantWallet,
+          amount: Number(amount ?? 0),
+          mint: usdcMintAddress,
+          intent_id: sessionId,
+          mode: "private",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.mode !== "private" || typeof payload.transaction !== "string") {
+        throw new Error(payload?.error || "Private terminal payment could not be built");
+      }
+      const transactionBytes = fromBase64(payload.transaction);
+      let transaction: VersionedTransaction | Transaction;
+      try {
+        transaction = VersionedTransaction.deserialize(transactionBytes);
+      } catch {
+        transaction = Transaction.from(transactionBytes);
+      }
+      if (transaction instanceof VersionedTransaction) {
+        return sendPayment(connection, transaction, signTransaction);
+      }
+      const latest = await connection.getLatestBlockhash("confirmed");
+      transaction.recentBlockhash = latest.blockhash;
+      transaction.lastValidBlockHeight = latest.lastValidBlockHeight;
+      transaction.feePayer = publicKey;
+      const signed = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+        maxRetries: 0,
+      });
+      await connection.confirmTransaction({ signature, ...latest }, "confirmed");
+      return signature;
+    }
+
     const usdcMint = new PublicKey(usdcMintAddress);
     const payerTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKey, false);
     const destinationTokenAccount = await resolveUsdcDestinationAccount(connection, merchantWallet, usdcMint);
@@ -653,7 +697,7 @@ export default function TerminalManager({
       instructions: tx.instructions,
     }).compileToV0Message());
     return sendPayment(connection, versioned, signTransaction!);
-  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, usdcMintAddress]);
+  }, [amount, connection, expectedUsdcBaseUnits, merchantWallet, publicKey, sendPayment, sessionId, signTransaction, transferMode, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
     if (!isCheckoutMode) return;
@@ -884,6 +928,7 @@ export default function TerminalManager({
             walletAddress: merchant.settlement_wallet_address || null,
           });
           setResolvedMerchantId(merchant.id);
+          setTransferMode(merchant.default_transfer_mode === "public" ? "public" : "private");
           return;
         }
       }

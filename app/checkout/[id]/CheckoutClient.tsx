@@ -185,6 +185,7 @@ function PayButton({ id, merchantWallet, settlementAmount, disabled, status, suc
       if (!res.ok) throw new Error('Failed to fetch session');
       const sess = await res.json();
       const merchantWalletAddress = sess.merchantWallet || sess.merchant?.settlement_wallet_address || sess.settlement_wallet_address || merchantWallet;
+      const transferMode = sess.transferMode === 'public' ? 'public' : 'private';
       if (!merchantWalletAddress) throw new Error('Merchant settlement wallet not configured');
       const transferRes = await fetch('/api/transfer', {
         method: 'POST',
@@ -196,11 +197,12 @@ function PayButton({ id, merchantWallet, settlementAmount, disabled, status, suc
           mint: getAssetMintAddress('USDC', isDevnetNetwork()),
           intent_id: id,
           memo: id,
+          mode: transferMode,
         }),
       });
       const transfer = await transferRes.json().catch(() => ({}));
-      if (!transferRes.ok || transfer.mode !== 'private' || typeof transfer.transaction !== 'string') {
-        throw new Error(transfer.error || 'Private payment transaction could not be built');
+      if (!transferRes.ok || transfer.mode !== transferMode || typeof transfer.transaction !== 'string') {
+        throw new Error(transfer.error || `${transferMode === 'private' ? 'Private' : 'Standard'} payment transaction could not be built`);
       }
       const transactionBytes = Uint8Array.from(atob(transfer.transaction), (character) => character.charCodeAt(0));
       let transaction: VersionedTransaction | Transaction;

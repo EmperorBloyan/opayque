@@ -11,6 +11,7 @@ import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
 import { sendPayment } from "@/lib/solana/sendPayment";
 import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
+import type { TransferMode } from "@/lib/payments/transferMode";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
@@ -26,6 +27,7 @@ interface ShieldedCheckoutProps {
   settlementToken?: string;
   transactionId?: string | null;
   checkoutSessionId?: string | null;
+  transferMode?: TransferMode;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -57,6 +59,7 @@ export default function ShieldedCheckout({
   settlementToken = "USDC",
   transactionId,
   checkoutSessionId,
+  transferMode: initialTransferMode = "private",
 }: ShieldedCheckoutProps) {
   const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
 
@@ -64,6 +67,7 @@ export default function ShieldedCheckout({
   const [message, setMessage] = useState<string | null>(null);
   const [successSignature, setSuccessSignature] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>(initialTransferMode);
 
   const [draftAmount, setDraftAmount] = useState(() =>
     Number.isFinite(amount) && amount > 0 ? amount : 10
@@ -125,6 +129,24 @@ export default function ShieldedCheckout({
     }
   }, [checkoutSessionId, transactionId]);
 
+  useEffect(() => {
+    setTransferMode(initialTransferMode);
+  }, [initialTransferMode]);
+
+  useEffect(() => {
+    if (!checkoutSessionId) return;
+    let cancelled = false;
+    fetch(`/api/v1/checkout/${encodeURIComponent(checkoutSessionId)}/status`)
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setTransferMode(payload?.transferMode === "public" ? "public" : "private");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutSessionId]);
+
   const handlePayment = async () => {
     if (isLocked) return;
 
@@ -181,24 +203,54 @@ export default function ShieldedCheckout({
         throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);
       }
 
-      const built = await withTimeout(
-        buildShieldedTransfer(
-          publicKey.toBase58(),
-          safeMerchantPubkey,
-          safeAmount,
-          transactionId || checkoutSessionId || ""
-        ),
-        25000,
-        "Shielded transfer build"
-      );
+      const built = transferMode === "private"
+        ? await withTimeout(
+            buildShieldedTransfer(
+              publicKey.toBase58(),
+              safeMerchantPubkey,
+              safeAmount,
+              transactionId || checkoutSessionId || ""
+            ),
+            25000,
+            "Shielded transfer build"
+          )
+        : await withTimeout(
+            fetch("/api/transfer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: publicKey.toBase58(),
+                recipient: safeMerchantPubkey,
+                amount: safeAmount,
+                mint: mint.toBase58(),
+                intent_id: intentId,
+                mode: "public",
+              }),
+            }).then(async (response) => {
+              const payload = await response.json().catch(() => ({}));
+              if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
+                throw new Error(payload?.error || "Public payment transaction could not be built");
+              }
+              let transaction: VersionedTransaction | Transaction;
+              const bytes = Uint8Array.from(atob(payload.transaction), (character) => character.charCodeAt(0));
+              try {
+                transaction = VersionedTransaction.deserialize(bytes);
+              } catch {
+                transaction = Transaction.from(bytes);
+              }
+              return { ...payload, transaction, mode: "public" as const };
+            }),
+            25000,
+            "Public transfer build"
+          );
 
       let signature: string | null = null;
 
       paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
 
       // buildShieldedTransfer returns VersionedTransaction
-      if (built.mode !== "private") {
-        throw new Error("Private payment transaction was not returned by MagicBlock.");
+      if (built.mode !== transferMode) {
+        throw new Error(`${transferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
       }
 
       if (built.transaction instanceof VersionedTransaction || built.transaction instanceof Transaction) {
@@ -327,7 +379,7 @@ export default function ShieldedCheckout({
             <LucideShieldCheck size={22} />
           </div>
           <h3 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Shielded Checkout
+            {transferMode === "private" ? "Private Checkout" : "Standard Checkout"}
           </h3>
           {recipientName ? (
             <p className="text-zinc-500 text-sm mt-1">Paying {recipientName}</p>
@@ -387,7 +439,7 @@ export default function ShieldedCheckout({
               Payment Successful
             </p>
             <p className="mt-2 text-sm text-zinc-400">
-              Shielded transfer of{" "}
+              {transferMode === "private" ? "Private transfer of" : "Standard transfer of"}{" "}
               <span className="text-white font-semibold">
                 {safeAmount.toFixed(2)} {settlementToken || "USDC"}
               </span>{" "}

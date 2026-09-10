@@ -9,6 +9,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { assertTerminalReady, isRealMerchantId, resolveTerminalContext } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
+import type { TransferMode } from "@/lib/payments/transferMode";
 
 interface TerminalPaymentErrorBoundaryProps {
   children: ReactNode;
@@ -70,6 +71,10 @@ export default function TerminalPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>(() => {
+    if (typeof window === "undefined") return "private";
+    return window.localStorage.getItem("terminal_transfer_mode") === "public" ? "public" : "private";
+  });
   const [isPairing, setIsPairing] = useState(false);
   const [merchantName, setMerchantName] = useState(() => {
     if (typeof window === "undefined") return "Opayque Merchant";
@@ -213,6 +218,7 @@ export default function TerminalPage() {
       checkoutUrl.searchParams.set("token", asset || "USDC");
       checkoutUrl.searchParams.set("name", merchantName || "Opayque Merchant");
       if (transactionId) checkoutUrl.searchParams.set("tx_id", transactionId);
+      checkoutUrl.searchParams.set("mode", transferMode);
 
       return checkoutUrl.toString();
     } catch (error) {
@@ -228,6 +234,7 @@ export default function TerminalPage() {
     asset,
     toUsdc,
     transactionId,
+    transferMode,
   ]);
 
   const handlePairing = async (e: FormEvent) => {
@@ -453,6 +460,9 @@ export default function TerminalPage() {
 
       setRecentActivity(persistLocalActivity(nextActivity));
       setTransactionId(String(pendingRecord.id));
+      const nextTransferMode = pendingRecord.transfer_mode === "public" ? "public" : "private";
+      setTransferMode(nextTransferMode);
+      window.localStorage.setItem("terminal_transfer_mode", nextTransferMode);
       setLatestTxHash(null);
       setIsPaid(false);
 

@@ -7,6 +7,7 @@ export interface MerchantRecord {
   settlement_wallet_address?: string | null;
   refund_wallet_address?: string | null;
   tee_enforcement_enabled?: boolean | null;
+  default_transfer_mode?: 'private' | 'public' | null;
   api_access_status?: 'pending' | 'active' | 'revoked' | null;
   created_at: string;
 }
@@ -29,6 +30,7 @@ export interface TransactionRecord {
   amount: number;
   status: string;
   payload_hash: string | null;
+  transfer_mode?: 'private' | 'public' | null;
   created_at: string;
 }
 

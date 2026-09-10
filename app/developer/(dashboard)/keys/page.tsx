@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
+import type { TransferMode } from "@/lib/payments/transferMode";
 import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
   AlertCircle,
@@ -78,6 +79,7 @@ export default function ApiKeysPage() {
   const [settlementWalletAddress, setSettlementWalletAddress] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [defaultTransferMode, setDefaultTransferMode] = useState<TransferMode>("private");
 
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -113,6 +115,7 @@ export default function ApiKeysPage() {
       const localWebsite = window.localStorage.getItem("website_url") || "";
       const localWebhook = window.localStorage.getItem("webhook_url") || "";
       const localSettlementWallet = window.localStorage.getItem("settlement_wallet_address") || "";
+      const localTransferMode = window.localStorage.getItem("default_transfer_mode");
 
       if (localEmail) setMerchantEmail(localEmail);
       if (localName) setMerchantName(localName);
@@ -121,6 +124,7 @@ export default function ApiKeysPage() {
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
       if (localSettlementWallet) setSettlementWalletAddress(localSettlementWallet);
+      if (localTransferMode === "public" || localTransferMode === "private") setDefaultTransferMode(localTransferMode);
 
       const cachedKeys = window.localStorage.getItem("opayque_api_keys");
       if (cachedKeys) {
@@ -143,7 +147,7 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("id, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .select("id, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url, default_transfer_mode")
             .eq("auth_user_id", user.id)
             .maybeSingle();
 
@@ -177,6 +181,7 @@ export default function ApiKeysPage() {
             }
             if (merchantData.website_url) setWebsiteUrl(merchantData.website_url);
             if (merchantData.webhook_url) setWebhookUrl(merchantData.webhook_url);
+            setDefaultTransferMode(merchantData.default_transfer_mode === "public" ? "public" : "private");
           }
         }
 
@@ -209,6 +214,7 @@ export default function ApiKeysPage() {
             }
             if (merchant.website_url) setWebsiteUrl(merchant.website_url);
             if (merchant.webhook_url) setWebhookUrl(merchant.webhook_url);
+            setDefaultTransferMode(merchant.default_transfer_mode === "public" ? "public" : "private");
           } else {
             clearMerchantProfileCache();
           }
@@ -371,6 +377,7 @@ export default function ApiKeysPage() {
       window.localStorage.setItem("secondary_email", secondaryEmail.trim());
       window.localStorage.setItem("website_url", websiteUrl.trim());
       window.localStorage.setItem("webhook_url", webhookUrl.trim());
+      window.localStorage.setItem("default_transfer_mode", defaultTransferMode);
     }
 
     try {
@@ -384,6 +391,7 @@ export default function ApiKeysPage() {
         secondaryEmail: secondaryEmail.trim() || null,
         websiteUrl: websiteUrl.trim() || null,
         webhookUrl: webhookUrl.trim() || null,
+        defaultTransferMode,
       };
 
       const { error: supabaseError } = await supabase
@@ -395,6 +403,7 @@ export default function ApiKeysPage() {
           secondary_email: payload.secondaryEmail,
           website_url: payload.websiteUrl,
           webhook_url: payload.webhookUrl,
+          default_transfer_mode: payload.defaultTransferMode,
           api_access_status: "active",
           onboarding_status: "completed",
           updated_at: new Date().toISOString(),
@@ -432,6 +441,7 @@ export default function ApiKeysPage() {
         secondary_email: payload.secondaryEmail,
         website_url: payload.websiteUrl,
         webhook_url: payload.webhookUrl,
+        default_transfer_mode: payload.defaultTransferMode,
       }) as "pending" | "active" | "revoked";
 
       setProfileMessage("Merchant details saved to Supabase.");
@@ -452,6 +462,7 @@ export default function ApiKeysPage() {
         }
         if (updated.website_url) setWebsiteUrl(updated.website_url);
         if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
+        setDefaultTransferMode(updated.default_transfer_mode === "public" ? "public" : "private");
       }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("merchant_profile_updated"));
@@ -595,6 +606,31 @@ export default function ApiKeysPage() {
                     placeholder="https://api.acme.com/webhooks/opayque"
                   />
                 </label>
+
+                <fieldset className="space-y-3 md:col-span-2">
+                  <legend className="text-xs uppercase tracking-[0.2em] text-zinc-400">Default transfer mode</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(["private", "public"] as const).map((mode) => (
+                      <label key={mode} className={`cursor-pointer rounded-xl border p-4 transition ${defaultTransferMode === mode ? "border-purple-400/70 bg-purple-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}>
+                        <input
+                          type="radio"
+                          name="default-transfer-mode"
+                          value={mode}
+                          checked={defaultTransferMode === mode}
+                          onChange={() => setDefaultTransferMode(mode)}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center justify-between text-sm font-bold text-white">
+                          {mode === "private" ? "Private" : "Standard"}
+                          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{defaultTransferMode === mode ? "Selected" : "Select"}</span>
+                        </span>
+                        <span className="mt-2 block text-xs leading-5 text-zinc-400">
+                          {mode === "private" ? "MagicBlock shields amounts and counterparties. Failures never become public." : "Standard Solana USDC transfer. Fully visible on explorers."}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
 
                 <label className="space-y-2">
                   <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Secondary email</span>

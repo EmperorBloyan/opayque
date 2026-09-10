@@ -10,6 +10,7 @@ import { parseAmountToBaseUnits } from "@/lib/payments/amount";
 import { buildPaymentRequestFingerprint } from "@/lib/payments/fingerprint";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { resolveSettlementWallet } from "@/lib/merchant/wallets";
+import { normalizeTransferMode } from "@/lib/payments/transferMode";
 
 function getRequestOrigin(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
     // Load merchant settlement wallet + display name
     const { data: merchant, error: merchantError } = await supabase
       .from("merchants")
-      .select("id, merchant_name, wallet_address, settlement_wallet_address")
+      .select("id, merchant_name, wallet_address, settlement_wallet_address, default_transfer_mode")
       .eq("id", auth.merchantId)
       .maybeSingle();
 
@@ -132,6 +133,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    const transferMode = normalizeTransferMode(merchant.default_transfer_mode);
 
     const idempotencyKey = normalizeIdempotencyKey(request.headers.get("Idempotency-Key") || body?.idempotency_key);
     const requestFingerprint = buildPaymentRequestFingerprint({
@@ -192,6 +194,7 @@ export async function POST(request: Request) {
         customer_email: customerEmail,
         reference_id: orderId,
         status: "pending",
+        transfer_mode: transferMode,
         solana_pay_url: paymentUrl,
         created_at: new Date().toISOString(),
       },
@@ -216,6 +219,7 @@ export async function POST(request: Request) {
         idempotency_key: idempotencyKey,
         idempotency_fingerprint: requestFingerprint,
         status: "created",
+        transfer_mode: transferMode,
       })
       .select("*")
       .maybeSingle();
@@ -252,6 +256,7 @@ export async function POST(request: Request) {
       token: settlementToken,
       description,
       customer_email: customerEmail,
+      transfer_mode: transferMode,
       network: "Solana",
       transaction,
     });

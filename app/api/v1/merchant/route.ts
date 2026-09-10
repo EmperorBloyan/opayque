@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
+import { isTransferMode, normalizeTransferMode } from "@/lib/payments/transferMode";
 
 function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -27,7 +28,7 @@ function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookie
 }
 
 const MERCHANT_SELECT =
-  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, wallet_address, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, auth_user_id";
+  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, wallet_address, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, default_transfer_mode, auth_user_id";
 
 function normalizeMerchant(merchant: any) {
   if (!merchant) return null;
@@ -119,7 +120,12 @@ export async function PATCH(request: Request) {
       websiteUrl,
       webhookUrl,
       teeEnforcementEnabled,
+        defaultTransferMode,
     } = body;
+
+      if (defaultTransferMode !== undefined && !isTransferMode(defaultTransferMode)) {
+        return NextResponse.json({ error: "defaultTransferMode must be private or public" }, { status: 400 });
+      }
 
     const updates: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -140,6 +146,9 @@ export async function PATCH(request: Request) {
     if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
     if (teeEnforcementEnabled !== undefined) {
       updates.tee_enforcement_enabled = teeEnforcementEnabled;
+    }
+    if (defaultTransferMode !== undefined) {
+      updates.default_transfer_mode = normalizeTransferMode(defaultTransferMode);
     }
 
     if (

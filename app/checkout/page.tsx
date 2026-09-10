@@ -18,6 +18,7 @@ function CheckoutContent() {
   const token = (searchParams.get('token') || 'USDC').toUpperCase();
   const transactionId = searchParams.get('tx_id');
   const sessionId = searchParams.get('session');
+  const transferMode = searchParams.get('mode') === 'public' ? 'public' : 'private';
 
   // Parse settlement amount (crypto) and display amount (fiat)
   const usdcAmount = Number(searchParams.get('amount') || searchParams.get('fixed') || '0');
@@ -53,7 +54,7 @@ function CheckoutContent() {
         <div className="mt-4 flex items-center justify-center gap-2">
           <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
           <span className="text-[8px] font-black uppercase tracking-[0.3em] text-zinc-500">
-            Shielded Link Active
+            Secure Link Active
           </span>
         </div>
       </div>
@@ -68,6 +69,7 @@ function CheckoutContent() {
         settlementToken={token}
         transactionId={transactionId}
         checkoutSessionId={sessionId}
+        transferMode={transferMode}
       />
     </main>
   );

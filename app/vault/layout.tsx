@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { clearActiveSession } from "@/lib/crypto/session";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
+import type { TransferMode } from "@/lib/payments/transferMode";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import {
   LucideLayoutDashboard,
@@ -38,6 +39,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [draftSecondaryEmail, setDraftSecondaryEmail] = useState("");
   const [draftWebsiteUrl, setDraftWebsiteUrl] = useState("");
   const [draftWebhookUrl, setDraftWebhookUrl] = useState("");
+  const [defaultTransferMode, setDefaultTransferMode] = useState<TransferMode>("private");
   const [settlementWallet, setSettlementWallet] = useState("");
   const [refundWallet, setRefundWallet] = useState("");
   const [walletModalPurpose, setWalletModalPurpose] = useState<"settlement" | "refund" | null>(null);
@@ -88,6 +90,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
       setDraftSecondaryEmail(merchant.secondary_email ?? "");
       setDraftWebsiteUrl(merchant.website_url ?? "");
       setDraftWebhookUrl(merchant.webhook_url ?? "");
+      setDefaultTransferMode(merchant.default_transfer_mode === "public" ? "public" : "private");
       setSettlementWallet(merchant.settlement_wallet_address ?? "");
       setRefundWallet(merchant.refund_wallet_address ?? "");
       if (merchant.settlement_wallet_address) {
@@ -172,6 +175,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     localStorage.setItem("secondary_email", draftSecondaryEmail.trim());
     localStorage.setItem("website_url", draftWebsiteUrl.trim());
     localStorage.setItem("webhook_url", draftWebhookUrl.trim());
+    localStorage.setItem("default_transfer_mode", defaultTransferMode);
 
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("merchant_profile_updated"));
@@ -188,6 +192,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
           secondaryEmail: draftSecondaryEmail.trim() || null,
           websiteUrl: draftWebsiteUrl.trim() || null,
           webhookUrl: draftWebhookUrl.trim() || null,
+          defaultTransferMode,
         }),
       });
       if (!response.ok) throw new Error("Unable to save merchant profile");
@@ -464,6 +469,31 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                     />
                   </div>
                 ))}
+
+                <fieldset className="space-y-3">
+                  <legend className="text-sm uppercase tracking-[0.35em] text-zinc-500">Default transfer mode</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(["private", "public"] as const).map((mode) => (
+                      <label key={mode} className={`cursor-pointer rounded-2xl border p-4 transition ${defaultTransferMode === mode ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 bg-zinc-900/70 hover:border-white/20"}`}>
+                        <input
+                          type="radio"
+                          name="vault-default-transfer-mode"
+                          value={mode}
+                          checked={defaultTransferMode === mode}
+                          onChange={() => setDefaultTransferMode(mode)}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center justify-between text-sm font-bold text-white">
+                          {mode === "private" ? "Private" : "Standard"}
+                          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{defaultTransferMode === mode ? "Selected" : "Select"}</span>
+                        </span>
+                        <span className="mt-2 block text-xs leading-5 text-zinc-400">
+                          {mode === "private" ? "MagicBlock shields amounts and counterparties. Failures never become public." : "Standard Solana USDC transfer. Fully visible on explorers."}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
 
                 <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
