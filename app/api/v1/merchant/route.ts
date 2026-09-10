@@ -65,24 +65,34 @@ export async function GET() {
 
     // Fallback for legacy rows missing auth_user_id but matching email
     if (!merchant && user.email) {
-      const fallback = await supabase
+      // RLS intentionally hides unlinked merchant rows from the browser client.
+      // Use the service-role client only after Auth has verified this user's email.
+      const adminSupabase = createSupabaseServerClient();
+      const fallback = await adminSupabase
         .from("merchants")
         .select(MERCHANT_SELECT)
         .eq("email", user.email)
         .maybeSingle();
 
-      if (!fallback.error && fallback.data) {
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+      }
+
+      if (fallback.data) {
         merchant = fallback.data;
 
         // Self-heal link if possible
         if (!merchant.auth_user_id) {
-          await supabase
+          const { error: linkError } = await adminSupabase
             .from("merchants")
             .update({
               auth_user_id: user.id,
               updated_at: new Date().toISOString(),
             })
             .eq("id", merchant.id);
+          if (linkError) {
+            return NextResponse.json({ error: "Merchant account link could not be repaired" }, { status: 500 });
+          }
           merchant.auth_user_id = user.id;
         }
       }
