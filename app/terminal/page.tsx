@@ -338,7 +338,7 @@ export default function TerminalPage() {
 
       const resolvedTerminalLabel = typeof payload?.terminalLabel === "string" && payload.terminalLabel.trim()
         ? payload.terminalLabel.trim()
-        : createDefaultTerminalLabelLocal();
+        : "Fleet Terminal";
 
       const pairedTerminalId = typeof payload?.terminalId === "string" ? payload.terminalId : null;
       const pairedDeviceToken = typeof payload?.deviceToken === "string" ? payload.deviceToken : null;

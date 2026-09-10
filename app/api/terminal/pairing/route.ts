@@ -153,6 +153,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: message }, { status: message === "PAIRING CODE REJECTED" || message === "Invalid pairing request." ? 409 : 500 });
       }
 
+      const { data: terminal, error: terminalError } = await adminSupabase
+        .from("terminals")
+        .select("id, merchant_id, terminal_label, label, status, is_active, last_active")
+        .eq("id", terminalId)
+        .maybeSingle();
+      if (terminalError || !terminal) {
+        return NextResponse.json({ success: false, error: "Terminal pairing was saved but the terminal record could not be loaded." }, { status: 500 });
+      }
+
       return NextResponse.json({
         success: true,
         code,
@@ -162,7 +171,8 @@ export async function POST(request: Request) {
         walletAddress: merchantWallet,
         merchantName: merchant.merchant_name ?? null,
         merchantLogo: merchant.merchant_logo ?? null,
-        terminalLabel: redeemed[0].terminal_label,
+        terminalLabel: terminal.terminal_label,
+        terminal,
       });
     }
 

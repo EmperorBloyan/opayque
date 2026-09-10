@@ -162,6 +162,13 @@ describe("terminal pairing API integration", () => {
       merchantId: MERCHANT_ID,
       walletAddress: WALLET,
       terminalLabel: "Counter 1",
+      terminal: {
+        id: expect.any(String),
+        merchant_id: MERCHANT_ID,
+        terminal_label: "Counter 1",
+        label: "Counter 1",
+        status: "online",
+      },
     });
     expect(verified.terminalId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(verified.deviceToken).toBeTruthy();

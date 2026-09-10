@@ -61,11 +61,6 @@ function createAccessCode() {
   return code;
 }
 
-function createDefaultTerminalLabel() {
-  const shortId = crypto.randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase();
-  return `Terminal-${shortId}`;
-}
-
 function isValidUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -378,7 +373,9 @@ export default function TerminalManager({
       setErrorState(null);
 
       try {
-        const terminalLabel = labelOverride || newTerminalLabel || createDefaultTerminalLabel();
+        const terminalLabel = typeof labelOverride === "string"
+          ? labelOverride.trim()
+          : newTerminalLabel.trim();
 
         // Call API to create pairing code - this validates merchant and patches wallet_address
         const response = await fetch("/api/terminal/pairing", {
@@ -1037,14 +1034,13 @@ export default function TerminalManager({
       return;
     }
 
-    const defaultLabel = createDefaultTerminalLabel();
-    setNewTerminalLabel(defaultLabel);
+    setNewTerminalLabel("");
     setAuthCode("---");
     setPairingState("waiting");
     setPairingExpiresAt(null);
     setTimeLeft("GENERATING...");
     setIsPairingOpen(true);
-    await refreshAuthCode(defaultLabel);
+    await refreshAuthCode();
   };
 
   const disconnectTerminal = async (id: string) => {
