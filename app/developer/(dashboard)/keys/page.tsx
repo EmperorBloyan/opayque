@@ -24,6 +24,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Trash2,
   Unlock,
   Upload,
   Wallet,
@@ -66,6 +67,7 @@ export default function ApiKeysPage() {
   const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null);
   const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
@@ -226,10 +228,8 @@ export default function ApiKeysPage() {
               environment: (k.environment === "mainnet" || k.environment === "live") ? "mainnet" : "devnet",
             }));
 
-            if (transformed.length > 0) {
-              setKeyPairs(transformed);
-              window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
-            }
+            setKeyPairs(transformed);
+            window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
           }
         }
       } catch (error) {
@@ -327,6 +327,35 @@ export default function ApiKeysPage() {
       setProfileError(error?.message || 'Could not create API key');
     } finally {
       setCreatingKey(false);
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    if (deletingKeyId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this API key? Existing requests using it will stop working.")) return;
+
+    setDeletingKeyId(keyId);
+    setProfileMessage(null);
+    setProfileError(null);
+    try {
+      const response = await fetch(`/api/v1/keys?id=${encodeURIComponent(keyId)}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete API key");
+      }
+
+      setKeyPairs((current) => {
+        const updated = current.filter((key) => key.id !== keyId);
+        window.localStorage.setItem("opayque_api_keys", JSON.stringify(updated));
+        return updated;
+      });
+      setVisibleSecretId((current) => (current === keyId ? null : current));
+      setCopiedKeyId((current) => (current === keyId ? null : current));
+      setProfileMessage("API key deleted.");
+    } catch (error: any) {
+      setProfileError(error?.message || "Could not delete API key");
+    } finally {
+      setDeletingKeyId(null);
     }
   };
 
@@ -732,6 +761,16 @@ export default function ApiKeysPage() {
                         >
                           {isCopied ? <Check size={12} /> : <Copy size={12} />}
                           {isCopied ? "Copied" : "Copy"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteKey(keyPair.id)}
+                          disabled={deletingKeyId === keyPair.id || Boolean(deletingKeyId)}
+                          aria-label={`Delete ${keyPair.publishable}`}
+                          title="Delete API key"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
