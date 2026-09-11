@@ -201,7 +201,24 @@ export async function POST(request: Request) {
     ]);
 
     if (insertError) {
-      return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
+      console.error("POST /api/v1/sessions checkout_sessions insert failed", {
+        code: insertError.code,
+        message: insertError.message,
+        merchantId: auth.merchantId,
+        transferMode,
+      });
+      const schemaError = insertError.code === "42703" || insertError.code === "42P01";
+      const constraintError = insertError.code === "23514";
+      return NextResponse.json(
+        {
+          error: schemaError
+            ? "Checkout database is missing the latest payment schema migration"
+            : constraintError
+              ? "Checkout database rejected the configured transfer mode"
+              : "Failed to create checkout session",
+        },
+        { status: 500 }
+      );
     }
 
     const { data: transaction, error: transactionError } = await supabase
