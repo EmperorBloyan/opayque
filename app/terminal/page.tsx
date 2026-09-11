@@ -496,21 +496,22 @@ export default function TerminalPage() {
   };
 
   const handleActivityClick = (transaction: any) => {
-    if (String(transaction.status ?? "").toLowerCase() !== "pending") return;
-
     const transactionAmount = Number(transaction.amount);
     if (!transaction.id || !Number.isFinite(transactionAmount) || transactionAmount <= 0) {
-      setToast("Pending payment details are unavailable");
+      setToast("Payment details are unavailable");
       return;
     }
+
+    const nextStatus = String(transaction.status ?? "").toUpperCase();
+    const isSettled = nextStatus === "SETTLED";
 
     setTransactionId(String(transaction.id));
     setLockedAmount(Number(transaction.fiatAmount ?? transactionAmount).toFixed(2));
     setLockedUsdcAmount(transactionAmount.toFixed(6));
     setAmount(transactionAmount.toFixed(2));
-    setPaymentStatus("PENDING");
-    setLatestTxHash(null);
-    setIsPaid(false);
+    setPaymentStatus(isSettled ? "SETTLED" : "PENDING");
+    setLatestTxHash(isSettled ? (transaction.txHash ?? null) : null);
+    setIsPaid(isSettled);
     setIsActivityOpen(false);
     setStep("PAYING");
   };
@@ -647,7 +648,8 @@ export default function TerminalPage() {
               setPaymentStatus("SETTLED");
               setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
               setIsPaid(true);
-              setToast("Transaction settled on-chain");
+              setToast("Payment Successful");
+              window.setTimeout(() => setToast(null), 3200);
               requestAnimationFrame(() => {
                 successRef.current?.focus();
               });
@@ -837,13 +839,24 @@ export default function TerminalPage() {
                   ref={successRef}
                   tabIndex={-1}
                   aria-live="polite"
-                  className="flex flex-col items-center"
+                  className="relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden rounded-[3rem] bg-green-500/20 px-8 py-12 text-center backdrop-blur-xl animate-in fade-in zoom-in duration-300"
                 >
-                  <div className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center mb-6">
-                    <span className="text-4xl italic font-black">✓</span>
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="mb-6 rounded-full bg-white p-4 shadow-2xl animate-bounce">
+                      <span className="text-4xl font-black text-green-600">✓</span>
+                    </div>
+                    <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white">
+                      Payment Successful
+                    </h2>
+                    <p className="mt-4 text-sm text-green-100">
+                      Payment of{" "}
+                      <span className="font-bold text-white">
+                        {lockedAmount || amount} {asset}
+                      </span>{" "}
+                      finalized.
+                    </p>
                   </div>
-                  <h2 className="text-5xl font-black italic uppercase">Settled</h2>
-                  <div className="mt-4 space-y-2 text-center text-xs font-mono uppercase tracking-[0.2em] text-zinc-300">
+                  <div className="relative z-10 mt-6 space-y-2 text-center text-xs font-mono uppercase tracking-[0.2em] text-green-100">
                     {activeSession?.walletAddress && (
                       <p>From {`${activeSession.walletAddress.slice(0, 3)}...${activeSession.walletAddress.slice(-3)}`}</p>
                     )}
@@ -917,7 +930,7 @@ export default function TerminalPage() {
                       <tr
                         key={`${tx.id ?? idx}`}
                         onClick={() => handleActivityClick(tx)}
-                        className={`hover:bg-white/5 ${String(tx.status ?? "").toLowerCase() === "pending" ? "cursor-pointer" : ""}`}
+                        className="cursor-pointer hover:bg-white/5"
                       >
                         <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
                         <td className="px-4 py-3">

@@ -11,8 +11,9 @@ import {
   Wrench,
   LayoutDashboard,
   Webhook,
-  Globe,
-  Building2
+  ShieldCheck,
+  Server,
+  Camera,
 } from "lucide-react";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 
@@ -96,90 +97,80 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
             {/* HEADER */}
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
               <div className="flex items-center gap-5">
-                <div className="relative group">
-                  <div className="h-16 w-16 rounded-2xl bg-zinc-900 border border-purple-500/30 flex items-center justify-center overflow-hidden shadow-inner">
+                <div className="relative group cursor-pointer">
+                  <div className="h-16 w-16 rounded-full bg-zinc-900 border border-purple-500/20 flex items-center justify-center overflow-hidden transition-all shadow-inner">
                     {merchantLogo ? (
                       <img src={merchantLogo} alt={merchantName} className="h-full w-full object-cover" />
                     ) : (
-                      <Building2 size={28} className="text-purple-400" />
+                      <Camera size={20} className="text-zinc-600" />
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div>
-                      <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
-                        {merchantName}
-                      </h1>
-                      <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                        Developer session active
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none text-white">
+                      {merchantName}
+                    </h1>
                     <button
                       type="button"
                       onClick={() => router.push("/developer/keys")}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 hover:shadow-[0_0_18px_rgba(168,85,247,0.35)]"
+                      aria-label="Open developer keys"
                     >
-                      <Key size={14} /> API Keys &amp; Merchant Details
+                      <Key size={16} />
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* UNIFIED ENVIRONMENT SELECTOR */}
-              <div className="flex flex-wrap items-center gap-3">
-                <div
-                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${
-                    isSandbox
-                      ? "bg-emerald-600/10 border-emerald-500/30 text-emerald-300"
-                      : "bg-amber-600/10 border-amber-500/30 text-amber-300"
+              <nav className="flex flex-wrap items-center gap-3 bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+                <Link
+                  href="/developer/overview"
+                  className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    pathname.startsWith("/developer/overview")
+                      ? "bg-white text-black shadow-xl shadow-white/5"
+                      : "text-zinc-500 hover:text-white hover:bg-white/5"
                   }`}
                 >
-                  {isSandbox ? "Sandbox Mode (Devnet)" : "Production Mode (Mainnet)"}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={toggleEnvironment}
-                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-white transition hover:border-purple-500/40 hover:bg-purple-500/10"
+                  <LayoutDashboard size={14} /> Overview
+                </Link>
+                <Link
+                  href="/developer/webhooks-delivery-logs"
+                  className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    pathname.startsWith("/developer/webhooks-delivery-logs")
+                      ? "bg-white text-black shadow-xl shadow-white/5"
+                      : "text-zinc-500 hover:text-white hover:bg-white/5"
+                  }`}
                 >
-                  <Globe size={14} className="text-purple-400" />
-                  <span>Switch to {isSandbox ? "Mainnet" : "Devnet"}</span>
-                </button>
-
+                  <Webhook size={14} /> Webhooks &amp; Delivery Logs
+                </Link>
                 <button
                   type="button"
                   onClick={lockDeveloperHub}
-                  className="group flex items-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/80 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition hover:text-red-500"
+                  className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
                 >
-                  <Lock size={14} className="group-hover:animate-pulse" /> Lock Hub
+                  <Lock size={14} /> Lock Hub
                 </button>
-              </div>
+              </nav>
             </header>
 
-            {/* NAVIGATION BAR */}
-            <nav className="mb-10 flex w-full overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md">
-              <Link
-                href="/developer/overview"
-                className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                  pathname.startsWith("/developer/overview")
-                    ? "bg-white text-black shadow-xl shadow-white/5"
-                    : "text-zinc-500 hover:bg-white/5 hover:text-white"
-                }`}
+            <div className="mb-12 flex items-center justify-end px-4">
+              <button
+                type="button"
+                onClick={toggleEnvironment}
+                className="flex items-center gap-2"
+                aria-label={`Switch to ${isSandbox ? "production" : "sandbox"} environment`}
               >
-                <LayoutDashboard size={14} /> Overview
-              </Link>
-              <Link
-                href="/developer/webhooks-delivery-logs"
-                className={`flex min-w-fit items-center gap-2 rounded-xl px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                  pathname.startsWith("/developer/webhooks-delivery-logs")
-                    ? "bg-white text-black shadow-xl shadow-white/5"
-                    : "text-zinc-500 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Webhook size={14} /> Webhooks &amp; Delivery Logs
-              </Link>
-            </nav>
+                {isSandbox ? (
+                  <ShieldCheck size={16} className="text-emerald-400" />
+                ) : (
+                  <Server size={16} className="text-amber-400" />
+                )}
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                  {isSandbox ? "Sandbox Mode (Devnet)" : "Production Mode (Mainnet)"}
+                </span>
+              </button>
+            </div>
           </>
         )}
 

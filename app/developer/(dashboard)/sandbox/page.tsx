@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Copy, ExternalLink, Loader2, Play, QrCode, ShieldCheck, Terminal } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { isRealMerchantId } from "@/lib/terminal/guards";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 
 interface MerchantProfile {
   id: string;
@@ -108,6 +109,7 @@ export default function DeveloperSandbox() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"key" | "url" | null>(null);
   const [logs, setLogs] = useState<ConsoleLog[]>([]);
+  const { currency, setCurrency, rates } = useCurrency();
 
   const addLog = (message: string, type: ConsoleLog["type"] = "info") => {
     setLogs((current) => [
@@ -228,7 +230,7 @@ export default function DeveloperSandbox() {
         body: JSON.stringify({
           order_id: orderId.trim(),
           amount_fiat: numericAmount,
-          currency: "USDC",
+          currency,
           description: "Sandbox test payment",
         }),
         signal: controller.signal,
@@ -284,7 +286,7 @@ export default function DeveloperSandbox() {
             <section className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="rounded-[2rem] border border-white/10 bg-black/50 p-5"><span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Order ID</span><input value={orderId} onChange={(event) => setOrderId(event.target.value)} className="mt-3 w-full bg-transparent font-mono text-sm text-white outline-none" /></label>
-                <label className="rounded-[2rem] border border-white/10 bg-black/50 p-5"><span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Amount USDC</span><input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-3 w-full bg-transparent font-mono text-sm text-white outline-none" /></label>
+                <label className="rounded-[2rem] border border-white/10 bg-black/50 p-5"><span className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500"><span>Amount</span><select value={currency} onChange={(event) => setCurrency(event.target.value)} aria-label="Display currency" className="rounded-full border border-white/10 bg-black/70 px-2 py-1 text-[9px] font-black tracking-widest text-zinc-200 outline-none">{Object.keys(rates).length > 0 ? Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>) : <option value="USD">USD</option>}</select></span><input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-3 w-full bg-transparent font-mono text-sm text-white outline-none" /></label>
               </div>
 
               <div className="rounded-[2rem] border border-white/10 bg-black/50 p-5"><p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Merchant context</p><div className="mt-4 grid gap-3 text-xs sm:grid-cols-2"><p className="text-zinc-400">Merchant <span className="font-mono text-purple-300">{merchant ? shortAddress(merchant.id) : "Loading..."}</span></p><p className="text-zinc-400">Wallet <span className="font-mono text-purple-300">{wallet ? shortAddress(wallet) : "Not configured"}</span></p></div></div>

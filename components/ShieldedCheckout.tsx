@@ -61,7 +61,7 @@ export default function ShieldedCheckout({
   checkoutSessionId,
   transferMode: initialTransferMode = "private",
 }: ShieldedCheckoutProps) {
-  const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
 
   const [status, setStatus] = useState<PaymentStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -248,65 +248,33 @@ export default function ShieldedCheckout({
 
       paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
 
-      // buildShieldedTransfer returns VersionedTransaction
       if (built.mode !== transferMode) {
         throw new Error(`${transferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
       }
 
-      if (built.transaction instanceof VersionedTransaction || built.transaction instanceof Transaction) {
-        if (signTransaction && built.transaction instanceof VersionedTransaction) {
-          setMessage("Approve in your wallet...");
-          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-          signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
-          setMessage("Payment confirmed on Solana.");
-        } else if (signTransaction) {
-          const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
-          if (built.transaction instanceof VersionedTransaction) {
-            built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
-          } else {
-            built.transaction.recentBlockhash = freshBlockhash.blockhash;
-            built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
-            built.transaction.feePayer = publicKey;
-          }
-          setMessage("Approve in your wallet...");
-          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-          const signed = await signTransaction(built.transaction as any);
-          setMessage("Submitting transaction...");
-          signature = await paymentConnection.sendRawTransaction(
-            signed.serialize(),
-            { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 }
-          );
-          setMessage("Confirming on Solana...");
-          await paymentConnection.confirmTransaction({
-            signature,
-            ...freshBlockhash,
-          }, "confirmed");
-        } else if (sendTransaction) {
-          const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
-          if (built.transaction instanceof VersionedTransaction) {
-            built.transaction.message.recentBlockhash = freshBlockhash.blockhash;
-          } else {
-            built.transaction.recentBlockhash = freshBlockhash.blockhash;
-            built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
-            built.transaction.feePayer = publicKey;
-          }
-          setMessage("Approve in your wallet...");
-          writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-          signature = await sendTransaction(built.transaction as any, paymentConnection, {
-              skipPreflight: false,
-              preflightCommitment: "confirmed",
-              maxRetries: 0,
-            });
-          setMessage("Confirming on Solana...");
-          await paymentConnection.confirmTransaction({
-            signature,
-            ...freshBlockhash,
-          }, "confirmed");
-        } else {
-          throw new Error("Wallet cannot sign or send transactions.");
-        }
+      if (built.transaction instanceof VersionedTransaction && signTransaction) {
+        setMessage("Approve in your wallet...");
+        writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
+        signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
+        setMessage("Payment confirmed on Solana.");
+      } else if (built.transaction instanceof Transaction && signTransaction) {
+        const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
+        built.transaction.recentBlockhash = freshBlockhash.blockhash;
+        built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
+        built.transaction.feePayer = publicKey;
+        setMessage("Approve in your wallet...");
+        writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
+        const signed = await signTransaction(built.transaction as any);
+        setMessage("Submitting transaction...");
+        signature = await paymentConnection.sendRawTransaction(signed.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        });
+        setMessage("Confirming on Solana...");
+        await paymentConnection.confirmTransaction({ signature, ...freshBlockhash }, "confirmed");
       } else {
-        throw new Error("Invalid transaction payload from transfer API.");
+        throw new Error("Wallet cannot sign the payment transaction.");
       }
 
       if (!signature) {
@@ -384,7 +352,7 @@ export default function ShieldedCheckout({
           {recipientName ? (
             <p className="text-zinc-500 text-sm mt-1">Paying {recipientName}</p>
           ) : (
-            <p className="text-zinc-500 text-sm mt-1">Private mode via MagicBlock when available</p>
+            <p className="text-zinc-500 text-sm mt-1">Ready to pay securely on Solana</p>
           )}
           {(endpointName || endpointCategory) && (
             <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500 mt-2">
@@ -439,7 +407,7 @@ export default function ShieldedCheckout({
               Payment Successful
             </p>
             <p className="mt-2 text-sm text-zinc-400">
-              {transferMode === "private" ? "Private transfer of" : "Standard transfer of"}{" "}
+              {transferMode === "private" ? "Private transfer of" : "Payment of"}{" "}
               <span className="text-white font-semibold">
                 {safeAmount.toFixed(2)} {settlementToken || "USDC"}
               </span>{" "}
@@ -475,7 +443,7 @@ export default function ShieldedCheckout({
                 ) : status === "error" ? (
                   "Try Again"
                 ) : (
-                  "Pay Privately"
+                  transferMode === "private" ? "Pay Privately" : "Pay"
                 )}
               </button>
             )}

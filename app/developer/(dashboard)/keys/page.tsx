@@ -13,12 +13,10 @@ import SettlementWalletSection from "@/components/wallet/SettlementWalletSection
 import {
   AlertCircle,
   ArrowLeft,
-  Building2,
   Check,
   Copy,
   Eye,
   EyeOff,
-  Image as ImageIcon,
   Key,
   Lock,
   LogOut,
@@ -551,6 +549,33 @@ export default function ApiKeysPage() {
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="group relative mb-6">
+                  <label className="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10 transition-all hover:border-purple-400 hover:bg-purple-500/20">
+                    {merchantLogo ? (
+                      <img
+                        src={merchantLogo}
+                        alt="Merchant logo"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Upload className="h-6 w-6 text-purple-400 transition-transform group-hover:scale-110" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+                  </label>
+                  {!merchantLogo && (
+                    <span className="absolute -bottom-6 left-1/2 w-max -translate-x-1/2 text-[9px] uppercase tracking-widest text-zinc-500">
+                      Upload Logo
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
@@ -607,31 +632,6 @@ export default function ApiKeysPage() {
                   />
                 </label>
 
-                <fieldset className="space-y-3 md:col-span-2">
-                  <legend className="text-xs uppercase tracking-[0.2em] text-zinc-400">Default transfer mode</legend>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(["private", "public"] as const).map((mode) => (
-                      <label key={mode} className={`cursor-pointer rounded-xl border p-4 transition ${defaultTransferMode === mode ? "border-purple-400/70 bg-purple-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}>
-                        <input
-                          type="radio"
-                          name="default-transfer-mode"
-                          value={mode}
-                          checked={defaultTransferMode === mode}
-                          onChange={() => setDefaultTransferMode(mode)}
-                          className="sr-only"
-                        />
-                        <span className="flex items-center justify-between text-sm font-bold text-white">
-                          {mode === "private" ? "Private" : "Standard"}
-                          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{defaultTransferMode === mode ? "Selected" : "Select"}</span>
-                        </span>
-                        <span className="mt-2 block text-xs leading-5 text-zinc-400">
-                          {mode === "private" ? "MagicBlock shields amounts and counterparties. Failures never become public." : "Standard Solana USDC transfer. Fully visible on explorers."}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-
                 <label className="space-y-2">
                   <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Secondary email</span>
                   <input
@@ -684,53 +684,30 @@ export default function ApiKeysPage() {
 
           <aside className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Branding</p>
-                  <h2 className="mt-2 text-xl font-bold text-white">Merchant logo</h2>
+              <fieldset className="space-y-3">
+                <legend className="text-xs uppercase tracking-[0.2em] text-zinc-400">Default transfer mode</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(["private", "public"] as const).map((mode) => (
+                    <label key={mode} className={`cursor-pointer rounded-xl border p-4 transition ${defaultTransferMode === mode ? "border-purple-400/70 bg-purple-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}>
+                      <input
+                        type="radio"
+                        name="default-transfer-mode"
+                        value={mode}
+                        checked={defaultTransferMode === mode}
+                        onChange={() => setDefaultTransferMode(mode)}
+                        className="sr-only"
+                      />
+                      <span className="flex items-center justify-between text-sm font-bold text-white">
+                        {mode === "private" ? "Private" : "Standard"}
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{defaultTransferMode === mode ? "Selected" : "Select"}</span>
+                      </span>
+                      <span className="mt-2 block text-xs leading-5 text-zinc-400">
+                        {mode === "private" ? "MagicBlock shields amounts and counterparties. Failures never become public." : "Standard Solana USDC transfer. Fully visible on explorers."}
+                      </span>
+                    </label>
+                  ))}
                 </div>
-                <div className="rounded-full border border-white/10 bg-white/5 p-2 text-purple-300">
-                  <ImageIcon size={18} />
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/10 bg-black/20 p-4">
-                {merchantLogo ? (
-                  <img src={merchantLogo} alt="Merchant logo" className="h-24 w-24 rounded-2xl object-cover" />
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
-                    <Building2 size={30} />
-                  </div>
-                )}
-
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-zinc-200">
-                  <Upload size={14} /> Upload logo
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Environment</p>
-                  <h2 className="mt-2 text-xl font-bold text-white">{isSandbox ? "Sandbox" : "Production"}</h2>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${isSandbox ? "bg-amber-500/20 text-amber-200" : "bg-emerald-500/20 text-emerald-200"}`}>
-                  {isSandbox ? "Devnet" : "Mainnet"}
-                </span>
-              </div>
-
-              <div className="space-y-3 text-sm text-zinc-300">
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <span>API access</span>
-                  <span className={merchantApiAccessStatus === "active" ? "text-emerald-300" : "text-amber-300"}>{merchantApiAccessStatus === "active" ? "Active" : "Pending"}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <span>Wallet attached</span>
-                  <span className="text-purple-300">{settlementWalletAddress ? "Ready" : "Not set"}</span>
-                </div>
-              </div>
+              </fieldset>
             </div>
           </aside>
         </section>

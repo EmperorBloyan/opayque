@@ -5,7 +5,7 @@ import {
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { Connection, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 const USDC_DECIMALS = 6;
 
@@ -64,13 +64,12 @@ export async function buildPublicUsdcTransfer({
   );
 
   const latest = await connection.getLatestBlockhash("confirmed");
-  const transaction = new Transaction({
-    feePayer: senderKey,
+  const message = new TransactionMessage({
+    payerKey: senderKey,
     recentBlockhash: latest.blockhash,
-  }).add(...instructions);
-  const versioned = new VersionedTransaction(
-    transaction.compileMessage(),
-  );
+    instructions,
+  }).compileToV0Message();
+  const versioned = new VersionedTransaction(message);
 
   return {
     transaction: Buffer.from(versioned.serialize()).toString("base64"),

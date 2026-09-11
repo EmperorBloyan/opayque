@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 import {
   ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2,
   Copy, Check, Link2, Zap, ExternalLink, Code, AlertCircle
@@ -45,7 +46,8 @@ export default function QuickstartPage() {
   // Generator Form State
   const [productTitle, setProductTitle] = useState("Custom Order / Payment");
   const [amount, setAmount] = useState("15.00");
-  const [currency, setCurrency] = useState("USDC");
+  const [settlementToken, setSettlementToken] = useState("USDC");
+  const { currency, setCurrency, rates } = useCurrency();
   const [customerEmail, setCustomerEmail] = useState("");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [generatedEmbed, setGeneratedEmbed] = useState<string | null>(null);
@@ -116,8 +118,8 @@ export default function QuickstartPage() {
         body: JSON.stringify({
           order_id: `ORD-${Date.now()}`,
           amount_fiat: parseFloat(amount),
-          currency: "USD", // Fiat amount is always USD
-          settlement_token: currency, // USDC or SOL
+          currency,
+          settlement_token: settlementToken, // USDC or SOL
           customer_email: customerEmail || "buyer@example.com",
           description: productTitle
         })
@@ -132,7 +134,7 @@ export default function QuickstartPage() {
 
       if (data.success && data.payment_url) {
         const url = data.payment_url;
-        const embedCode = `<!-- Opayque Pay Button -->\n<a href="${url}" target="_blank" style="background:#a855f7;color:#fff;padding:12px 24px;border-radius:12px;font-weight:bold;text-decoration:none;display:inline-block;">\n Pay $${amount} with ${currency}\n</a>`;
+        const embedCode = `<!-- Opayque Pay Button -->\n<a href="${url}" target="_blank" style="background:#a855f7;color:#fff;padding:12px 24px;border-radius:12px;font-weight:bold;text-decoration:none;display:inline-block;">\n Pay ${currency} ${amount} with ${settlementToken}\n</a>`;
 
         setGeneratedLink(url);
         setGeneratedEmbed(embedCode);
@@ -255,12 +257,17 @@ export default function QuickstartPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">Amount USD</label>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">Amount</label>
+                          <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Display currency" className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-200 outline-none focus:border-purple-500">
+                            {Object.keys(rates).length > 0 ? Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>) : <option value="USD">USD</option>}
+                          </select>
+                        </div>
                         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none" />
                       </div>
                       <div>
                         <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">Settlement</label>
-                        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none">
+                        <select value={settlementToken} onChange={(e) => setSettlementToken(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none">
                           <option value="USDC">USDC</option>
                           <option value="SOL">SOL</option>
                         </select>

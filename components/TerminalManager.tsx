@@ -230,6 +230,7 @@ export default function TerminalManager({
 
   const fleetChannelRef = useRef<any | null>(null);
   const pairingRequestRef = useRef(false);
+  const previousTerminalCountRef = useRef<number | null>(null);
 
   const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();
@@ -1002,8 +1003,22 @@ export default function TerminalManager({
     };
   }, [isPairingOpen, loadFromSupabase, resolvedMerchantId]);
 
+  useEffect(() => {
+    if (!isPairingOpen || pairingState !== "waiting") return;
+
+    const previousCount = previousTerminalCountRef.current ?? safeTerminals.length;
+    if (safeTerminals.length > previousCount) {
+      setPairingState("used");
+      setToast("Pairing successful");
+      const timer = window.setTimeout(() => setToast(null), 1200);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isPairingOpen, pairingState, safeTerminals.length]);
+
   const pairNewTerminal = async () => {
     if (pairingRequestRef.current || isRefreshingCode) return;
+
+    previousTerminalCountRef.current = safeTerminals.length;
 
     if (!resolvedMerchantId) {
       setToast("Merchant session loading, please wait...");

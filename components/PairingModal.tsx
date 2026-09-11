@@ -65,7 +65,20 @@ export default function PairingModal({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#121218] p-6 shadow-2xl shadow-black/60">
+      <div className="relative w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#121218] p-6 shadow-2xl shadow-black/60">
+        {pairingState === "used" && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[2.5rem] bg-purple-600/20 backdrop-blur-xl animate-in fade-in zoom-in duration-300">
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="mb-4 rounded-full bg-white p-4 shadow-2xl animate-bounce">
+                <LucideCheck size={40} className="text-purple-600" />
+              </div>
+              <p className="text-sm font-black uppercase tracking-[0.3em] text-white">
+                Pairing successful
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end">
           <button
             onClick={onClose}

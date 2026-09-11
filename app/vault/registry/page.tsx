@@ -11,6 +11,7 @@ import {
   LucideTrash2,
   LucideQrCode,
   LucideShieldCheck,
+  LucideGlobe2,
   LucideX,
   LucidePrinter,
 } from "lucide-react";
@@ -32,6 +33,34 @@ export default function RegistryPage() {
   const [vaultReady, setVaultReady] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
+  const [defaultTransferMode, setDefaultTransferMode] = useState<"private" | "public">("private");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateTransferMode = async () => {
+      try {
+        const response = await fetch("/api/v1/merchant", { credentials: "include" });
+        const payload = await response.json().catch(() => null);
+        if (!cancelled) {
+          setDefaultTransferMode(payload?.merchant?.default_transfer_mode === "public" ? "public" : "private");
+        }
+      } catch (error) {
+        console.warn("Failed to load merchant transfer mode", error);
+      }
+    };
+
+    const handleProfileUpdate = () => {
+      void hydrateTransferMode();
+    };
+
+    void hydrateTransferMode();
+    window.addEventListener("merchant_profile_updated", handleProfileUpdate);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("merchant_profile_updated", handleProfileUpdate);
+    };
+  }, []);
 
   const resolveMerchantId = useCallback(async (): Promise<string | null> => {
     let merchantId = getActiveMerchantId();
@@ -253,9 +282,13 @@ export default function RegistryPage() {
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
       <div className="flex justify-end items-center mb-12 px-4">
         <div className="flex items-center gap-2">
-          <LucideShieldCheck size={16} className="text-purple-500" />
+          {defaultTransferMode === "private" ? (
+            <LucideShieldCheck size={16} className="text-purple-500" />
+          ) : (
+            <LucideGlobe2 size={16} className="text-purple-500" />
+          )}
           <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-            TEE Session Active
+            {defaultTransferMode === "private" ? "TEE Session Active" : "Standard Transfer Session"}
           </span>
         </div>
       </div>

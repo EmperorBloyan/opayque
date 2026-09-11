@@ -526,12 +526,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   </div>
                 </fieldset>
 
-                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-4 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
+                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-6 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
+                  <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-2">
                       <p className="text-[10px] font-black uppercase tracking-[0.34em] text-red-300/80">Danger zone</p>
-                      <h3 className="text-xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
-                      <p className="text-xs text-zinc-300">
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
+                      <p className="max-w-2xl text-sm text-zinc-300">
                         Sign out completely from the vault. You can sign in again to re-register or continue with your existing credentials.
                       </p>
                     </div>
@@ -540,9 +540,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                       type="button"
                       onClick={() => void handleSignOut()}
                       disabled={isLocking}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <LogOut size={14} /> {isLocking ? "Signing out..." : "Sign out"}
+                      <LogOut size={12} /> {isLocking ? "Signing out..." : "Sign out"}
                     </button>
                   </div>
                 </section>

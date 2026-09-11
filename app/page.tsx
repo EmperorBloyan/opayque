@@ -328,7 +328,6 @@ export default function UnifiedLanding() {
       <footer className="absolute bottom-10 opacity-20">
         <div className="flex flex-col items-center gap-2">
           <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-500">Global Settlement Layer</span>
-          <p className="text-[9px] font-mono uppercase tracking-widest">Built for Solana Radar 2026</p>
         </div>
       </footer>
 
