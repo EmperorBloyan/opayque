@@ -46,7 +46,11 @@ export async function requireTerminalDevice(request: Request, terminalId: string
     console.warn("Terminal lookup failed", error);
   }
 
-  if (!terminal || !matchesTerminalDeviceToken(terminal, token) || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())) {
+  if (terminal && ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())) {
+    return { error: "Terminal authentication failed", code: "TERMINAL_REVOKED" as const, status: 401 as const };
+  }
+
+  if (!terminal || !matchesTerminalDeviceToken(terminal, token)) {
     return { error: "Terminal authentication failed", status: 401 as const };
   }
 

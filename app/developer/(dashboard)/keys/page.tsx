@@ -87,8 +87,8 @@ export default function ApiKeysPage() {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
-  const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const goToDestination = (path: string) => {
     if (isNavigating) return;
@@ -496,6 +496,9 @@ export default function ApiKeysPage() {
   };
 
   const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
     try {
       await supabase.auth.signOut();
     } catch (error) {
@@ -511,7 +514,7 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem("opayque_api_keys");
       window.localStorage.setItem("opayque_next_route", "/onboarding");
     }
-    goToDestination("/onboarding");
+    router.push("/onboarding");
   };
 
   return (
@@ -551,7 +554,7 @@ export default function ApiKeysPage() {
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
               <div className="mb-8 flex flex-col items-center text-center">
                 <div className="group relative mb-6">
-                  <label className="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10 transition-all hover:border-purple-400 hover:bg-purple-500/20">
+                  <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10">
                     {merchantLogo ? (
                       <img
                         src={merchantLogo}
@@ -559,35 +562,27 @@ export default function ApiKeysPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <Upload className="h-6 w-6 text-purple-400 transition-transform group-hover:scale-110" />
+                      <Upload className="h-10 w-10 text-purple-400" />
                     )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleImageUpload}
-                    />
-                  </label>
-                  {!merchantLogo && (
-                    <span className="absolute -bottom-6 left-1/2 w-max -translate-x-1/2 text-[9px] uppercase tracking-widest text-zinc-500">
-                      Upload Logo
-                    </span>
-                  )}
+                  </div>
                 </div>
+                <label
+                  htmlFor="merchant-logo-upload"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-purple-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-purple-500"
+                >
+                  <Upload size={14} /> Update picture
+                </label>
+                <input
+                  id="merchant-logo-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
               </div>
 
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
-                  <h2 className="mt-2 text-2xl font-bold text-white">Business details</h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsEmailReadOnly((prev) => !prev)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.22em] text-zinc-300"
-                >
-                  {isEmailReadOnly ? "Edit" : "Lock"}
-                </button>
+              <div className="mb-5 flex items-center justify-end">
+                <h2 className="text-2xl font-bold text-white">Business details</h2>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -595,7 +590,6 @@ export default function ApiKeysPage() {
                   <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Primary email</span>
                   <input
                     value={merchantEmail}
-                    readOnly={isEmailReadOnly}
                     onChange={(event) => setMerchantEmail(event.target.value)}
                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
                     placeholder="merchant@company.com"
@@ -828,10 +822,10 @@ export default function ApiKeysPage() {
           <button
             type="button"
             onClick={() => void handleSignOut()}
-            disabled={isNavigating}
+            disabled={isSigningOut}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isNavigating ? "Signing out..." : "Sign out"}
+            {isSigningOut ? "Signing out..." : "Sign out"}
           </button>
         </div>
       </section>

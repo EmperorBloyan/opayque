@@ -27,6 +27,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
+  const [defaultTransferMode, setDefaultTransferMode] = useState<"private" | "public">("private");
 
   // Global Environment Context
   const { isSandbox, toggleEnvironment } = useEnvironment();
@@ -40,9 +41,13 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     const localLogo =
       window.localStorage.getItem("merchant_logo") ||
       window.localStorage.getItem("merchant_avatar");
+    const localTransferMode = window.localStorage.getItem("default_transfer_mode");
 
     if (localName) setMerchantName(localName);
     if (localLogo) setMerchantLogo(localLogo);
+    if (localTransferMode === "public" || localTransferMode === "private") {
+      setDefaultTransferMode(localTransferMode);
+    }
 
     const fetchMerchantProfile = async () => {
       try {
@@ -60,6 +65,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           setMerchantLogo(merchant.merchant_logo);
           window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
         }
+        setDefaultTransferMode(merchant?.default_transfer_mode === "public" ? "public" : "private");
       } catch (error) {
         console.warn("Failed to load merchant profile", error);
       }
@@ -72,8 +78,12 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
     const handleProfileUpdate = () => {
       const localName = window.localStorage.getItem("merchant_name");
       const localLogo = window.localStorage.getItem("merchant_logo");
+      const localTransferMode = window.localStorage.getItem("default_transfer_mode");
       if (localName) setMerchantName(localName);
       if (localLogo) setMerchantLogo(localLogo);
+      if (localTransferMode === "public" || localTransferMode === "private") {
+        setDefaultTransferMode(localTransferMode);
+      }
     };
 
     window.addEventListener("storage", handleProfileUpdate);
@@ -89,7 +99,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div className="min-h-screen bg-black px-6 py-6 text-white selection:bg-purple-500/30">
+    <div className="min-h-screen bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:px-6 sm:py-6">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
       <div className="relative mx-auto max-w-6xl">
         {!isHiddenPage && (
@@ -123,10 +133,10 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                 </div>
               </div>
 
-              <nav className="flex flex-wrap items-center gap-3 bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+              <nav className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md md:w-auto md:gap-3">
                 <Link
                   href="/developer/overview"
-                  className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-widest transition-all sm:px-6 md:flex-none ${
                     pathname.startsWith("/developer/overview")
                       ? "bg-white text-black shadow-xl shadow-white/5"
                       : "text-zinc-500 hover:text-white hover:bg-white/5"
@@ -136,7 +146,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                 </Link>
                 <Link
                   href="/developer/webhooks-delivery-logs"
-                  className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-widest transition-all sm:px-6 md:flex-none ${
                     pathname.startsWith("/developer/webhooks-delivery-logs")
                       ? "bg-white text-black shadow-xl shadow-white/5"
                       : "text-zinc-500 hover:text-white hover:bg-white/5"
@@ -147,7 +157,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                 <button
                   type="button"
                   onClick={lockDeveloperHub}
-                  className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white sm:px-4 md:ml-auto"
                 >
                   <Lock size={14} /> Lock Hub
                 </button>
@@ -179,7 +189,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
         {!isHiddenPage && (
           <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">
             <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">
-              Powered by Solana TEE Infrastructure
+              {defaultTransferMode === "private" ? "Powered by Solana TEE Infrastructure" : "Standard Transfer Session"}
             </p>
             <div className="flex gap-4">
               <span className="h-2 w-2 rounded-full bg-green-500" />

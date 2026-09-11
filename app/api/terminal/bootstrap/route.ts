@@ -31,11 +31,13 @@ export async function GET(request: Request) {
   }
 
   if (
-    !terminal ||
-    !matchesTerminalDeviceToken(terminal, deviceToken) ||
-    ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())
+    terminal && ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase())
   ) {
-    return NextResponse.json({ success: false, error: "Terminal authentication failed. Pair this terminal again." }, { status: 401 });
+    return NextResponse.json({ success: false, code: "TERMINAL_REVOKED", error: "Terminal was revoked or unpaired. Pair this terminal again." }, { status: 401 });
+  }
+
+  if (!terminal || !matchesTerminalDeviceToken(terminal, deviceToken)) {
+    return NextResponse.json({ success: false, code: "TERMINAL_CREDENTIALS_INVALID", error: "Terminal authentication failed. Pair this terminal again." }, { status: 401 });
   }
 
   const { data: merchant, error: merchantError } = await supabase

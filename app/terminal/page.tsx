@@ -275,12 +275,6 @@ export default function TerminalPage() {
       }
 
       if (!response.ok || !payload?.success) {
-        clearTerminalDeviceCredential();
-        window.localStorage.removeItem("opayque_terminal_id");
-        window.localStorage.removeItem("opayque_terminal_token");
-        setTerminalId(null);
-        setTerminalToken(null);
-        setStep("PAIRING");
         const message = response.status === 409
           ? "This pairing code is expired or already used. Generate a new code in Vault."
           : payload?.error || `Pairing request failed with status ${response.status}`;
@@ -428,7 +422,7 @@ export default function TerminalPage() {
 
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success || !data?.id) {
-        if (response.status === 401) {
+        if (response.status === 401 && data?.code === "TERMINAL_REVOKED") {
           clearTerminalDeviceCredential();
           window.localStorage.removeItem("opayque_terminal_id");
           window.localStorage.removeItem("opayque_terminal_token");
@@ -589,7 +583,7 @@ export default function TerminalPage() {
                 window.localStorage.setItem("merchant_name", nextName);
                 setAvatarPreview(payload.merchantLogo || null);
                 setStep("POS");
-              } else if (response.status === 401) {
+              } else if (response.status === 401 && payload?.code === "TERMINAL_REVOKED") {
                 window.localStorage.removeItem("opayque_terminal_id");
                 window.localStorage.removeItem("opayque_terminal_token");
                 clearTerminalDeviceCredential();
@@ -597,6 +591,8 @@ export default function TerminalPage() {
                 setTerminalToken(null);
                 setStep("PAIRING");
                 setToast("Terminal session is invalid. Enter a fresh pairing code from Vault.");
+              } else if (response.status === 401 && payload?.code === "TERMINAL_CREDENTIALS_INVALID") {
+                setToast("Terminal credentials need refresh. Pairing was preserved.");
               }
             } catch (err) {
               console.warn("Failed to validate stored terminal", err);

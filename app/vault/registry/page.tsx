@@ -51,6 +51,10 @@ export default function RegistryPage() {
     };
 
     const handleProfileUpdate = () => {
+      const localMode = window.localStorage.getItem("default_transfer_mode");
+      if (localMode === "public" || localMode === "private") {
+        setDefaultTransferMode(localMode);
+      }
       void hydrateTransferMode();
     };
 

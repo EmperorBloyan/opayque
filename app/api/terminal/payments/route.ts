@@ -26,11 +26,20 @@ export async function POST(request: Request) {
     }
 
     const auth = await requireTerminalDevice(request, terminalId);
-    if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    if ("error" in auth) {
+      return NextResponse.json(
+        {
+          success: false,
+          ...(auth.code ? { code: auth.code } : {}),
+          error: auth.error,
+        },
+        { status: auth.status }
+      );
+    }
     const { terminal, supabase } = auth;
 
     if (!terminal || ["revoked", "unpaired", "deleted"].includes(String(terminal.status).toLowerCase()) || !isRealMerchantId(terminal.merchant_id)) {
-      return NextResponse.json({ success: false, error: "Terminal is not paired" }, { status: 401 });
+      return NextResponse.json({ success: false, code: "TERMINAL_REVOKED", error: "Terminal is revoked or unpaired" }, { status: 401 });
     }
 
     if (idempotencyKey) {

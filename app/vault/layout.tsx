@@ -177,10 +177,6 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     localStorage.setItem("webhook_url", draftWebhookUrl.trim());
     localStorage.setItem("default_transfer_mode", defaultTransferMode);
 
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("merchant_profile_updated"));
-    }
-
     try {
       const response = await fetch("/api/v1/merchant", {
         method: "PATCH",
@@ -196,6 +192,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         }),
       });
       if (!response.ok) throw new Error("Unable to save merchant profile");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("merchant_profile_updated"));
+      }
     } catch (error) {
       console.warn("Unable to sync merchant profile", error);
     }
@@ -303,7 +302,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-6 selection:bg-purple-500/30">
+    <div className="min-h-screen bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:p-6">
       <div
         id="vault-glow"
         className="fixed inset-0 bg-purple-500/5 pointer-events-none transition-all duration-500"
@@ -359,10 +358,10 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
 
-          <nav className="flex flex-wrap items-center gap-3 bg-zinc-900/80 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+          <nav className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/80 p-1.5 backdrop-blur-md md:w-auto md:gap-3">
             <Link
               href="/vault/dashboard"
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-widest transition-all sm:px-6 md:flex-none ${
                 pathname.startsWith("/vault/dashboard")
                   ? "bg-white text-black shadow-xl shadow-white/5"
                   : "text-zinc-500 hover:text-white hover:bg-white/5"
@@ -373,7 +372,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
 
             <Link
               href="/vault/registry"
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-widest transition-all sm:px-6 md:flex-none ${
                 pathname.startsWith("/vault/registry")
                   ? "bg-white text-black shadow-xl shadow-white/5"
                   : "text-zinc-500 hover:text-white hover:bg-white/5"
@@ -386,7 +385,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
               type="button"
               onClick={handleLockHub}
               disabled={isLocking}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:border-purple-500/40 hover:text-white disabled:opacity-50 sm:px-4 md:ml-auto"
             >
               <Lock size={14} />
               {isLocking ? "Locking..." : "Lock Hub"}
@@ -526,12 +525,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   </div>
                 </fieldset>
 
-                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-6 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
-                  <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-2">
+                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-4 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
                       <p className="text-[10px] font-black uppercase tracking-[0.34em] text-red-300/80">Danger zone</p>
-                      <h3 className="text-2xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
-                      <p className="max-w-2xl text-sm text-zinc-300">
+                      <h3 className="text-xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
+                      <p className="text-xs text-zinc-300">
                         Sign out completely from the vault. You can sign in again to re-register or continue with your existing credentials.
                       </p>
                     </div>
@@ -540,9 +539,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                       type="button"
                       onClick={() => void handleSignOut()}
                       disabled={isLocking}
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <LogOut size={12} /> {isLocking ? "Signing out..." : "Sign out"}
+                      <LogOut size={14} /> {isLocking ? "Signing out..." : "Sign out"}
                     </button>
                   </div>
                 </section>
