@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurityHeaders } from './middleware';
+import { applySecurityHeaders, routeNeedsAuth } from './middleware';
 
 describe('middleware security headers', () => {
   it('applies the hardened response headers to redirect responses', () => {
@@ -21,5 +21,15 @@ describe('middleware security headers', () => {
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('Strict-Transport-Security') || 'not-set').toBe('not-set');
     expect(request.nextUrl.pathname).toBe('/vault/dashboard');
+  });
+
+  it('requires authentication for protected developer, vault, and sandbox routes', () => {
+    expect(routeNeedsAuth('/developer/overview')).toBe(true);
+    expect(routeNeedsAuth('/developer/keys')).toBe(true);
+    expect(routeNeedsAuth('/developer/docs')).toBe(true);
+    expect(routeNeedsAuth('/sandbox')).toBe(true);
+    expect(routeNeedsAuth('/developer/sandbox')).toBe(true);
+    expect(routeNeedsAuth('/')).toBe(false);
+    expect(routeNeedsAuth('/login')).toBe(false);
   });
 });

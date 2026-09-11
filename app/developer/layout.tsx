@@ -20,8 +20,8 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
 
-  // Hide layout chrome only on keys and onboarding pages
-  const isHiddenPage = pathname === "/developer/keys" || pathname.includes("onboarding");
+  // Hide layout chrome on full-page app experiences that should render without the developer shell behind them
+  const isHiddenPage = pathname === "/developer/keys" || pathname === "/developer/sandbox" || pathname.includes("onboarding");
 
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque Merchant");

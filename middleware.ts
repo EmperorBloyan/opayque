@@ -25,6 +25,18 @@ export function applySecurityHeaders(response: NextResponse) {
   return response;
 }
 
+export function routeNeedsAuth(pathname: string) {
+  const normalized = pathname.split("?")[0];
+
+  const isDeveloperRoute = normalized.startsWith("/developer");
+  const isVaultRoute = normalized.startsWith("/vault");
+  const isBotRoute = normalized.startsWith("/bot");
+  const isRegistryRoute = normalized.startsWith("/registry");
+  const isSandboxRoute = normalized === "/sandbox" || normalized === "/developer/sandbox";
+
+  return isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute || isSandboxRoute;
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -62,15 +74,9 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  const isDeveloperRoute = pathname.startsWith("/developer");
-  const isVaultRoute = pathname.startsWith("/vault");
-  const isBotRoute = pathname.startsWith("/bot");
-  const isRegistryRoute = pathname.startsWith("/registry");
   const isOnboardingPage = pathname === "/onboarding";
   const isLoginRoute = pathname === "/login";
-
-  const isProtectedRoute =
-    isDeveloperRoute || isVaultRoute || isBotRoute || isRegistryRoute;
+  const isProtectedRoute = routeNeedsAuth(pathname);
 
   // Logged-out users cannot open dashboard routes
   if (!user && isProtectedRoute) {

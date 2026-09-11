@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { isTransferMode, normalizeTransferMode } from "@/lib/payments/transferMode";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -79,21 +80,22 @@ export async function GET() {
       }
 
       if (fallback.data) {
-        merchant = fallback.data;
+        const fallbackMerchant = fallback.data;
+        merchant = fallbackMerchant;
 
         // Self-heal link if possible
-        if (!merchant.auth_user_id) {
+        if (!fallbackMerchant.auth_user_id) {
           const { error: linkError } = await adminSupabase
             .from("merchants")
             .update({
               auth_user_id: user.id,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", merchant.id);
+            .eq("id", fallbackMerchant.id);
           if (linkError) {
             return NextResponse.json({ error: "Merchant account link could not be repaired" }, { status: 500 });
           }
-          merchant.auth_user_id = user.id;
+          fallbackMerchant.auth_user_id = user.id;
         }
       }
     }

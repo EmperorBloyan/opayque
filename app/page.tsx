@@ -194,7 +194,22 @@ export default function UnifiedLanding() {
     event.preventDefault();
     const supabase = createClient();
     const { data, error } = await supabase.auth.getSession();
-    router.push(error || !data.session ? "/login?next=%2Fdeveloper%2Foverview" : "/developer/overview");
+    if (error || !data.session) {
+      router.push("/login?next=%2Fdeveloper%2Foverview");
+      return;
+    }
+    router.push("/developer/overview");
+  };
+
+  const handleDeveloperDocs = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) {
+      router.push("/login?next=%2Fdeveloper%2Fdocs");
+      return;
+    }
+    router.push("/developer/docs");
   };
 
   if (!mounted) return null;
@@ -298,7 +313,7 @@ export default function UnifiedLanding() {
                     Dashboard
                   </button>
                 </Link>
-                <Link href="/developer/docs" className="flex-1">
+                <Link href="/developer/docs" onClick={(event) => void handleDeveloperDocs(event)} className="flex-1">
                   <button className="w-full py-5 border border-white/10 text-zinc-300 text-center rounded-2xl font-black uppercase text-xs tracking-widest hover:border-white/20 hover:text-white transition-all">
                     Docs
                   </button>
