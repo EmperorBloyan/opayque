@@ -7,8 +7,9 @@ import { Check } from "lucide-react";
 import { ConnectionProvider, WalletProvider, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { clusterApiUrl, Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { sendPayment } from "@/lib/solana/sendPayment";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -211,19 +212,14 @@ function PayButton({ id, merchantWallet, settlementAmount, disabled, status, suc
       } catch {
         transaction = Transaction.from(transactionBytes);
       }
-      const latest = await connection.getLatestBlockhash('confirmed');
-      if (transaction instanceof VersionedTransaction) {
-        transaction.message.recentBlockhash = latest.blockhash;
-      } else {
-        transaction.recentBlockhash = latest.blockhash;
-        transaction.feePayer = publicKey;
+      if (!(transaction instanceof VersionedTransaction)) {
+        throw new Error('Standard payment returned an unsupported transaction format');
       }
-      const signed = await signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signed.serialize(), { preflightCommitment: 'confirmed', maxRetries: 0 });
+      const paymentConnection = transfer.rpcUrl
+        ? new Connection(transfer.rpcUrl, 'confirmed')
+        : connection;
+      const signature = await sendPayment(paymentConnection, transaction, signTransaction);
       setTransactionSignature(signature);
-
-      // Await confirmation
-      await connection.confirmTransaction({ signature, ...latest }, 'confirmed');
 
       // POST to verify endpoint
       const verifyRes = await fetch('/api/v1/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id, transactionSignature: signature }) });

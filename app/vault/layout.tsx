@@ -470,6 +470,37 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   </div>
                 ))}
 
+                <button
+                  type="button"
+                  onClick={() => void handleSaveProfile()}
+                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:bg-purple-500 hover:brightness-110"
+                >
+                  Save Profile
+                </button>
+
+                <fieldset className="space-y-3">
+                  <legend className="text-sm uppercase tracking-[0.35em] text-zinc-500">Wallet addresses</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="cursor-pointer rounded-2xl border border-white/10 bg-zinc-900/70 p-4 transition hover:border-white/20">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <p className="min-w-0 flex-1 truncate font-mono text-sm text-purple-200">{isHydratingMerchant ? "Loading merchant..." : settlementWallet || "Not configured"}</p>
+                        <button type="button" onClick={() => void copyWallet(settlementWallet)} disabled={!settlementWallet} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[10px] uppercase disabled:opacity-40">
+                          {copiedWallet === settlementWallet ? <Check size={12} /> : <Copy size={12} />} Copy
+                        </button>
+                      </div>
+                      <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("settlement"); }} className="mt-4 rounded-full bg-purple-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">Update settlement</button>
+                    </div>
+
+                    <div className="cursor-pointer rounded-2xl border border-white/10 bg-zinc-900/70 p-4 transition hover:border-white/20">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Refund wallet</p>
+                      <p className="mt-3 truncate font-mono text-sm text-purple-200">{refundWallet || "Not configured"}</p>
+                      <p className="mt-3 text-[10px] text-zinc-500">Used as the signing source when issuing refunds. Does not need a separate on-chain vault.</p>
+                      <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("refund"); }} className="mt-4 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">{refundWallet ? "Update refund wallet" : "Connect refund wallet"}</button>
+                    </div>
+                  </div>
+                </fieldset>
+
                 <fieldset className="space-y-3">
                   <legend className="text-sm uppercase tracking-[0.35em] text-zinc-500">Default transfer mode</legend>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -495,38 +526,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   </div>
                 </fieldset>
 
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
-                  <div className="flex items-center gap-3">
-                    <p className="min-w-0 flex-1 truncate font-mono text-sm text-purple-200">{isHydratingMerchant ? "Loading merchant..." : settlementWallet || "Not configured"}</p>
-                    <button type="button" onClick={() => void copyWallet(settlementWallet)} disabled={!settlementWallet} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[10px] uppercase disabled:opacity-40">
-                      {copiedWallet === settlementWallet ? <Check size={12} /> : <Copy size={12} />} Copy
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("settlement"); }} className="rounded-full bg-purple-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">Update settlement</button>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-3">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Refund wallet</p>
-                  <p className="truncate font-mono text-sm text-purple-200">{refundWallet || "Not configured"}</p>
-                  <p className="text-[10px] text-zinc-500">Used as the signing source when issuing refunds. Does not need a separate on-chain vault.</p>
-                  <button type="button" onClick={() => { setWalletUpdateError(null); setWalletModalPurpose("refund"); }} className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em]">{refundWallet ? "Update refund wallet" : "Connect refund wallet"}</button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleSaveProfile()}
-                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:bg-purple-500 hover:brightness-110"
-                >
-                  Save Profile
-                </button>
-
-                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-6 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
+                <section className="rounded-[2rem] border border-red-500/30 bg-red-950/20 p-4 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
                       <p className="text-[10px] font-black uppercase tracking-[0.34em] text-red-300/80">Danger zone</p>
-                      <h3 className="text-2xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
-                      <p className="text-sm text-zinc-300">
+                      <h3 className="text-xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
+                      <p className="text-xs text-zinc-300">
                         Sign out completely from the vault. You can sign in again to re-register or continue with your existing credentials.
                       </p>
                     </div>
@@ -535,7 +540,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                       type="button"
                       onClick={() => void handleSignOut()}
                       disabled={isLocking}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <LogOut size={14} /> {isLocking ? "Signing out..." : "Sign out"}
                     </button>
