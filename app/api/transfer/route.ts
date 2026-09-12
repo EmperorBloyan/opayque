@@ -12,6 +12,7 @@ import { normalizeTransferMode } from '@/lib/payments/transferMode';
 import { buildPublicUsdcTransfer } from '@/lib/solana/publicTransfer';
 
 const isDevnet = isDevnetNetwork();
+const PAYMENT_INTENT_TTL_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
   try {
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
     const supabase = createSupabaseServerClient();
     const ledgerLookup = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint, transfer_mode")
+      .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint, transfer_mode, created_at")
       .eq("id", intent_id)
       .maybeSingle();
     if (ledgerLookup.error) {
@@ -73,6 +74,14 @@ export async function POST(request: Request) {
 
     if (!intent || !["created", "pending_signature", "submitted"].includes(String(intent.status || "created").toLowerCase())) {
       return NextResponse.json({ error: "Payment intent is invalid or no longer payable" }, { status: 409 });
+    }
+    if (!intent.created_at || Date.now() - new Date(intent.created_at).getTime() > PAYMENT_INTENT_TTL_MS) {
+      await supabase
+        .from("payment_ledger")
+        .update({ status: "expired", failed_reason: "Payment intent expired", updated_at: new Date().toISOString() })
+        .eq("id", intent.id)
+        .in("status", ["created", "pending_signature", "submitted"]);
+      return NextResponse.json({ error: "Payment intent expired. Create a new payment link and try again." }, { status: 409 });
     }
     const transferMode = normalizeTransferMode(intent.transfer_mode);
     if (requestedMode !== transferMode) {

@@ -268,9 +268,9 @@ export default function TerminalManager({
     [setTerminals, notifyFleetUpdated]
   );
 
-  const loadFromSupabase = useCallback(async () => {
+  const loadFromSupabase = useCallback(async (showLoading = true) => {
     if (!resolvedMerchantId) return;
-    setIsLoadingTerminals(true);
+    if (showLoading) setIsLoadingTerminals(true);
     try {
       const supabase = createSupabaseBrowserClient();
 
@@ -326,7 +326,7 @@ export default function TerminalManager({
     } catch (err: any) {
       console.error("Failed to load terminals from Supabase", err);
     } finally {
-      setIsLoadingTerminals(false);
+      if (showLoading) setIsLoadingTerminals(false);
     }
   }, [persistTerminals, resolvedMerchantId]);
 
@@ -345,6 +345,7 @@ export default function TerminalManager({
         console.error("Failed to resolve authenticated merchant", error);
         setToast("Unable to verify the merchant session. Please try again.");
         setTimeout(() => setToast(null), 3000);
+        pairingRequestRef.current = false;
         return;
       }
       const merchantPayload = await merchantResponse.json().catch(() => null);
@@ -359,6 +360,7 @@ export default function TerminalManager({
       if (!merchantResponse.ok || !merchantIdForPairing) {
         setToast(merchantPayload?.error || "Merchant profile not found. Complete setup and sign in again.");
         setTimeout(() => setToast(null), 3000);
+        pairingRequestRef.current = false;
         return;
       }
 
@@ -450,7 +452,7 @@ export default function TerminalManager({
   const closePairingModal = () => {
     setIsPairingOpen(false);
     setPairingState("idle");
-    void loadFromSupabase();
+    void loadFromSupabase(false);
   };
 
   const expectedUsdcBaseUnits = useMemo(() => {
@@ -969,7 +971,7 @@ export default function TerminalManager({
           filter: `merchant_id=eq.${resolvedMerchantId}`,
         },
         () => {
-          void loadFromSupabase();
+          void loadFromSupabase(false);
         }
       )
       .subscribe();
@@ -989,7 +991,7 @@ export default function TerminalManager({
 
     const pollForPairingStatus = async () => {
       if (cancelled) return;
-      await loadFromSupabase();
+      await loadFromSupabase(false);
     };
 
     void pollForPairingStatus();
@@ -1026,31 +1028,8 @@ export default function TerminalManager({
       return;
     }
 
-    let merchantResponse: Response;
-    try {
-      merchantResponse = await fetch("/api/v1/merchant", {
-        credentials: "include",
-      });
-    } catch (error) {
-      setToast("Unable to verify merchant. Please try again.");
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    const merchantPayload = await merchantResponse.json().catch(() => null);
-    const merchant = merchantPayload?.merchant;
-    const hasSettlementWallet =
-      (typeof merchant?.settlement_wallet_address === "string" && merchant.settlement_wallet_address.trim()) ||
-      (typeof merchant?.wallet_address === "string" && merchant.wallet_address.trim());
-
-    if (!hasSettlementWallet) {
-      setToast("Save a settlement wallet in API Keys & Merchant Details before pairing.");
-      setTimeout(() => setToast(null), 4000);
-      return;
-    }
-
     setNewTerminalLabel("");
-    setAuthCode("---");
+    setAuthCode("");
     setPairingState("waiting");
     setPairingExpiresAt(null);
     setTimeLeft("GENERATING...");
@@ -1186,6 +1165,10 @@ export default function TerminalManager({
         timeLeft={timeLeft}
         terminalName={newTerminalLabel}
         onTerminalNameChange={(v) => setNewTerminalLabel(v)}
+        onTerminalNameCommit={(value) => {
+          const committedLabel = value.trim();
+          if (committedLabel) void refreshAuthCode(committedLabel);
+        }}
         pairingState={pairingState}
       />
       {toast && (

@@ -48,51 +48,6 @@ function readSandboxKey() {
 async function resolveTestApiKey(): Promise<string> {
   const cached = readSandboxKey();
   if (cached.startsWith("osk_test_")) return cached;
-
-  try {
-    const response = await fetch("/api/v1/keys", { credentials: "include" });
-    const payload = await response.json().catch(() => ({}));
-    const keys = Array.isArray(payload?.keys) ? payload.keys : [];
-    const testKey = keys.find((key: any) => {
-      const secret = key?.rawSecretKey || key?.secret || key?.api_key || "";
-      const environment = String(key?.environment || "").toLowerCase();
-      return String(secret).startsWith("osk_test_") || environment === "devnet" || environment === "test";
-    });
-    const secret = String(testKey?.rawSecretKey || testKey?.secret || testKey?.api_key || "");
-    if (secret.startsWith("osk_test_")) {
-      const existing = JSON.parse(window.localStorage.getItem("opayque_api_keys") || "[]");
-      const entry = {
-        id: String(testKey.id || "api-test-key"),
-        publishable: `osk_test_pub_${String(testKey.id || "").slice(0, 8)}`,
-        secret,
-        createdAt: testKey.created_at || new Date().toISOString(),
-        lastUsed: "never",
-        environment: "devnet" as const,
-      };
-      window.localStorage.setItem(
-        "opayque_api_keys",
-        JSON.stringify(Array.isArray(existing) ? [entry, ...existing.filter((item: any) => item.id !== entry.id)] : [entry])
-      );
-      return secret;
-    }
-  } catch {
-    // Fall through to the merchant profile.
-  }
-
-  try {
-    const response = await fetch("/api/v1/keys", { credentials: "include" });
-    const payload = await response.json().catch(() => ({ keys: [] }));
-    const secret = Array.isArray(payload?.keys)
-      ? (payload.keys as any[]).find((key: any) => {
-          const value = String(key?.rawSecretKey || key?.secret || "");
-          return value.startsWith("osk_test_");
-        })?.rawSecretKey || (payload.keys as any[]).find((key: any) => String(key?.secret || "").startsWith("osk_test_"))?.secret
-      : null;
-    if (typeof secret === "string" && secret.startsWith("osk_test_")) return secret;
-  } catch {
-    // The caller will show the missing-key state.
-  }
-
   return "";
 }
 

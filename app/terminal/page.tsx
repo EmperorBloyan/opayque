@@ -70,6 +70,7 @@ export default function TerminalPage() {
   const [asset, setAsset] = useState<"USDC" | "USDT" | "SOL">("USDC");
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isToastVisible, setIsToastVisible] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [transferMode, setTransferMode] = useState<TransferMode>(() => {
     if (typeof window === "undefined") return "private";
@@ -166,6 +167,40 @@ export default function TerminalPage() {
       setToast("Ready to pair a terminal. Enter the fleet code to continue.");
     }
   }, [activeSession]);
+
+  useEffect(() => {
+    if (!toast) {
+      setIsToastVisible(false);
+      return;
+    }
+
+    setIsToastVisible(true);
+    const fadeTimer = window.setTimeout(() => setIsToastVisible(false), 3500);
+    const clearTimer = window.setTimeout(() => setToast(null), 4000);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isPaid) return;
+
+    const timer = window.setTimeout(() => {
+      setIsPaid(false);
+      setPaymentStatus(null);
+      setLatestTxHash(null);
+      setTransactionId(null);
+      setLockedAmount("");
+      setLockedUsdcAmount("");
+      setAmount("");
+      setStep("POS");
+      window.localStorage.removeItem("opayque_pending_tx_id");
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [isPaid]);
 
   function createDefaultTerminalLabelLocal() {
     try {
@@ -867,7 +902,7 @@ export default function TerminalPage() {
         )}
 
         {toast && (
-          <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
+          <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-6 py-3 text-[10px] font-bold uppercase transition duration-500 ${isToastVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}>
             {toast}
           </div>
         )}

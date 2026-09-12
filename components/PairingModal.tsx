@@ -19,6 +19,7 @@ interface PairingModalProps {
   timeLeft: string;
   terminalName?: string;
   onTerminalNameChange?: (value: string) => void;
+  onTerminalNameCommit?: (value: string) => void;
   pairingState?: "idle" | "waiting" | "used";
 }
 
@@ -30,6 +31,7 @@ export default function PairingModal({
   timeLeft,
   terminalName,
   onTerminalNameChange,
+  onTerminalNameCommit,
   pairingState = "idle",
 }: PairingModalProps) {
   const [copied, setCopied] = useState(false);
@@ -109,6 +111,7 @@ export default function PairingModal({
             <input
               value={terminalName ?? ""}
               onChange={(e) => onTerminalNameChange?.(e.target.value)}
+              onBlur={(e) => onTerminalNameCommit?.(e.target.value)}
               placeholder="Front Desk 1, Bar Tablet"
               className="mt-2 w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-sm text-white outline-none"
             />
@@ -120,7 +123,7 @@ export default function PairingModal({
                 Auth Code
               </p>
               <p className="mt-2 font-mono text-3xl font-black tracking-[0.4em] text-white">
-                {authCode}
+                {authCode || "Generating..."}
               </p>
             </div>
             <div className="flex flex-col gap-2">

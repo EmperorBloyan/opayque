@@ -53,7 +53,7 @@ function query(result: unknown, error: unknown = null) {
 }
 
 function configureSupabase() {
-  const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT });
+  const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, created_at: new Date().toISOString() });
   const merchantQuery = query({ settlement_wallet_address: RECIPIENT, wallet_address: null });
   const updateQuery = query({ id: "ledger-1", status: "pending_signature" });
   const from = vi.fn()
@@ -118,8 +118,30 @@ describe("transfer route resilience", () => {
     expect(mocks.requestPrivateSplTransfer).not.toHaveBeenCalled();
   });
 
+  it("expires an old payable intent before calling MagicBlock", async () => {
+    const expiredIntent = query({
+      id: "ledger-1",
+      merchant_id: MERCHANT_ID,
+      amount: 1.25,
+      amount_base_units: 1_250_000,
+      status: "created",
+      recipient_address: RECIPIENT,
+      mint: MINT,
+      created_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+    });
+    const supabase = { from: vi.fn().mockReturnValue(expiredIntent) };
+    mocks.createSupabaseServerClient.mockReturnValue(supabase);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "Payment intent expired. Create a new payment link and try again." });
+    expect(mocks.requestPrivateSplTransfer).not.toHaveBeenCalled();
+    expect(expiredIntent.update).toHaveBeenCalledWith(expect.objectContaining({ status: "expired" }));
+  });
+
   it("builds a public transfer without calling MagicBlock when the intent is public", async () => {
-    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public" });
+    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public", created_at: new Date().toISOString() });
     const merchantQuery = query({ settlement_wallet_address: RECIPIENT, wallet_address: null });
     const updateQuery = query({ id: "ledger-1", status: "pending_signature" });
     mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValueOnce(intentQuery).mockReturnValueOnce(merchantQuery).mockReturnValueOnce(updateQuery) });
@@ -133,7 +155,7 @@ describe("transfer route resilience", () => {
   });
 
   it("rejects a mode that differs from the snapshotted intent", async () => {
-    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public" });
+    const intentQuery = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "created", recipient_address: RECIPIENT, mint: MINT, transfer_mode: "public", created_at: new Date().toISOString() });
     mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValue(intentQuery) });
 
     const response = await POST(request({ mode: "private" }));
