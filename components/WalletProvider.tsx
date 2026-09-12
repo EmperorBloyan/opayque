@@ -49,21 +49,17 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
         ? "solana:testnet"
         : "solana:devnet";
 
-    try {
-      registerMwa({
-        appIdentity: {
-          name: "Opayque",
-          uri: window.location.origin,
-          icon: "/favicon.ico",
-        },
-        authorizationCache: createDefaultAuthorizationCache(),
-        chains: [chainId] as never,
-        chainSelector: createDefaultChainSelector(),
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      });
-    } catch (error) {
-      console.warn("Mobile wallet registration unavailable", error);
-    }
+    registerMwa({
+      appIdentity: {
+        name: "Opayque",
+        uri: window.location.origin,
+        icon: "/favicon.ico",
+      },
+      authorizationCache: createDefaultAuthorizationCache(),
+      chains: [chainId] as never,
+      chainSelector: createDefaultChainSelector(),
+      onWalletNotFound: createDefaultWalletNotFoundHandler(),
+    });
   }, [network]);
 
   const endpoint = useMemo(

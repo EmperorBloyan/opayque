@@ -47,25 +47,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-function getMobileWalletContext() {
-  if (typeof window === "undefined" || typeof navigator === "undefined") {
-    return { isMobile: false, isInWalletBrowser: false };
-  }
-
-  const userAgent = navigator.userAgent || "";
-  const walletWindow = window as Window & { phantom?: unknown; solflare?: unknown };
-  return {
-    isMobile: /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent),
-    isInWalletBrowser: /Phantom|Solflare/i.test(userAgent) || Boolean(walletWindow.phantom || walletWindow.solflare),
-  };
-}
-
-function openPhantomUniversalLink(targetUrl: string) {
-  const phantomUrl = `https://phantom.app/ul/v1/browse?url=${encodeURIComponent(targetUrl)}`;
-  const popup = window.open(phantomUrl, "_blank", "noopener,noreferrer");
-  if (!popup) window.location.assign(phantomUrl);
-}
-
 export default function ShieldedCheckout({
   amount,
   merchantPubkey,
@@ -80,15 +61,13 @@ export default function ShieldedCheckout({
   checkoutSessionId,
   transferMode: initialTransferMode = "private",
 }: ShieldedCheckoutProps) {
-  const { publicKey, connected, connect, signTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
 
   const [status, setStatus] = useState<PaymentStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [successSignature, setSuccessSignature] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [transferMode, setTransferMode] = useState<TransferMode>(initialTransferMode);
-  const [isMobileWallet, setIsMobileWallet] = useState(false);
-  const [isWalletConnecting, setIsWalletConnecting] = useState(false);
 
   const [draftAmount, setDraftAmount] = useState(() =>
     Number.isFinite(amount) && amount > 0 ? amount : 10
@@ -99,34 +78,6 @@ export default function ShieldedCheckout({
       setDraftAmount(Number.isFinite(amount) && amount > 0 ? amount : 10);
     }
   }, [allowCustomAmount, amount]);
-
-  useEffect(() => {
-    setIsMobileWallet(getMobileWalletContext().isMobile);
-  }, []);
-
-  const handleWalletConnect = async () => {
-    const walletContext = getMobileWalletContext();
-    if (walletContext.isMobile && !walletContext.isInWalletBrowser) {
-      openPhantomUniversalLink(window.location.href);
-      return;
-    }
-
-    if (!connect) {
-      setMessage("No compatible wallet connection is available.");
-      return;
-    }
-
-    setIsWalletConnecting(true);
-    setMessage(null);
-    try {
-      await connect();
-    } catch (error) {
-      console.error("Wallet connection failed", error);
-      setMessage("Wallet connection failed. Open this checkout in Phantom and try again.");
-    } finally {
-      setIsWalletConnecting(false);
-    }
-  };
 
   const safeMerchantPubkey = useMemo(
     () => merchantPubkey?.trim() || "",
@@ -520,20 +471,9 @@ export default function ShieldedCheckout({
         ) : (
           <>
             {!connected ? (
-              isMobileWallet ? (
-                <button
-                  type="button"
-                  onClick={() => void handleWalletConnect()}
-                  disabled={isWalletConnecting}
-                  className="flex h-12 w-full items-center justify-center rounded-xl bg-purple-600 text-[10px] font-black uppercase text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isWalletConnecting ? "Connecting..." : "Open Phantom to Connect"}
-                </button>
-              ) : (
-                <div className="flex justify-center">
-                  <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 !rounded-xl !h-12 !text-[10px] !font-black !uppercase" />
-                </div>
-              )
+              <div className="flex justify-center">
+                <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 !rounded-xl !h-12 !text-[10px] !font-black !uppercase" />
+              </div>
             ) : (
               <button
                 type="button"
