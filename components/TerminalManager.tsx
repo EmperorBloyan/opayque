@@ -1017,6 +1017,17 @@ export default function TerminalManager({
     }
   }, [isPairingOpen, pairingState, safeTerminals.length]);
 
+  useEffect(() => {
+    const label = newTerminalLabel.trim();
+    if (!isPairingOpen || pairingState !== "waiting" || !label) return;
+
+    const timer = window.setTimeout(() => {
+      void refreshAuthCode(label);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [isPairingOpen, newTerminalLabel, pairingState, refreshAuthCode]);
+
   const pairNewTerminal = async () => {
     if (pairingRequestRef.current || isRefreshingCode) return;
 

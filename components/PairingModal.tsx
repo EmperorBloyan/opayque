@@ -37,6 +37,7 @@ export default function PairingModal({
   pairingState = "idle",
 }: PairingModalProps) {
   const [copied, setCopied] = useState(false);
+  const [isSuccessFading, setIsSuccessFading] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -51,8 +52,13 @@ export default function PairingModal({
   // Auto-close shortly after successful pair so parent can refresh fleet
   useEffect(() => {
     if (!isOpen || pairingState !== "used") return;
-    const t = window.setTimeout(() => onClose(), 1200);
-    return () => window.clearTimeout(t);
+    setIsSuccessFading(false);
+    const fadeTimer = window.setTimeout(() => setIsSuccessFading(true), 3500);
+    const closeTimer = window.setTimeout(() => onClose(), 4000);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(closeTimer);
+    };
   }, [isOpen, pairingState, onClose]);
 
   const copyCode = async () => {
@@ -71,7 +77,7 @@ export default function PairingModal({
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className="relative w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#121218] p-6 shadow-2xl shadow-black/60">
         {pairingState === "used" && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[2.5rem] bg-purple-600/20 backdrop-blur-xl animate-in fade-in zoom-in duration-300">
+          <div className={`absolute inset-0 z-20 flex items-center justify-center rounded-[2.5rem] bg-purple-600/20 backdrop-blur-xl transition-opacity duration-500 ${isSuccessFading ? "opacity-0" : "animate-in fade-in zoom-in duration-300 opacity-100"}`}>
             <div className="flex flex-col items-center justify-center text-center">
               <div className="mb-4 rounded-full bg-white p-4 shadow-2xl animate-bounce">
                 <LucideCheck size={40} className="text-purple-600" />
