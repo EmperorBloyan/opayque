@@ -20,6 +20,7 @@ interface PairingModalProps {
   terminalName?: string;
   onTerminalNameChange?: (value: string) => void;
   onTerminalNameCommit?: (value: string) => void;
+  isRefreshingCode?: boolean;
   pairingState?: "idle" | "waiting" | "used";
 }
 
@@ -32,6 +33,7 @@ export default function PairingModal({
   terminalName,
   onTerminalNameChange,
   onTerminalNameCommit,
+  isRefreshingCode = false,
   pairingState = "idle",
 }: PairingModalProps) {
   const [copied, setCopied] = useState(false);
@@ -112,9 +114,23 @@ export default function PairingModal({
               value={terminalName ?? ""}
               onChange={(e) => onTerminalNameChange?.(e.target.value)}
               onBlur={(e) => onTerminalNameCommit?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onTerminalNameCommit?.(e.currentTarget.value);
+                }
+              }}
               placeholder="Front Desk 1, Bar Tablet"
               className="mt-2 w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-sm text-white outline-none"
             />
+            <button
+              type="button"
+              onClick={() => onTerminalNameCommit?.(terminalName ?? "")}
+              disabled={isRefreshingCode || !(terminalName ?? "").trim()}
+              className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-300 transition hover:text-purple-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isRefreshingCode ? "Updating code..." : "Apply terminal name"}
+            </button>
           </div>
 
           <div className="flex items-center justify-between gap-3">
@@ -123,7 +139,7 @@ export default function PairingModal({
                 Auth Code
               </p>
               <p className="mt-2 font-mono text-3xl font-black tracking-[0.4em] text-white">
-                {authCode || "Generating..."}
+                {authCode || "---"}
               </p>
             </div>
             <div className="flex flex-col gap-2">

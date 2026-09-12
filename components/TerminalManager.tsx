@@ -449,11 +449,11 @@ export default function TerminalManager({
     return () => clearInterval(interval);
   }, [pairingExpiresAt, isPairingOpen]);
 
-  const closePairingModal = () => {
+  const closePairingModal = useCallback(() => {
     setIsPairingOpen(false);
     setPairingState("idle");
     void loadFromSupabase(false);
-  };
+  }, [loadFromSupabase]);
 
   const expectedUsdcBaseUnits = useMemo(() => {
     if (!amount || Number.isNaN(amount)) return 0n;
@@ -1169,6 +1169,7 @@ export default function TerminalManager({
           const committedLabel = value.trim();
           if (committedLabel) void refreshAuthCode(committedLabel);
         }}
+        isRefreshingCode={isRefreshingCode}
         pairingState={pairingState}
       />
       {toast && (
