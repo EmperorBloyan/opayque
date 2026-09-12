@@ -196,8 +196,15 @@ export default function ShieldedCheckout({
         0n
       );
       const requiredUsdcBaseUnits = BigInt(Math.ceil(safeAmount * 1_000_000));
-      if (solLamports < 5_000) {
-        throw new Error(`Insufficient SOL for network fees. Add ${isDevnet ? "Devnet" : "Mainnet"} SOL to this wallet.`);
+      const recipientTokenAccount = getAssociatedTokenAddressSync(mint, new PublicKey(safeMerchantPubkey));
+      const recipientTokenAccountInfo = await withTimeout(
+        connection.getAccountInfo(recipientTokenAccount, "confirmed"),
+        10_000,
+        "Recipient account check"
+      );
+      const minimumSolLamports = recipientTokenAccountInfo ? 5_000 : 2_100_000;
+      if (solLamports < minimumSolLamports) {
+        throw new Error(`Insufficient SOL for network fees${recipientTokenAccountInfo ? "" : " and token-account rent"}. Add ${isDevnet ? "Devnet" : "Mainnet"} SOL to this wallet.`);
       }
       if (usdcBaseUnits < requiredUsdcBaseUnits) {
         throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);

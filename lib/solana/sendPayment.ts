@@ -62,7 +62,7 @@ export async function sendPayment(
       }
       signature = await withTimeout(connection.sendRawTransaction(signed.serialize(), {
           preflightCommitment: "confirmed",
-          maxRetries: 0,
+          maxRetries: 3,
         }), 20_000, "Transaction submission");
       onStage?.("submitting");
       logLifecycle("info", "wallet_payment", "submitting", getSolanaNetwork());
