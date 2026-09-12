@@ -124,18 +124,25 @@ export default function ApiKeysPage() {
       if (localSettlementWallet) setSettlementWalletAddress(localSettlementWallet);
       if (localTransferMode === "public" || localTransferMode === "private") setDefaultTransferMode(localTransferMode);
 
-      const cachedKeys = window.localStorage.getItem("opayque_api_keys");
-      if (cachedKeys) {
-        try {
-          const parsed = JSON.parse(cachedKeys);
-          if (Array.isArray(parsed)) setKeyPairs(parsed);
-        } catch (error) {
-          console.warn("Failed to parse cached keys", error);
-        }
-      }
-
       try {
         const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+          setKeyPairs([]);
+          window.localStorage.removeItem("opayque_api_keys");
+          setLoadingKeys(false);
+          return;
+        }
+
+        const cachedKeys = window.localStorage.getItem("opayque_api_keys");
+        if (cachedKeys) {
+          try {
+            const parsed = JSON.parse(cachedKeys);
+            if (Array.isArray(parsed)) setKeyPairs(parsed);
+          } catch (error) {
+            console.warn("Failed to parse cached keys", error);
+          }
+        }
 
         const [merchantRes, keysRes] = await Promise.all([
           fetch("/api/v1/merchant").catch(() => null),

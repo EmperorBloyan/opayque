@@ -26,7 +26,9 @@ describe('middleware security headers', () => {
   it('requires authentication for protected developer, vault, and sandbox routes', () => {
     expect(routeNeedsAuth('/developer/overview')).toBe(true);
     expect(routeNeedsAuth('/developer/keys')).toBe(true);
-    expect(routeNeedsAuth('/developer/docs')).toBe(true);
+    expect(routeNeedsAuth('/developer/docs')).toBe(false);
+    expect(routeNeedsAuth('/developer/docs/reference')).toBe(false);
+    expect(routeNeedsAuth('/developer/docs-private')).toBe(true);
     expect(routeNeedsAuth('/sandbox')).toBe(true);
     expect(routeNeedsAuth('/developer/sandbox')).toBe(true);
     expect(routeNeedsAuth('/')).toBe(false);

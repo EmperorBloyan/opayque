@@ -28,7 +28,8 @@ export function applySecurityHeaders(response: NextResponse) {
 export function routeNeedsAuth(pathname: string) {
   const normalized = pathname.split("?")[0];
 
-  const isDeveloperRoute = normalized.startsWith("/developer");
+  const isPublicDocsRoute = normalized === "/developer/docs" || normalized.startsWith("/developer/docs/");
+  const isDeveloperRoute = normalized.startsWith("/developer") && !isPublicDocsRoute;
   const isVaultRoute = normalized.startsWith("/vault");
   const isBotRoute = normalized.startsWith("/bot");
   const isRegistryRoute = normalized.startsWith("/registry");

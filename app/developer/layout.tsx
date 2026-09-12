@@ -22,7 +22,8 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   const router = useRouter();
 
   // Hide layout chrome on full-page app experiences that should render without the developer shell behind them
-  const isHiddenPage = pathname === "/developer/keys" || pathname === "/developer/sandbox" || pathname.includes("onboarding");
+  const isPublicDocsPage = pathname === "/developer/docs" || pathname.startsWith("/developer/docs/");
+  const isHiddenPage = pathname === "/developer/keys" || pathname === "/developer/sandbox" || isPublicDocsPage || pathname.includes("onboarding");
 
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [merchantName, setMerchantName] = useState("Opayque Merchant");
