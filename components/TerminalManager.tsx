@@ -1050,6 +1050,26 @@ export default function TerminalManager({
   };
 
   const disconnectTerminal = async (id: string) => {
+    if (pendingTerminal?.id === id) {
+      if (!confirm("Remove this standby terminal? Its pairing code will be cancelled.")) return;
+      try {
+        const response = await fetch("/api/terminal/pairing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "cancel", code: pendingTerminal.accessCode }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) throw new Error(payload?.error || "Unable to cancel pairing code");
+        setPendingTerminal(null);
+        setToast("Standby terminal removed");
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : "Unable to cancel pairing code");
+        setTimeout(() => setToast(null), 3000);
+      }
+      return;
+    }
+
     const terminal = safeTerminals.find((item) => item.id === id);
     if (!terminal || !confirm("Remove this terminal from the fleet permanently? It must be paired again to reconnect.")) {
       return;
@@ -1165,13 +1185,13 @@ export default function TerminalManager({
                     </p>
                   </div>
                 </div>
-                {!terminal.isPending && <button
+                <button
                   onClick={() => void disconnectTerminal(terminal.id)}
                   className="text-zinc-600 transition-all hover:text-red-500"
                   aria-label="Remove terminal"
                 >
                   <LucideTrash2 size={16} />
-                </button>}
+                </button>
               </div>
             ))}
           </div>

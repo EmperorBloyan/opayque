@@ -176,6 +176,41 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "cancel") {
+      if (!code) return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+
+      const { data: merchant, error: merchantError } = await supabase
+        .from("merchants")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
+
+      const adminSupabase = createSupabaseServerClient();
+      const { data: pairing, error: pairingError } = await adminSupabase
+        .from("terminal_pairing_codes")
+        .select("code, merchant_id, status")
+        .eq("code", code)
+        .maybeSingle();
+      if (pairingError || !pairing || pairing.merchant_id !== merchant.id) {
+        return NextResponse.json({ success: false, error: "Pairing code not found" }, { status: 404 });
+      }
+      if (pairing.status !== "PENDING") return NextResponse.json({ success: true, cancelled: false });
+
+      const { error: cancelError } = await adminSupabase
+        .from("terminal_pairing_codes")
+        .update({ status: "EXPIRED" })
+        .eq("code", code)
+        .eq("merchant_id", merchant.id)
+        .eq("status", "PENDING");
+      if (cancelError) return NextResponse.json({ success: false, error: "Pairing code could not be cancelled" }, { status: 500 });
+
+      return NextResponse.json({ success: true, cancelled: true });
+    }
+
     return NextResponse.json({ success: false, error: "Unsupported action" }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing failed") }, { status: 500 });
