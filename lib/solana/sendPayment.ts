@@ -32,7 +32,7 @@ export async function sendPayment(
   timeoutMs = 90_000,
   onStage?: (stage: "approving" | "submitting" | "confirming") => void,
 ): Promise<string> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 1; attempt += 1) {
     const validity = await withTimeout(connection.getLatestBlockhash("confirmed"), 10_000, "Blockhash request");
     const transaction = VersionedTransaction.deserialize(unsigned.serialize());
     transaction.message.recentBlockhash = validity.blockhash;
@@ -68,7 +68,9 @@ export async function sendPayment(
       logLifecycle("info", "wallet_payment", "submitting", getSolanaNetwork());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/blockhash|expired|last valid block/i.test(message) && attempt === 0) continue;
+      if (/blockhash|expired|last valid block/i.test(message)) {
+        throw new BlockhashExpiredError();
+      }
       if (error instanceof PaymentTimeoutError) throw error;
       throw new PaymentRpcError(message);
     }
@@ -90,7 +92,7 @@ export async function sendPayment(
       }
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
-    if (attempt === 1) throw new PaymentTimeoutError();
+    throw new PaymentTimeoutError();
   }
   throw new BlockhashExpiredError();
 }
