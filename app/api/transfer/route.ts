@@ -62,13 +62,23 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient();
-    const ledgerLookup = await supabase
+    let ledgerLookup = await supabase
       .from("payment_ledger")
       .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint, transfer_mode, created_at")
       .eq("id", intent_id)
       .maybeSingle();
     if (ledgerLookup.error) {
       return NextResponse.json({ error: "Unable to load payment intent" }, { status: 500 });
+    }
+    if (!ledgerLookup.data) {
+      ledgerLookup = await supabase
+        .from("payment_ledger")
+        .select("id, merchant_id, amount, amount_base_units, status, recipient_address, mint, transfer_mode, created_at")
+        .eq("checkout_session_id", intent_id)
+        .maybeSingle();
+      if (ledgerLookup.error) {
+        return NextResponse.json({ error: "Unable to load payment intent" }, { status: 500 });
+      }
     }
     const intent = ledgerLookup.data;
 

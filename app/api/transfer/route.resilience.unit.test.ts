@@ -108,6 +108,35 @@ describe("transfer route resilience", () => {
     expect(second.updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending_signature", sender_address: SENDER }));
   });
 
+  it("resolves a hosted checkout session to its payment ledger intent", async () => {
+    const sessionLookup = query({
+      id: "ledger-1",
+      merchant_id: MERCHANT_ID,
+      amount: 1.25,
+      amount_base_units: 1_250_000,
+      status: "created",
+      recipient_address: RECIPIENT,
+      mint: MINT,
+      created_at: new Date().toISOString(),
+    });
+    const merchantQuery = query({ settlement_wallet_address: RECIPIENT, wallet_address: null });
+    const updateQuery = query({ id: "ledger-1", status: "pending_signature" });
+    const supabase = {
+      from: vi.fn()
+        .mockReturnValueOnce(query(null))
+        .mockReturnValueOnce(sessionLookup)
+        .mockReturnValueOnce(merchantQuery)
+        .mockReturnValueOnce(updateQuery),
+    };
+    mocks.createSupabaseServerClient.mockReturnValue(supabase);
+
+    const response = await POST(request({ intent_id: "checkout-session-1" }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: true, transaction: "tx" });
+    expect(sessionLookup.eq).toHaveBeenCalledWith("checkout_session_id", "checkout-session-1");
+  });
+
   it("rejects a replayed or terminal intent before calling MagicBlock", async () => {
     const terminalIntent = query({ id: "ledger-1", merchant_id: MERCHANT_ID, amount: 1.25, amount_base_units: 1_250_000, status: "confirmed", recipient_address: RECIPIENT, mint: MINT });
     mocks.createSupabaseServerClient.mockReturnValue({ from: vi.fn().mockReturnValue(terminalIntent) });
