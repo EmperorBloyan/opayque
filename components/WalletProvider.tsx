@@ -49,17 +49,21 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
         ? "solana:testnet"
         : "solana:devnet";
 
-    registerMwa({
-      appIdentity: {
-        name: "Opayque",
-        uri: window.location.origin,
-        icon: "/favicon.ico",
-      },
-      authorizationCache: createDefaultAuthorizationCache(),
-      chains: [chainId] as never,
-      chainSelector: createDefaultChainSelector(),
-      onWalletNotFound: createDefaultWalletNotFoundHandler(),
-    });
+    try {
+      registerMwa({
+        appIdentity: {
+          name: "Opayque",
+          uri: window.location.origin,
+          icon: "/favicon.ico",
+        },
+        authorizationCache: createDefaultAuthorizationCache(),
+        chains: [chainId] as never,
+        chainSelector: createDefaultChainSelector(),
+        onWalletNotFound: createDefaultWalletNotFoundHandler(),
+      });
+    } catch (error) {
+      console.warn("Mobile wallet registration unavailable", error);
+    }
   }, [network]);
 
   const endpoint = useMemo(
@@ -96,7 +100,7 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect onError={onError}>
+      <WalletProvider wallets={wallets} autoConnect={false} onError={onError}>
         <WalletModalProvider>
           <EnvironmentProvider>
             <CurrencyProvider>
