@@ -559,6 +559,11 @@ export default function ApiKeysPage() {
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
+              <div className="mb-6">
+                <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
+                <h2 className="mt-2 text-2xl font-bold text-white">Business details</h2>
+              </div>
+
               <div className="mb-8 flex flex-col items-center text-center">
                 <div className="group relative mb-6">
                   <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10">
@@ -586,10 +591,6 @@ export default function ApiKeysPage() {
                   className="hidden"
                   onChange={handleImageUpload}
                 />
-              </div>
-
-              <div className="mb-5 flex items-center justify-end">
-                <h2 className="text-2xl font-bold text-white">Business details</h2>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
