@@ -258,21 +258,63 @@ export default function ShieldedCheckout({
         signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
         setMessage("Payment confirmed on Solana.");
       } else if (built.transaction instanceof Transaction && signTransaction) {
-        const freshBlockhash = await paymentConnection.getLatestBlockhash("confirmed");
-        built.transaction.recentBlockhash = freshBlockhash.blockhash;
-        built.transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
-        built.transaction.feePayer = publicKey;
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-        const signed = await signTransaction(built.transaction as any);
-        setMessage("Submitting transaction...");
-        signature = await paymentConnection.sendRawTransaction(signed.serialize(), {
-          skipPreflight: false,
-          preflightCommitment: "confirmed",
-          maxRetries: 0,
-        });
-        setMessage("Confirming on Solana...");
-        await paymentConnection.confirmTransaction({ signature, ...freshBlockhash }, "confirmed");
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const freshBlockhash = await withTimeout(
+            paymentConnection.getLatestBlockhash("confirmed"),
+            10_000,
+            "Blockhash request"
+          );
+          const transaction = Transaction.from(built.transaction.serialize());
+          transaction.recentBlockhash = freshBlockhash.blockhash;
+          transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
+          transaction.feePayer = publicKey;
+
+          const signed = await withTimeout(
+            signTransaction(transaction as any),
+            120_000,
+            "Wallet approval"
+          );
+          const simulation = await withTimeout(
+            paymentConnection.simulateTransaction(signed as any, { sigVerify: false }),
+            15_000,
+            "Transaction simulation"
+          );
+          if (simulation.value.err) {
+            throw new Error(
+              simulation.value.logs?.slice(-3).join("; ") ||
+                JSON.stringify(simulation.value.err)
+            );
+          }
+
+          try {
+            setMessage("Submitting transaction...");
+            signature = await withTimeout(
+              paymentConnection.sendRawTransaction(signed.serialize(), {
+                skipPreflight: false,
+                preflightCommitment: "confirmed",
+                maxRetries: 0,
+              }),
+              20_000,
+              "Transaction submission"
+            );
+            setMessage("Confirming on Solana...");
+            await withTimeout(
+              paymentConnection.confirmTransaction({ signature, ...freshBlockhash }, "confirmed"),
+              30_000,
+              "Transaction confirmation"
+            );
+            break;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (attempt === 0 && /blockhash|expired|last valid/i.test(errorMessage)) {
+              signature = null;
+              continue;
+            }
+            throw error;
+          }
+        }
       } else {
         throw new Error("Wallet cannot sign the payment transaction.");
       }
@@ -331,8 +373,12 @@ export default function ShieldedCheckout({
       console.error("Shielded payment failed:", error, { logs: transactionLogs });
       clearPendingPayment(intentId);
       setStatus("error");
+      const isWalletApprovalTimeout = /wallet approval timed out/i.test(errorMessage);
+      const isRpcTimeout = /blockhash request|transaction simulation|transaction submission|transaction confirmation timed out/i.test(errorMessage);
       setMessage(
-        /blockhash|expired|timed out|confirmation/i.test(errorMessage)
+        isWalletApprovalTimeout
+          ? "Wallet approval took too long. Please approve the transaction and try again."
+          : isRpcTimeout || /blockhash|expired|last valid/i.test(errorMessage)
           ? "Transaction expired or took too long. Please try again."
           : errorMessage
       );
