@@ -22,6 +22,7 @@ export interface Terminal {
   lastSeen: number;
   accessCode?: string;
   isActive?: boolean;
+  isPending?: boolean;
   lastLoginAt?: number | null;
 }
 

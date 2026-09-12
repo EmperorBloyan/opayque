@@ -1010,6 +1010,7 @@ export default function TerminalManager({
 
     const previousCount = previousTerminalCountRef.current ?? safeTerminals.length;
     if (safeTerminals.length > previousCount) {
+      setPendingTerminal(null);
       setPairingState("used");
       setToast("Pairing successful");
       const timer = window.setTimeout(() => setToast(null), 1200);
@@ -1093,6 +1094,17 @@ export default function TerminalManager({
     setToast("Terminal removed from fleet");
   };
 
+  useEffect(() => {
+    if (!pendingTerminal) return;
+    if (safeTerminals.some((terminal) => terminal.label === pendingTerminal.label && terminal.isActive)) {
+      setPendingTerminal(null);
+    }
+  }, [pendingTerminal, safeTerminals]);
+
+  const displayTerminals = pendingTerminal
+    ? [pendingTerminal, ...safeTerminals.filter((terminal) => terminal.id !== pendingTerminal.id)]
+    : safeTerminals;
+
   if (isCheckoutMode) {
     return renderCheckoutContent();
   }
@@ -1106,7 +1118,7 @@ export default function TerminalManager({
             <h3 className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Hardware Fleet</h3>
           </div>
           <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">
-            • {safeTerminals.length} secured nodes
+            • {displayTerminals.length} secured nodes
           </p>
         </div>
 
@@ -1131,7 +1143,7 @@ export default function TerminalManager({
       </div>
 
       <div className="rounded-[2rem] border border-white/10 bg-[#050507] p-6">
-        {safeTerminals.length === 0 ? (
+        {displayTerminals.length === 0 ? (
           <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/40 text-zinc-500">
               <LucideHardDrive size={24} />
@@ -1140,7 +1152,7 @@ export default function TerminalManager({
           </div>
         ) : (
           <div className="space-y-3">
-            {safeTerminals.map((terminal) => (
+            {displayTerminals.map((terminal) => (
               <div key={terminal.id} className="flex items-center justify-between rounded-[1.5rem] border border-white/10 bg-black/40 p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-400">
@@ -1149,17 +1161,17 @@ export default function TerminalManager({
                   <div>
                     <p className="text-sm font-medium text-white">{terminal.label}</p>
                     <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">
-                      {terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
+                      {terminal.isPending ? "Standby • Awaiting staff login" : terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
                     </p>
                   </div>
                 </div>
-                <button
+                {!terminal.isPending && <button
                   onClick={() => void disconnectTerminal(terminal.id)}
                   className="text-zinc-600 transition-all hover:text-red-500"
                   aria-label="Remove terminal"
                 >
                   <LucideTrash2 size={16} />
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -1181,6 +1193,16 @@ export default function TerminalManager({
           if (committedLabel) void refreshAuthCode(committedLabel);
         }}
         isRefreshingCode={isRefreshingCode}
+        pairingState={pairingState}
+      />
+      {toast && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase z-50 shadow-lg transition-opacity duration-300">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
         pairingState={pairingState}
       />
       {toast && (
