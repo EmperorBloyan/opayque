@@ -22,6 +22,7 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
+  const [autoConnect, setAutoConnect] = useState(false);
 
   const network = useMemo(() => {
     const envNetwork = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
@@ -42,6 +43,10 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
     if (typeof window === "undefined") {
       return;
     }
+
+    const userAgent = navigator.userAgent || "";
+    const walletBrowser = /Phantom|Solflare/i.test(userAgent) || Boolean((window as Window & { phantom?: unknown; solflare?: unknown }).phantom || (window as Window & { phantom?: unknown; solflare?: unknown }).solflare);
+    setAutoConnect(walletBrowser);
 
     const chainId = network === "mainnet-beta"
       ? "solana:mainnet-beta"
@@ -100,7 +105,7 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false} onError={onError}>
+      <WalletProvider wallets={wallets} autoConnect={autoConnect} onError={onError}>
         <WalletModalProvider>
           <EnvironmentProvider>
             <CurrencyProvider>

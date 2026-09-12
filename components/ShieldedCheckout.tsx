@@ -53,9 +53,10 @@ function getMobileWalletContext() {
   }
 
   const userAgent = navigator.userAgent || "";
+  const walletWindow = window as Window & { phantom?: unknown; solflare?: unknown };
   return {
     isMobile: /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent),
-    isInWalletBrowser: /Phantom|Solflare/i.test(userAgent),
+    isInWalletBrowser: /Phantom|Solflare/i.test(userAgent) || Boolean(walletWindow.phantom || walletWindow.solflare),
   };
 }
 
