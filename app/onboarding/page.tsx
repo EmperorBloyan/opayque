@@ -181,14 +181,11 @@ export default function OnboardingPage() {
   };
 
   /** Gasless vault init via protocol relayer */
-  const handleInitVault = async () => {
+  const initializeVault = async (): Promise<boolean> => {
     if (!publicKey || !signTransaction) {
       setErrorMessage("Connect your wallet before initializing the vault.");
-      return;
+      return false;
     }
-
-    setIsInitVault(true);
-    setErrorMessage(null);
 
     try {
       for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -222,7 +219,7 @@ export default function OnboardingPage() {
 
           if (data.alreadyExists) {
             setVaultReady(true);
-            return;
+            return true;
           }
 
           if (!data.transaction || !data.blockhash || !Number.isFinite(Number(data.lastValidBlockHeight))) {
@@ -270,7 +267,7 @@ export default function OnboardingPage() {
           );
 
           setVaultReady(true);
-          return;
+          return true;
         } catch (error) {
           if (
             attempt === 0 &&
@@ -285,6 +282,23 @@ export default function OnboardingPage() {
       console.error("Vault init failed", e);
       setErrorMessage(e?.message || "Vault initialization failed");
       setVaultReady(false);
+      return false;
+    }
+
+    return false;
+  };
+
+  const handleInitVault = async () => {
+    const { data: { user } } = await createClient().auth.getUser();
+    if (!user) {
+      setErrorMessage("Create your account first, then initialize the vault.");
+      return;
+    }
+
+    setIsInitVault(true);
+    setErrorMessage(null);
+    try {
+      await initializeVault();
     } finally {
       setIsInitVault(false);
     }
@@ -304,11 +318,6 @@ export default function OnboardingPage() {
       }
       if (!walletSigned) {
         throw new Error("Wallet signature is required before onboarding.");
-      }
-      if (!vaultReady) {
-        throw new Error(
-          "Initialize your secured vault (gasless) before creating the account."
-        );
       }
       if (!email.trim() || !password.trim()) {
         throw new Error("Email and password are required.");
@@ -409,6 +418,15 @@ export default function OnboardingPage() {
             walletAddress.trim() ||
             null,
         });
+      }
+
+      if (!vaultReady) {
+        setIsInitVault(true);
+        const initialized = await initializeVault();
+        setIsInitVault(false);
+        if (!initialized) {
+          throw new Error("Account created, but vault initialization failed. Please try again.");
+        }
       }
 
       if (typeof window !== "undefined") {
@@ -520,8 +538,8 @@ export default function OnboardingPage() {
               Set up your control center
             </h1>
             <p className="mt-2 text-xs text-zinc-400">
-              Connect wallet, sign ownership, initialize gasless vault, then
-              create your account.
+              Connect wallet, sign ownership, create your account, then
+              initialize the gasless vault.
             </p>
             {setupNotice && (
               <div className="mt-4 w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
@@ -621,7 +639,7 @@ export default function OnboardingPage() {
                 <span>
                   {vaultReady
                     ? "Secured vault initialized (gasless)"
-                    : "Vault must be initialized before account creation"}
+                    : "Vault will be initialized after account creation"}
                 </span>
               </div>
             </div>
@@ -702,7 +720,7 @@ export default function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={
-                    isLoading || isNavigating || !walletSigned || !vaultReady
+                    isLoading || isNavigating || !walletSigned
                   }
                   className="flex w-full flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/25 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >

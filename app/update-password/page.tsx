@@ -14,9 +14,29 @@ export default function UpdatePasswordPage() {
 
   useEffect(() => {
     const checkSession = async () => {
+      const supabase = createClient();
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const errorDescription = params.get("error_description");
+
+      if (errorDescription) {
+        setError("This password reset link is invalid or has expired. Request a new one.");
+        setIsCheckingSession(false);
+        return;
+      }
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError("This password reset link is invalid or has expired. Request a new one.");
+          setIsCheckingSession(false);
+          return;
+        }
+      }
+
       const {
         data: { session },
-      } = await createClient().auth.getSession();
+      } = await supabase.auth.getSession();
 
       if (!session) {
         window.location.href = "/forgot-password";
@@ -44,7 +64,8 @@ export default function UpdatePasswordPage() {
     }
 
     setIsLoading(true);
-    const { error: updateError } = await createClient().auth.updateUser({
+    const supabase = createClient();
+    const { error: updateError } = await supabase.auth.updateUser({
       password: newPassword,
     });
 
@@ -54,7 +75,7 @@ export default function UpdatePasswordPage() {
       return;
     }
 
-    await createClient().auth.signOut();
+    await supabase.auth.signOut();
     alert("Password updated successfully.");
     window.location.href = "/login";
   };
@@ -79,6 +100,10 @@ export default function UpdatePasswordPage() {
           <h1 className="mt-4 text-4xl font-black uppercase tracking-tight">Choose a new password</h1>
           <p className="mt-4 text-sm leading-7 text-zinc-400">Use at least 8 characters, then confirm your new password.</p>
         </div>
+
+        {error && !newPassword && (
+          <p className="mt-6 rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>
+        )}
 
         <form onSubmit={updatePassword} className="mt-8 space-y-6">
           <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
@@ -115,7 +140,7 @@ export default function UpdatePasswordPage() {
             </div>
           </label>
 
-          {error && <p className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>}
+          {error && newPassword && <p className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>}
 
           <button
             type="submit"

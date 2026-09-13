@@ -249,7 +249,15 @@ function LoginContent() {
               </label>
 
               <label className="block text-xs uppercase tracking-[0.3em] text-zinc-400">
-                Password
+                <span className="flex items-center justify-between gap-3">
+                  <span>Password</span>
+                  <Link
+                    href="/forgot-password"
+                    className="normal-case tracking-normal text-xs font-bold text-purple-400 transition hover:text-purple-300"
+                  >
+                    Forgot password?
+                  </Link>
+                </span>
                 <div className="mt-3 rounded-3xl border border-white/10 bg-[#050508] px-4 py-3 focus-within:border-purple-500/60">
                   <div className="flex items-center gap-3 text-zinc-400">
                     <Lock className="h-4 w-4" />
@@ -309,22 +317,14 @@ function LoginContent() {
                   <span>Create Account</span>
                 </button>
 
-                <div className="flex w-full flex-1 flex-col items-center gap-3 sm:w-auto">
-                  <button
-                    type="submit"
-                    disabled={isLoading || isNavigating}
-                    className="flex w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                  <Link
-                    href="/forgot-password"
-                    className="text-xs font-bold text-purple-400 transition hover:text-purple-300"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                <button
+                  type="submit"
+                  disabled={isLoading || isNavigating}
+                  className="flex flex-1 w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </form>
           </div>
