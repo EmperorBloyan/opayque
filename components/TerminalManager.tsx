@@ -204,6 +204,7 @@ export default function TerminalManager({
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
+  const [pendingTerminal, setPendingTerminal] = useState<Terminal | null>(null);
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
   const [toast, setToast] = useState<string | null>(null);
   
