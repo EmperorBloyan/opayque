@@ -1223,13 +1223,3 @@ export default function TerminalManager({
     </div>
   );
 }
-        pairingState={pairingState}
-      />
-      {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase z-50 shadow-lg transition-opacity duration-300">
-          {toast}
-        </div>
-      )}
-    </div>
-  );
-}
