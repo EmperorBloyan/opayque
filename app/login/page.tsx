@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
@@ -308,14 +309,22 @@ function LoginContent() {
                   <span>Create Account</span>
                 </button>
 
-                <button
-                  type="submit"
-                  disabled={isLoading || isNavigating}
-                  className="flex flex-1 w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+                <div className="flex w-full flex-1 flex-col items-center gap-3 sm:w-auto">
+                  <button
+                    type="submit"
+                    disabled={isLoading || isNavigating}
+                    className="flex w-full items-center justify-center gap-2 rounded-[2.5rem] bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white shadow-lg shadow-purple-500/20 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span>{isLoading ? "Unlocking…" : "Unlock Hub"}</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs font-bold text-purple-400 transition hover:text-purple-300"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
             </form>
           </div>

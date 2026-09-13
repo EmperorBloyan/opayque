@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   // Fetch the latest ledger record for this session if present
   const { data: tx, error: txErr } = await supabaseAdmin
     .from('payment_ledger')
-    .select('id, signature, created_at')
+    .select('id, signature, status, created_at')
     .eq('checkout_session_id', sessionId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -30,6 +30,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     amount: session.amount,
     currency: session.currency,
     transferMode: session.transfer_mode === 'public' ? 'public' : 'private',
+    paymentStatus: tx?.status || null,
     merchantWallet: session.merchants?.settlement_wallet_address || null,
     solanaPayUrl: session.solana_pay_url,
     updatedAt: session.updated_at,
