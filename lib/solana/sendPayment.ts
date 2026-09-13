@@ -1,4 +1,4 @@
-import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getSolanaNetwork } from "./constants";
 import { logLifecycle } from "../observability";
 
@@ -25,6 +25,29 @@ function isWalletRejection(error: unknown): boolean {
   return /rejected|denied|declined|user cancel|user denied/i.test(message);
 }
 
+async function waitForSignature(
+  connection: Connection,
+  signature: string,
+  lastValidBlockHeight: number,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const status = (await withTimeout(
+      connection.getSignatureStatuses([signature]),
+      10_000,
+      "Transaction status request",
+    )).value[0];
+    if (status?.err) throw new PaymentRpcError(JSON.stringify(status.err));
+    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return;
+    if (await withTimeout(connection.getBlockHeight("confirmed"), 10_000, "Block height request") > lastValidBlockHeight) {
+      throw new BlockhashExpiredError();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new PaymentTimeoutError();
+}
+
 export async function sendPayment(
   connection: Connection,
   unsigned: VersionedTransaction,
@@ -32,7 +55,10 @@ export async function sendPayment(
   timeoutMs = 90_000,
   onStage?: (stage: "approving" | "submitting" | "confirming") => void,
 ): Promise<string> {
-  for (let attempt = 0; attempt < 1; attempt += 1) {
+  const maxAttempts = 2;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const validity = await withTimeout(connection.getLatestBlockhash("confirmed"), 10_000, "Blockhash request");
     const transaction = VersionedTransaction.deserialize(unsigned.serialize());
     transaction.message.recentBlockhash = validity.blockhash;
@@ -50,7 +76,7 @@ export async function sendPayment(
 
     let signature: string;
     try {
-      const simulation = await withTimeout(
+      const simulation: any = await withTimeout(
         connection.simulateTransaction(signed, { sigVerify: false }),
         15_000,
         "Transaction simulation"
@@ -67,32 +93,76 @@ export async function sendPayment(
       onStage?.("submitting");
       logLifecycle("info", "wallet_payment", "submitting", getSolanaNetwork());
     } catch (error) {
+      lastError = error;
       const message = error instanceof Error ? error.message : String(error);
       if (/blockhash|expired|last valid block/i.test(message)) {
+        if (attempt < maxAttempts - 1) continue;
         throw new BlockhashExpiredError();
       }
       if (error instanceof PaymentTimeoutError) throw error;
       throw new PaymentRpcError(message);
     }
 
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const status = (await withTimeout(
-        connection.getSignatureStatuses([signature]),
-        10_000,
-        "Transaction status request"
-      )).value[0];
+    try {
       onStage?.("confirming");
       logLifecycle("info", "wallet_payment", "confirming", getSolanaNetwork());
-      if (status?.err) throw new PaymentRpcError(JSON.stringify(status.err));
-      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return signature;
-      if (await withTimeout(connection.getBlockHeight("confirmed"), 10_000, "Block height request") > validity.lastValidBlockHeight) {
-        if (attempt === 0) break;
+      await waitForSignature(connection, signature, validity.lastValidBlockHeight, timeoutMs);
+      return signature;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof BlockhashExpiredError && attempt < maxAttempts - 1) continue;
+      throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new BlockhashExpiredError();
+}
+
+export async function sendLegacyPayment(
+  connection: Connection,
+  unsigned: Transaction,
+  signTransaction: (transaction: Transaction) => Promise<Transaction>,
+  timeoutMs = 90_000,
+  onStage?: (stage: "approving" | "submitting" | "confirming") => void,
+): Promise<string> {
+  const maxAttempts = 2;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const validity = await withTimeout(connection.getLatestBlockhash("confirmed"), 10_000, "Blockhash request");
+    const transaction = Transaction.from(unsigned.serialize({ requireAllSignatures: false, verifySignatures: false }));
+    transaction.recentBlockhash = validity.blockhash;
+    transaction.lastValidBlockHeight = validity.lastValidBlockHeight;
+
+    try {
+      onStage?.("approving");
+      const signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
+      const simulation: any = await withTimeout(
+        (connection.simulateTransaction as any)(signed, { sigVerify: false }),
+        15_000,
+        "Transaction simulation",
+      );
+      if (simulation.value.err) {
+        throw new PaymentRpcError(simulation.value.logs?.slice(-3).join("; ") || JSON.stringify(simulation.value.err));
+      }
+      onStage?.("submitting");
+      const signature = await withTimeout(connection.sendRawTransaction(signed.serialize(), {
+        preflightCommitment: "confirmed",
+        maxRetries: 3,
+      }), 20_000, "Transaction submission");
+      onStage?.("confirming");
+      await waitForSignature(connection, signature, validity.lastValidBlockHeight, timeoutMs);
+      return signature;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (isWalletRejection(error)) throw new UserRejectedError();
+      if (error instanceof BlockhashExpiredError || /blockhash|expired|last valid block/i.test(message)) {
+        if (attempt < maxAttempts - 1) continue;
         throw new BlockhashExpiredError();
       }
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      throw error;
     }
-    throw new PaymentTimeoutError();
   }
-  throw new BlockhashExpiredError();
+
+  throw lastError instanceof Error ? lastError : new BlockhashExpiredError();
 }

@@ -24,7 +24,7 @@ import {
   getStoredMerchantId,
 } from "@/lib/crypto/session";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
-import { sendPayment } from "@/lib/solana/sendPayment";
+import { sendLegacyPayment, sendPayment } from "@/lib/solana/sendPayment";
 import type { Terminal } from "@/lib/types";
 import type { TransferMode } from "@/lib/payments/transferMode";
 import PairingModal from "./PairingModal";
@@ -669,18 +669,7 @@ export default function TerminalManager({
       if (transaction instanceof VersionedTransaction) {
         return sendPayment(connection, transaction, signTransaction);
       }
-      const latest = await connection.getLatestBlockhash("confirmed");
-      transaction.recentBlockhash = latest.blockhash;
-      transaction.lastValidBlockHeight = latest.lastValidBlockHeight;
-      transaction.feePayer = publicKey;
-      const signed = await signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-        maxRetries: 0,
-      });
-      await connection.confirmTransaction({ signature, ...latest }, "confirmed");
-      return signature;
+      return sendLegacyPayment(connection, transaction, signTransaction as any, 90_000);
     }
 
     const usdcMint = new PublicKey(usdcMintAddress);

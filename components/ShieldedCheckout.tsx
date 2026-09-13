@@ -9,7 +9,7 @@ import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-rea
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
-import { sendPayment } from "@/lib/solana/sendPayment";
+import { sendLegacyPayment, sendPayment } from "@/lib/solana/sendPayment";
 import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
 import type { TransferMode } from "@/lib/payments/transferMode";
 
@@ -267,61 +267,9 @@ export default function ShieldedCheckout({
       } else if (built.transaction instanceof Transaction && signTransaction) {
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const freshBlockhash = await withTimeout(
-            paymentConnection.getLatestBlockhash("confirmed"),
-            10_000,
-            "Blockhash request"
-          );
-          const transaction = Transaction.from(built.transaction.serialize());
-          transaction.recentBlockhash = freshBlockhash.blockhash;
-          transaction.lastValidBlockHeight = freshBlockhash.lastValidBlockHeight;
-          transaction.feePayer = publicKey;
-
-          const signed = await withTimeout(
-            signTransaction(transaction as any),
-            120_000,
-            "Wallet approval"
-          );
-          const simulation = await withTimeout(
-            paymentConnection.simulateTransaction(signed as any, { sigVerify: false }),
-            15_000,
-            "Transaction simulation"
-          );
-          if (simulation.value.err) {
-            throw new Error(
-              simulation.value.logs?.slice(-3).join("; ") ||
-                JSON.stringify(simulation.value.err)
-            );
-          }
-
-          try {
-            setMessage("Submitting transaction...");
-            signature = await withTimeout(
-              paymentConnection.sendRawTransaction(signed.serialize(), {
-                skipPreflight: false,
-                preflightCommitment: "confirmed",
-                maxRetries: 0,
-              }),
-              20_000,
-              "Transaction submission"
-            );
-            setMessage("Confirming on Solana...");
-            await withTimeout(
-              paymentConnection.confirmTransaction({ signature, ...freshBlockhash }, "confirmed"),
-              30_000,
-              "Transaction confirmation"
-            );
-            break;
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (attempt === 0 && /blockhash|expired|last valid/i.test(errorMessage)) {
-              signature = null;
-              continue;
-            }
-            throw error;
-          }
-        }
+        setMessage("Submitting transaction...");
+        signature = await sendLegacyPayment(paymentConnection, built.transaction, signTransaction as any, 90_000);
+        setMessage("Confirming on Solana...");
       } else {
         throw new Error("Wallet cannot sign the payment transaction.");
       }

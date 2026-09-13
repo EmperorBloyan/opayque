@@ -143,17 +143,24 @@ export default function TerminalPage() {
         return;
       }
 
-      const mapped = data.map((row: any) => ({
-        id: String(row.id ?? row.signature ?? "pending"),
-        status: String(row.status ?? "pending").toUpperCase(),
-        amount: Number(row.amount ?? 0),
-        tokenSymbol: String(row.token_symbol ?? "USDC"),
-        time: row.created_at ?? new Date().toISOString(),
-        walletAddress: row.wallet_address ?? context.merchantWallet,
-        txHash: row.tx_hash ?? row.signature ?? null,
-      }));
+      const localActivity = readLocalActivity();
+      const mapped = data.map((row: any) => {
+        const id = String(row.id ?? row.signature ?? "pending");
+        const localRecord = localActivity.find((item: any) => String(item.id) === id);
+        return {
+          id,
+          status: String(row.status ?? "pending").toUpperCase(),
+          amount: Number(row.amount ?? 0),
+          tokenSymbol: String(row.token_symbol ?? "USDC"),
+          fiatAmount: localRecord?.fiatAmount,
+          displayCurrency: localRecord?.displayCurrency,
+          time: row.created_at ?? new Date().toISOString(),
+          walletAddress: row.wallet_address ?? context.merchantWallet,
+          txHash: row.tx_hash ?? row.signature ?? null,
+        };
+      });
 
-      const merged = [...mapped, ...readLocalActivity().filter((tx: any) => !mapped.some((item) => item.id === tx.id))].slice(0, 20);
+      const merged = [...mapped, ...localActivity.filter((tx: any) => !mapped.some((item) => item.id === tx.id))].slice(0, 20);
       setRecentActivity(merged);
       persistLocalActivity(merged);
     } catch (error) {
@@ -669,6 +676,8 @@ export default function TerminalPage() {
               status: String(record.status ?? "pending").toUpperCase(),
               amount: Number(record.amount ?? 0),
               tokenSymbol: String((record as any).token_symbol ?? asset),
+              fiatAmount: readLocalActivity().find((item: any) => String(item.id) === String(record.id ?? transactionId))?.fiatAmount,
+              displayCurrency: readLocalActivity().find((item: any) => String(item.id) === String(record.id ?? transactionId))?.displayCurrency,
               time: (record as any).created_at ?? new Date().toISOString(),
               walletAddress: context.merchantWallet,
               txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
@@ -957,24 +966,28 @@ export default function TerminalPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10 bg-black/30">
-                    {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => (
-                      <tr
-                        key={`${tx.id ?? idx}`}
-                        onClick={() => handleActivityClick(tx)}
-                        className="cursor-pointer hover:bg-white/5"
-                      >
-                        <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
-                            {tx.status || "PENDING"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-bold text-violet-300">
-                          {Number(tx.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {String(tx.tokenSymbol ?? "USDC").toUpperCase()}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                      </tr>
-                    )) : (
+                    {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => {
+                      const displayAmount = tx.fiatAmount ?? tx.amount;
+                      const displayCurrency = tx.displayCurrency ?? tx.tokenSymbol ?? "USDC";
+                      return (
+                        <tr
+                          key={`${tx.id ?? idx}`}
+                          onClick={() => handleActivityClick(tx)}
+                          className="cursor-pointer hover:bg-white/5"
+                        >
+                          <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+                              {tx.status || "PENDING"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-violet-300">
+                            {Number(displayAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {String(displayCurrency).toUpperCase()}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
                         <td colSpan={4} className="px-4 py-10 text-center text-zinc-500">No transactions received in the last 24 hours.</td>
                       </tr>
