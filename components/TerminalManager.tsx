@@ -260,6 +260,7 @@ export default function TerminalManager({
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const checkoutInFlightRef = useRef(false);
 
   // Runtime Error Recovery State
   const [errorState, setErrorState] = useState<{
@@ -650,25 +651,18 @@ export default function TerminalManager({
     }
 
     const transaction = await buildSwapTransaction();
-    let serialized: Uint8Array;
 
+    // signAndSendTransaction already signs and broadcasts the transaction.
+    // Do not fall through to the raw/Jito path, which would prompt for a second signature.
     if (signAndSendTransaction) {
-      const res = await signAndSendTransaction(transaction as any);
-      if (res && (res as any).signature) {
-        try {
-          const signed = await (transaction as any).serialize?.() ?? null;
-          serialized = signed || new Uint8Array();
-        } catch {
-          serialized = new Uint8Array();
-        }
-      } else {
-        const signed = await signTransaction!(transaction as any);
-        serialized = signed.serialize();
-      }
-    } else {
-      const signed = await signTransaction!(transaction as any);
-      serialized = signed.serialize();
+      const signature = await signAndSendTransaction(transaction as any);
+      await connection.confirmTransaction(signature as any, "confirmed");
+      return signature;
     }
+
+    let serialized: Uint8Array;
+    const signed = await signTransaction!(transaction as any);
+    serialized = signed.serialize();
     const encoded = toBase64(serialized);
 
     try {
@@ -710,8 +704,9 @@ export default function TerminalManager({
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, signAndSendTransaction, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
-    if (!isCheckoutMode) return;
+    if (!isCheckoutMode || checkoutInFlightRef.current) return;
 
+    checkoutInFlightRef.current = true;
     setCheckoutLoading(true);
     setToast(null);
     setErrorState(null);
@@ -737,6 +732,7 @@ export default function TerminalManager({
       setToast(error?.message ?? "Payment failed");
     } finally {
       setCheckoutLoading(false);
+      checkoutInFlightRef.current = false;
     }
   }, [handleDirectUsdcPay, isCheckoutMode, onSuccess, quoteInputAmount, selectedBalance, submitSwapPayment, usdcBalanceSufficient]);
 
