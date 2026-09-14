@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatPairingCountdown, matchesPairingCode, normalizePairingCode } from "./pairing.ts";
+import { formatPairingCountdown, matchesPairingCode, normalizePairingCode } from "./pairing";
 
 test("normalizes generated fleet codes for matching", () => {
   assert.equal(normalizePairingCode(" A-1b 2c "), "A1B2C");

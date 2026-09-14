@@ -4,18 +4,19 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getActiveSession, getActiveMerchantId } from '@/lib/crypto/session';
+import { getActiveSession } from '@/lib/crypto/session';
 import { getPrivateBalance, buildWithdraw } from '@/lib/magicblock';
 import { waitForSignatureConfirmation } from '@/lib/solana/rpc';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { getAssetMintAddress } from '@/lib/solana/constants';
+import { getAssetMintAddress, getSolanaRpcUrl } from '@/lib/solana/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 
-const TEE_RPC = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+const TEE_RPC = getSolanaRpcUrl();
 
 export default function MerchantDashboard() {
-  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const [privateBalance, setPrivateBalance] = useState(0);
   const [mainWallet, setMainWallet] = useState("");
   const [flushLoading, setFlushLoading] = useState(false);
@@ -142,16 +143,17 @@ export default function MerchantDashboard() {
   // Supabase realtime subscription for merchant transactions
   useEffect(() => {
     if (!showVault) return;
-    const merchantId = getActiveMerchantId();
-    if (!merchantId) return;
+    const merchantIdPromise = getAuthenticatedMerchantId();
 
     const supabase = createSupabaseBrowserClient();
 
     // initial load of recent transactions from Supabase to seed UI
     (async () => {
+      const merchantId = await merchantIdPromise;
+      if (!merchantId) return;
       try {
         const { data, error } = await supabase
-          .from('transactions')
+          .from('payment_ledger')
           .select('*')
           .eq('merchant_id', merchantId)
           .order('created_at', { ascending: false })
@@ -178,13 +180,11 @@ export default function MerchantDashboard() {
       } catch (err) {
         console.warn('Failed to seed transactions from Supabase', err);
       }
-    })();
-
-    const channel = supabase
+      const channel = supabase
       .channel(`merchant-transactions-${merchantId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        { event: 'INSERT', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
         (payload) => {
           const rec = payload.new as any;
           if (!rec) return;
@@ -198,7 +198,7 @@ export default function MerchantDashboard() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `merchant_id=eq.${merchantId}` },
+        { event: 'UPDATE', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
         (payload) => {
           const rec = payload.new as any;
           if (!rec) return;
@@ -219,6 +219,7 @@ export default function MerchantDashboard() {
       .subscribe();
 
     supabaseChannelRef.current = channel;
+    })();
 
     return () => {
       if (supabaseChannelRef.current) {
@@ -243,11 +244,7 @@ export default function MerchantDashboard() {
       const connection = new Connection(TEE_RPC, 'processed');
       let sig: string;
 
-      if (signAndSendTransaction) {
-        // Some wallets (e.g., Phantom) provide a combined sign+send helper
-        const res = await signAndSendTransaction(tx as any);
-        sig = (res && (res as any).signature) || String(res);
-      } else if (signTransaction) {
+      if (signTransaction) {
         const signedTx = await signTransaction(tx as any);
         sig = await connection.sendRawTransaction(signedTx.serialize(), {
           skipPreflight: true,
@@ -299,7 +296,7 @@ export default function MerchantDashboard() {
         <div className="text-center">
           <div className="animate-pulse text-purple-500 text-2xl mb-4">🔐</div>
           <p className="text-white text-xl">Awaiting Merchant Authorization...</p>
-          <p className="text-zinc-500 text-sm mt-2">TEE Validation in progress</p>
+          <p className="text-zinc-500 text-sm mt-2">Wallet validation in progress</p>
         </div>
       </div>
     );

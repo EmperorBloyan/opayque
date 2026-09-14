@@ -1,65 +1,103 @@
-export interface PayoutRequest {
+import { getOfframpConfig } from "@/lib/env/server";
+
+export type OfframpStatus = "not_configured" | "pending" | "processing" | "completed" | "failed";
+
+export interface CreatePayoutParams {
   merchantId: string;
-  amount: number;
-  currency: string;
-  bankAccountId: string;
+  amountUsdc: number;
+  destinationRef: string;
+  providerCustomerId?: string;
 }
 
-export interface PayoutResponse {
+export interface PayoutResult {
   success: boolean;
-  data?: {
-    payoutId: string;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    estimatedArrival: string;
-  };
-  error?: string;
+  status: OfframpStatus;
+  payoutId: string | null;
+  message: string;
 }
 
-import { getOfframpConfig } from '@/lib/env/server';
+export interface OfframpProvider {
+  readonly name: "null" | "bridge";
+  isConfigured(): boolean;
+  createPayout(params: CreatePayoutParams): Promise<PayoutResult>;
+  getPayoutStatus(id: string): Promise<PayoutResult>;
+}
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+export class NullOfframpProvider implements OfframpProvider {
+  readonly name = "null" as const;
 
-export async function initiateFiatPayout(req: PayoutRequest): Promise<PayoutResponse> {
-  if (!req.merchantId || req.amount <= 0 || !req.bankAccountId) {
-    return { success: false, error: "Invalid payout parameters" };
+  isConfigured() {
+    return false;
   }
 
-  try {
-    if (!IS_PRODUCTION) {
-      return { success: false, error: 'Off-ramp provider is not configured for non-production environments.' };
-    }
+  async createPayout(): Promise<PayoutResult> {
+    return { success: false, status: "not_configured", payoutId: null, message: "Fiat payouts are handled by an external partner. No partner is configured." };
+  }
 
-    // Production: call the configured off-ramp provider
-    const cfg = getOfframpConfig();
-    if (cfg.error) {
-      return { success: false, error: cfg.error };
-    }
+  async getPayoutStatus(): Promise<PayoutResult> {
+    return { success: false, status: "not_configured", payoutId: null, message: "Fiat payouts are handled by an external partner. No partner is configured." };
+  }
+}
 
-    const { apiUrl, apiKey } = cfg.config!;
+export class BridgeOfframpProvider implements OfframpProvider {
+  readonly name = "bridge" as const;
 
-    const res = await fetch(`${apiUrl}/payouts`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(req),
+  constructor(private readonly config: { apiUrl: string; apiKey: string }) {}
+
+  isConfigured() {
+    return Boolean(this.config.apiUrl && this.config.apiKey);
+  }
+
+  async createPayout(params: CreatePayoutParams): Promise<PayoutResult> {
+    const response = await fetch(`${this.config.apiUrl.replace(/\/$/, "")}/transfers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Api-Key": this.config.apiKey },
+      body: JSON.stringify({
+        on_behalf_of: params.merchantId,
+        amount: params.amountUsdc.toFixed(6),
+        source_currency: "usdc",
+        destination_currency: "usd",
+        destination_payment_rail: "external_account",
+        external_account_id: params.destinationRef,
+        customer_id: params.providerCustomerId,
+      }),
     });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || data?.message || 'Off-ramp API error');
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || typeof payload?.id !== "string") {
+      return { success: false, status: "failed", payoutId: null, message: "External fiat payout partner rejected the payout." };
     }
-
-    return {
-      success: true,
-      data: {
-        payoutId: data?.id || data?.payoutId || `po_${Date.now()}`,
-        status: data?.status || 'processing',
-        estimatedArrival: data?.estimatedArrival || new Date(Date.now() + 172800000).toISOString(),
-      },
-    };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+    return { success: true, status: normalizeOfframpStatus(payload.status), payoutId: payload.id, message: "Payout accepted by the external partner." };
   }
+
+  async getPayoutStatus(id: string): Promise<PayoutResult> {
+    const response = await fetch(`${this.config.apiUrl.replace(/\/$/, "")}/transfers/${encodeURIComponent(id)}`, {
+      headers: { Accept: "application/json", "Api-Key": this.config.apiKey },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || typeof payload?.id !== "string") {
+      return { success: false, status: "failed", payoutId: id, message: "Unable to read payout status from the external partner." };
+    }
+    const status = normalizeOfframpStatus(payload.status);
+    return { success: status !== "failed", status, payoutId: payload.id, message: `External payout status: ${status}.` };
+  }
+}
+
+function normalizeOfframpStatus(value: unknown): OfframpStatus {
+  const status = String(value || "pending").toLowerCase();
+  if (status === "completed" || status === "complete") return "completed";
+  if (status === "processing" || status === "in_progress") return "processing";
+  if (status === "failed" || status === "canceled" || status === "cancelled") return "failed";
+  return "pending";
+}
+
+export function getOfframpProvider(): OfframpProvider {
+  const config = getOfframpConfig();
+  return config.config ? new BridgeOfframpProvider(config.config) : new NullOfframpProvider();
+}
+
+export async function initiateFiatPayout(params: CreatePayoutParams): Promise<PayoutResult> {
+  if (!params.merchantId || !Number.isFinite(params.amountUsdc) || params.amountUsdc <= 0 || !params.destinationRef) {
+    return { success: false, status: "failed", payoutId: null, message: "Invalid external payout parameters." };
+  }
+  return getOfframpProvider().createPayout(params);
 }

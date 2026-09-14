@@ -3,23 +3,71 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, SendTransactionError, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
+import { getAssetMintAddress, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
+import { sendLegacyPayment, sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
+import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
+import type { TransferMode } from "@/lib/payments/transferMode";
 
 type PaymentStatus = "idle" | "processing" | "success" | "error";
 
 interface ShieldedCheckoutProps {
-  amount: number; // settlement amount in USDC
+  amount: number;
   merchantPubkey: string;
   endpointName?: string;
   endpointCategory?: string;
   allowCustomAmount?: boolean;
   recipientName?: string;
-  displayCurrency?: string; // e.g. NGN, USD
-  displayFiatAmount?: number; // cashier fiat amount
-  settlementToken?: string; // USDC / USDT / SOL
+  displayCurrency?: string;
+  displayFiatAmount?: number;
+  settlementToken?: string;
+  transactionId?: string | null;
+  checkoutSessionId?: string | null;
+  transferMode?: TransferMode;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s.`));
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+async function loadWalletBalances(
+  rpcUrls: string[],
+  publicKey: PublicKey,
+  mint: PublicKey,
+): Promise<{ connection: Connection; rpcUrl: string; solLamports: number; tokenAccounts: Awaited<ReturnType<Connection["getParsedTokenAccountsByOwner"]>> }> {
+  let lastError: unknown;
+
+  for (const rpcUrl of [...new Set(rpcUrls)]) {
+    const connection = new Connection(rpcUrl, "confirmed");
+    try {
+      const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
+        connection.getBalance(publicKey, "confirmed"),
+        connection.getParsedTokenAccountsByOwner(publicKey, { mint }),
+      ]), 10_000, "Wallet balance check");
+      return { connection, rpcUrl, solLamports, tokenAccounts };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Wallet balance check failed");
 }
 
 export default function ShieldedCheckout({
@@ -32,13 +80,17 @@ export default function ShieldedCheckout({
   displayCurrency = "USD",
   displayFiatAmount,
   settlementToken = "USDC",
+  transactionId,
+  checkoutSessionId,
+  transferMode: initialTransferMode = "private",
 }: ShieldedCheckoutProps) {
-  const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
 
   const [status, setStatus] = useState<PaymentStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [successSignature, setSuccessSignature] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>(initialTransferMode);
 
   const [draftAmount, setDraftAmount] = useState(() =>
     Number.isFinite(amount) && amount > 0 ? amount : 10
@@ -66,6 +118,17 @@ export default function ShieldedCheckout({
 
   const isLocked = status === "success" || status === "processing";
 
+  const effectiveAmount = allowCustomAmount ? Number(draftAmount) : Number(amount);
+  const safeAmount =
+    Number.isFinite(effectiveAmount) && effectiveAmount > 0 ? effectiveAmount : 0;
+
+  const fiatLabelAmount =
+    Number.isFinite(Number(displayFiatAmount)) && Number(displayFiatAmount) > 0
+      ? Number(displayFiatAmount)
+      : safeAmount;
+
+  const isLocked = status === "success" || status === "processing";
+
   // Success countdown → close back toward wallet/native context
   useEffect(() => {
     if (status !== "success" || countdown === null) return;
@@ -77,7 +140,6 @@ export default function ShieldedCheckout({
         // ignore
       }
       try {
-        // Fallback if window.close is blocked
         window.location.href = "about:blank";
       } catch {
         // ignore
@@ -91,6 +153,34 @@ export default function ShieldedCheckout({
 
     return () => window.clearTimeout(timer);
   }, [status, countdown]);
+
+  useEffect(() => {
+    const pending = readPendingPayment();
+    const currentIntent = transactionId || checkoutSessionId || "";
+    if (pending && pending.intentId === currentIntent) {
+      clearPendingPayment(currentIntent);
+      setStatus("error");
+      setMessage("A previous payment was interrupted before completion. Please try again.");
+    }
+  }, [checkoutSessionId, transactionId]);
+
+  useEffect(() => {
+    setTransferMode(initialTransferMode);
+  }, [initialTransferMode]);
+
+  useEffect(() => {
+    if (!checkoutSessionId) return;
+    let cancelled = false;
+    fetch(`/api/v1/checkout/${encodeURIComponent(checkoutSessionId)}/status`)
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setTransferMode(payload?.transferMode === "public" ? "public" : "private");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutSessionId]);
 
   const handlePayment = async () => {
     if (isLocked) return;
@@ -114,58 +204,142 @@ export default function ShieldedCheckout({
     }
 
     setStatus("processing");
-    setMessage("Shielding transaction through TEE...");
+    setMessage("Building transaction...");
     setSuccessSignature(null);
+    const intentId = transactionId || checkoutSessionId || "";
+    writePendingPayment({
+      intentId,
+      sender: publicKey.toBase58(),
+      recipient: safeMerchantPubkey,
+      amount: safeAmount,
+      phase: "building",
+      startedAt: Date.now(),
+    });
 
+    let paymentConnection: Connection | null = null;
     try {
-      // buildShieldedTransfer may return a serialized tx, object, or simulation payload
-      const built = await buildShieldedTransfer(
-        publicKey.toBase58(),
-        safeMerchantPubkey,
-        safeAmount
+      const isDevnet = isDevnetNetwork();
+      const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
+      const rpcUrls = getSolanaRpcUrls();
+      const { connection, rpcUrl: selectedRpc, solLamports, tokenAccounts } = await loadWalletBalances(
+        rpcUrls,
+        publicKey,
+        mint,
       );
+      const usdcBaseUnits = tokenAccounts.value.reduce(
+        (total, account) => total + BigInt(account.account.data.parsed?.info?.tokenAmount?.amount ?? "0"),
+        0n
+      );
+      const requiredUsdcBaseUnits = BigInt(Math.ceil(safeAmount * 1_000_000));
+      const recipientTokenAccount = getAssociatedTokenAddressSync(mint, new PublicKey(safeMerchantPubkey));
+      const recipientTokenAccountInfo = await withTimeout(
+        connection.getAccountInfo(recipientTokenAccount, "confirmed"),
+        10_000,
+        "Recipient account check"
+      );
+      const minimumSolLamports = recipientTokenAccountInfo ? 5_000 : 2_100_000;
+      if (solLamports < minimumSolLamports) {
+        throw new Error(`Insufficient SOL for network fees${recipientTokenAccountInfo ? "" : " and token-account rent"}. Add ${isDevnet ? "Devnet" : "Mainnet"} SOL to this wallet.`);
+      }
+      if (usdcBaseUnits < requiredUsdcBaseUnits) {
+        throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);
+      }
+
+      const built = transferMode === "private"
+        ? await withTimeout(
+            buildShieldedTransfer(
+              publicKey.toBase58(),
+              safeMerchantPubkey,
+              safeAmount,
+              transactionId || checkoutSessionId || ""
+            ),
+            25000,
+            "Shielded transfer build"
+          )
+        : await withTimeout(
+            fetch("/api/transfer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: publicKey.toBase58(),
+                recipient: safeMerchantPubkey,
+                amount: safeAmount,
+                mint: mint.toBase58(),
+                intent_id: intentId,
+                mode: "public",
+              }),
+            }).then(async (response) => {
+              const payload = await response.json().catch(() => ({}));
+              if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
+                throw new Error(payload?.error || "Public payment transaction could not be built");
+              }
+              let transaction: VersionedTransaction | Transaction;
+              const bytes = Uint8Array.from(atob(payload.transaction), (character) => character.charCodeAt(0));
+              try {
+                transaction = VersionedTransaction.deserialize(bytes);
+              } catch {
+                transaction = Transaction.from(bytes);
+              }
+              return { ...payload, transaction, mode: "public" as const };
+            }),
+            25000,
+            "Public transfer build"
+          );
 
       let signature: string | null = null;
 
-      // Attempt real send if a transaction payload is returned
-      if (built?.transaction) {
-        const raw = built.transaction;
+      paymentConnection = new Connection(built.rpcUrl || selectedRpc, "confirmed");
 
-        // If base64 string
-        if (typeof raw === "string") {
-          const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-          const tx = VersionedTransaction.deserialize(bytes);
+      if (built.mode !== transferMode) {
+        throw new Error(`${transferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
+      }
 
-          if (signTransaction) {
-            const signed = await signTransaction(tx as any);
-            const rpc =
-              process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-              "https://api.devnet.solana.com";
-            const connection = new Connection(rpc, "confirmed");
-            signature = await connection.sendRawTransaction(signed.serialize());
-            await connection.confirmTransaction(signature, "confirmed");
-          } else if (sendTransaction) {
-            const rpc =
-              process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-              "https://api.devnet.solana.com";
-            const connection = new Connection(rpc, "confirmed");
-            signature = await sendTransaction(tx as any, connection);
-            await connection.confirmTransaction(signature, "confirmed");
-          }
+      if (built.transaction instanceof VersionedTransaction && signTransaction) {
+        setMessage("Approve in your wallet...");
+        writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
+        signature = transferMode === "public"
+          ? await sendStandardPayment(paymentConnection, built.transaction, signTransaction)
+          : await sendPayment(paymentConnection, built.transaction, signTransaction);
+        setMessage("Payment confirmed on Solana.");
+      } else if (built.transaction instanceof Transaction && signTransaction) {
+        setMessage("Approve in your wallet...");
+        writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
+        setMessage("Submitting transaction...");
+        signature = await sendLegacyPayment(paymentConnection, built.transaction, signTransaction as any, 90_000);
+        setMessage("Confirming on Solana...");
+      } else {
+        throw new Error("Wallet cannot sign the payment transaction.");
+      }
+
+      if (!signature) {
+        throw new Error("Transaction was not signed or submitted.");
+      }
+      writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "submitted", signature, startedAt: Date.now() });
+
+      if (transactionId) {
+        const settleResponse = await fetch(`/api/terminal/payments/${encodeURIComponent(transactionId)}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signature }),
+        });
+        const settlePayload = await settleResponse.json().catch(() => ({}));
+        if (!settleResponse.ok) {
+          throw new Error(settlePayload?.error || "Payment confirmed, but terminal reconciliation failed.");
+        }
+      } else if (checkoutSessionId) {
+        const verifyResponse = await fetch("/api/v1/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: checkoutSessionId, transactionSignature: signature }),
+        });
+        const verifyPayload = await verifyResponse.json().catch(() => ({}));
+        if (!verifyResponse.ok) {
+          throw new Error(verifyPayload?.error || "Payment confirmed, but checkout verification failed.");
         }
       }
 
-      // Fallback demo signature if API only acknowledges init
-      if (!signature) {
-        signature =
-          built?.signature ||
-          built?.txSignature ||
-          `shielded_${Date.now().toString(36)}`;
-      }
-
-      // Persist lightweight activity for dashboards
       appendLocalActivity({
-        id: signature || `EP-${Date.now()}`,
+        id: signature,
         staff: recipientName || endpointName || "Registry Endpoint",
         category: endpointCategory || "Registry",
         amount: safeAmount,
@@ -175,13 +349,34 @@ export default function ShieldedCheckout({
       });
 
       setSuccessSignature(signature);
+      clearPendingPayment(intentId);
       setStatus("success");
       setMessage("Payment confirmed. Returning to wallet...");
       setCountdown(5);
     } catch (error: any) {
-      console.error("Shielded payment failed:", error);
+      let errorMessage = error?.message || "Payment failed. Please try again.";
+      let transactionLogs: string[] | null = null;
+      if (error instanceof SendTransactionError) {
+        transactionLogs = paymentConnection ? await error.getLogs(paymentConnection).catch(() => null) : null;
+        if (transactionLogs?.length) {
+          errorMessage = `${errorMessage} ${transactionLogs.join(" ")}`;
+        }
+      }
+      console.error("Shielded payment failed:", error, { logs: transactionLogs });
+      clearPendingPayment(intentId);
       setStatus("error");
-      setMessage(error?.message || "Payment failed. Please try again.");
+      const isWalletApprovalTimeout = /wallet approval timed out/i.test(errorMessage);
+      const isRpcTimeout = /blockhash request|transaction simulation|transaction submission|transaction confirmation timed out/i.test(errorMessage);
+      const isFeeEstimationError = /estimate(?:d|s)?\s+(?:the\s+)?fee|fee\s+estimation|insufficient.*(?:lamports|sol)/i.test(errorMessage);
+      setMessage(
+        isWalletApprovalTimeout
+          ? "Wallet approval took too long. Please approve the transaction and try again."
+          : isFeeEstimationError
+          ? `Your wallet could not estimate network fees. Add ${isDevnetNetwork() ? "Devnet" : "Mainnet"} SOL to the paying wallet and try again.`
+          : isRpcTimeout || /blockhash|expired|last valid/i.test(errorMessage)
+          ? "Transaction expired or took too long. Please try again."
+          : errorMessage
+      );
     }
   };
 
@@ -193,12 +388,12 @@ export default function ShieldedCheckout({
             <LucideShieldCheck size={22} />
           </div>
           <h3 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Shielded Checkout
+            {transferMode === "private" ? "Private Checkout" : "Standard Checkout"}
           </h3>
           {recipientName ? (
             <p className="text-zinc-500 text-sm mt-1">Paying {recipientName}</p>
           ) : (
-            <p className="text-zinc-500 text-sm mt-1">Protected via MagicBlock TEE</p>
+            <p className="text-zinc-500 text-sm mt-1">Ready to pay securely on Solana</p>
           )}
           {(endpointName || endpointCategory) && (
             <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500 mt-2">
@@ -207,7 +402,6 @@ export default function ShieldedCheckout({
           )}
         </div>
 
-        {/* Amount display */}
         <div className="rounded-2xl border border-zinc-200 bg-zinc-100 p-5 dark:border-zinc-800 dark:bg-zinc-900/70">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             Amount Due
@@ -242,7 +436,6 @@ export default function ShieldedCheckout({
           )}
         </div>
 
-        {/* Success state (non-clickable pay flow) */}
         {status === "success" ? (
           <div
             className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6"
@@ -255,7 +448,7 @@ export default function ShieldedCheckout({
               Payment Successful
             </p>
             <p className="mt-2 text-sm text-zinc-400">
-              Shielded transfer of{" "}
+              {transferMode === "private" ? "Private transfer of" : "Payment of"}{" "}
               <span className="text-white font-semibold">
                 {safeAmount.toFixed(2)} {settlementToken || "USDC"}
               </span>{" "}
@@ -286,10 +479,12 @@ export default function ShieldedCheckout({
                 {status === "processing" ? (
                   <>
                     <LucideLoader2 className="animate-spin" size={16} />
-                    Shielding...
+                    Confirming...
                   </>
+                ) : status === "error" ? (
+                  "Try Again"
                 ) : (
-                  "Pay Privately"
+                  transferMode === "private" ? "Pay Privately" : "Pay"
                 )}
               </button>
             )}

@@ -25,9 +25,18 @@ export interface CreateTerminalSessionInput {
   walletSignature: ArrayBuffer | Uint8Array;
 }
 
+export interface TerminalDeviceCredential {
+  terminalId: string;
+  merchantId: string;
+  deviceToken: string;
+  merchantWallet: string;
+  pairedAt: number;
+}
+
 let activeSession: TerminalSession | null = null;
 const ACTIVE_MERCHANT_ID_KEY = "opayque.activeMerchantId";
 const ACTIVE_SESSION_KEY = "opayque.activeSession";
+const TERMINAL_DEVICE_KEY = "opayque.device";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -172,8 +181,89 @@ export function getActiveSession(): TerminalSession | null {
 export function clearActiveSession(): void {
   activeSession = null;
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem(ACTIVE_SESSION_KEY);
-    window.localStorage.removeItem(ACTIVE_MERCHANT_ID_KEY);
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("opayque") && key !== TERMINAL_DEVICE_KEY) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  }
+}
+
+export function saveTerminalDeviceCredential(credential: TerminalDeviceCredential): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(TERMINAL_DEVICE_KEY, JSON.stringify(credential));
+}
+
+export function loadTerminalDeviceCredential(): TerminalDeviceCredential | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TERMINAL_DEVICE_KEY);
+    if (!raw) return null;
+    const credential = JSON.parse(raw) as Partial<TerminalDeviceCredential>;
+    if (
+      typeof credential.terminalId !== "string" ||
+      typeof credential.merchantId !== "string" ||
+      typeof credential.deviceToken !== "string" ||
+      typeof credential.merchantWallet !== "string"
+    ) {
+      return null;
+    }
+    return credential as TerminalDeviceCredential;
+  } catch {
+    return null;
+  }
+}
+
+export function clearTerminalDeviceCredential(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(TERMINAL_DEVICE_KEY);
+  }
+}
+
+export function setActiveMerchantId(merchantId: string): void {
+  if (!merchantId || merchantId === "merchant-vault") return;
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ACTIVE_MERCHANT_ID_KEY, merchantId);
+  }
+
+  // Keep in-memory session merchant id in sync if present
+  if (activeSession) {
+    activeSession = {
+      ...activeSession,
+      merchantId,
+    };
+  }
+}
+
+export function bindAuthenticatedMerchantSession(input: {
+  merchantId: string;
+  walletAddress?: string | null;
+}): void {
+  const merchantId = input.merchantId?.trim();
+  if (!merchantId || merchantId === "merchant-vault") return;
+
+  setActiveMerchantId(merchantId);
+
+  // Lightweight non-wallet session marker so vault pages treat user as authorized
+  if (typeof window !== "undefined") {
+    const existing = window.localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (!existing) {
+      const now = Date.now();
+      window.localStorage.setItem(
+        ACTIVE_SESSION_KEY,
+        JSON.stringify({
+          id: `auth-session-${merchantId.slice(0, 8)}`,
+          merchantId,
+          walletAddress: input.walletAddress || "email-auth",
+          nonce: `auth-${now}`,
+          issuedAt: now,
+          expiresAt: now + 12 * 60 * 60 * 1000, // 12h
+          walletSignature: "",
+          publicKeyJwk: {},
+        })
+      );
+    }
   }
 }
 

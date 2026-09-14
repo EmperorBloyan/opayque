@@ -5,12 +5,10 @@ import { useRouter } from "next/navigation";
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import { Activity, CheckCircle2, Server, Smartphone, Zap, RefreshCw, ExternalLink, Copy, Check } from "lucide-react";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
-import { useCurrency } from "@/lib/context/CurrencyContext";
 
 export default function OverviewPage() {
   const router = useRouter();
   const { isSandbox, network } = useEnvironment();
-  const { currency, setCurrency, rates } = useCurrency();
 
   const targetRpcEndpoint = isSandbox
     ? process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL || clusterApiUrl("devnet")
@@ -132,26 +130,6 @@ export default function OverviewPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div>
-            <label className="block text-[9px] text-zinc-400 mb-1.5 font-medium uppercase tracking-widest">
-              Display Currency
-            </label>
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="bg-black/40 border border-white/10 rounded-full px-4 py-1.5 text-[9px] text-zinc-200 focus:outline-none focus:border-purple-500"
-            >
-              {Object.keys(rates).length > 0 ? (
-                Object.keys(rates).map((curr) => (
-                  <option key={curr} value={curr}>
-                    {curr}
-                  </option>
-                ))
-              ) : (
-                <option value="USD">USD</option>
-              )}
-            </select>
-          </div>
           <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2">
             <div
               className={`h-2 w-2 rounded-full ${

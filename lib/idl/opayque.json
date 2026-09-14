@@ -1,15 +1,270 @@
 {
-  "name": "opayque",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+  "address": "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL",
+  "metadata": {
+    "name": "opayque",
+    "version": "0.1.0",
+    "spec": "0.1.0"
   },
-  "dependencies": {
-    "next": "16.2.4",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
-  }
+  "instructions": [
+    {
+      "name": "initialize_protocol",
+      "discriminator": [188, 233, 252, 106, 134, 146, 202, 91],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "writable": true,
+          "pda": {
+            "seeds": [{ "kind": "const", "value": [112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102, 105, 103] }]
+          }
+        },
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [{ "name": "admin", "type": "pubkey" }]
+    },
+    {
+      "name": "initialize_merchant_vault",
+      "discriminator": [231, 91, 105, 237, 120, 130, 30, 105],
+      "accounts": [
+        { "name": "merchant_authority", "writable": true, "signer": true },
+        { "name": "payer", "writable": true, "signer": true },
+        {
+          "name": "merchant_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [109, 101, 114, 99, 104, 97, 110, 116, 95, 118, 97, 117, 108, 116] },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        {
+          "name": "opayque_treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [111, 112, 97, 121, 113, 117, 101, 95, 116, 114, 101, 97, 115, 117, 114, 121] },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        { "name": "protocol_config" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "fee_bps", "type": "u64" },
+        { "name": "merchant", "type": "pubkey" },
+        { "name": "token_decimals", "type": "u8" }
+      ]
+    },
+    {
+      "name": "register_terminal_nonce",
+      "discriminator": [43, 188, 122, 4, 77, 215, 90, 164],
+      "accounts": [
+        { "name": "merchant_authority", "writable": true, "signer": true },
+        { "name": "payer", "writable": true, "signer": true },
+        {
+          "name": "terminal_nonce",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [116, 101, 114, 109, 105, 110, 97, 108, 95, 110, 111, 110, 99, 101] },
+              { "kind": "arg", "path": "terminal_id" },
+              { "kind": "account", "path": "merchant_authority" }
+            ]
+          }
+        },
+        { "name": "protocol_config" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "terminal_id", "type": "string" },
+        { "name": "nonce", "type": "u64" },
+        { "name": "expires_at", "type": "u64" }
+      ]
+    },
+    {
+      "name": "process_payment",
+      "discriminator": [189, 81, 30, 198, 139, 186, 115, 23],
+      "accounts": [
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "payer_token_account", "writable": true },
+        { "name": "mint" },
+        { "name": "merchant_token_account", "writable": true },
+        { "name": "treasury_token_account", "writable": true },
+        { "name": "merchant_vault", "writable": true },
+        { "name": "opayque_treasury", "writable": true },
+        { "name": "protocol_config" },
+        { "name": "terminal_nonce", "writable": true },
+        {
+          "name": "payment_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [112, 97, 121, 109, 101, 110, 116, 95, 114, 101, 99, 101, 105, 112, 116] },
+              { "kind": "account", "path": "merchant_vault.authority" },
+              { "kind": "arg", "path": "nonce" }
+            ]
+          }
+        },
+        { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "nonce", "type": "u64" },
+        { "name": "memo", "type": "string" }
+      ]
+    },
+    {
+      "name": "withdraw_vault_funds",
+      "discriminator": [230, 233, 148, 2, 238, 220, 211, 165],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "merchant_vault", "writable": true },
+        { "name": "merchant_token_account", "writable": true },
+        { "name": "destination_token_account", "writable": true },
+        { "name": "mint" },
+        { "name": "protocol_config" },
+        { "name": "token_program", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "toggle_circuit_breaker",
+      "discriminator": [17, 31, 13, 36, 93, 205, 125, 163],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "protocol_config", "writable": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [{ "name": "paused", "type": "bool" }]
+    }
+  ],
+  "accounts": [
+    { "name": "protocol_config", "discriminator": [207, 91, 250, 28, 152, 179, 215, 209] },
+    { "name": "merchant_vault", "discriminator": [157, 184, 49, 10, 194, 166, 212, 234] },
+    { "name": "treasury_account", "discriminator": [204, 140, 18, 173, 90, 152, 134, 123] },
+    { "name": "terminal_nonce", "discriminator": [206, 170, 127, 76, 222, 107, 181, 252] },
+    { "name": "payment_receipt", "discriminator": [168, 198, 209, 4, 60, 235, 126, 109] }
+  ],
+  "types": [
+    {
+      "name": "protocol_config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "admin", "type": "pubkey" },
+          { "name": "paused", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "merchant_vault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "fee_bps", "type": "u64" },
+          { "name": "token_decimals", "type": "u8" },
+          { "name": "bump", "type": "u8" },
+          { "name": "collected_balance", "type": "u64" },
+          { "name": "created_at", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "treasury_account",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "bump", "type": "u8" },
+          { "name": "collected_balance", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "terminal_nonce",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "terminal_id", "type": "string" },
+          { "name": "nonce", "type": "u64" },
+          { "name": "expires_at", "type": "u64" },
+          { "name": "used", "type": "bool" },
+          { "name": "bump", "type": "u8" },
+          { "name": "last_memo", "type": "string" }
+        ]
+      }
+    },
+    {
+      "name": "payment_receipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "payer", "type": "pubkey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "fee", "type": "u64" },
+          { "name": "merchant_amount", "type": "u64" },
+          { "name": "nonce", "type": "u64" },
+          { "name": "created_at", "type": "u64" },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] } },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "payment_settled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "merchant", "type": "pubkey" },
+          { "name": "payer", "type": "pubkey" },
+          { "name": "receipt", "type": "pubkey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "fee", "type": "u64" },
+          { "name": "merchant_amount", "type": "u64" },
+          { "name": "nonce", "type": "u64" },
+          { "name": "created_at", "type": "u64" },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] } }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "payment_settled",
+      "discriminator": [158, 182, 152, 76, 105, 23, 232, 135],
+      "fields": [
+        { "name": "merchant", "type": "pubkey", "index": false },
+          { "name": "payer", "type": "pubkey", "index": false },
+          { "name": "receipt", "type": "pubkey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "fee", "type": "u64", "index": false },
+        { "name": "merchant_amount", "type": "u64", "index": false },
+          { "name": "nonce", "type": "u64", "index": false },
+          { "name": "created_at", "type": "u64", "index": false },
+          { "name": "memo_hash", "type": { "array": ["u8", 32] }, "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "invalid_fee", "msg": "invalid fee configuration" },
+    { "code": 6001, "name": "invalid_string_length", "msg": "string exceeds the maximum length" },
+    { "code": 6002, "name": "math_overflow", "msg": "math overflow" },
+    { "code": 6003, "name": "nonce_already_used", "msg": "nonce already used" },
+    { "code": 6004, "name": "invalid_nonce", "msg": "invalid nonce" },
+    { "code": 6005, "name": "nonce_expired", "msg": "nonce expired" },
+    { "code": 6006, "name": "circuit_breaker_open", "msg": "circuit breaker open" },
+    { "code": 6007, "name": "unauthorized_authority", "msg": "unauthorized authority" }
+  ]
 }

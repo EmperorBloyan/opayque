@@ -1,12 +1,13 @@
 use anchor_lang::prelude::*;
 
 pub mod instructions;
+pub use instructions::*;
 
 pub use instructions::admin::{initialize_protocol, InitializeProtocol, toggle_circuit_breaker, ToggleCircuitBreaker};
 pub use instructions::merchant::{initialize_merchant_vault, InitializeMerchantVault};
 pub use instructions::payment::{process_payment, register_terminal_nonce, withdraw_vault_funds, ProcessPayment, RegisterTerminalNonce, WithdrawVaultFunds};
 
-declare_id!("5K1AHcRKR7WDUf6agGthMm7rPKwN384pFzJMGG2oCmGp");
+declare_id!("9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL");
 
 #[program]
 pub mod opayque {
@@ -38,8 +39,8 @@ pub mod opayque {
         instructions::payment::process_payment(ctx, amount, nonce, memo)
     }
 
-    pub fn withdraw_vault_funds(ctx: Context<WithdrawVaultFunds>, amount: u64, approved: bool) -> Result<()> {
-        instructions::payment::withdraw_vault_funds(ctx, amount, approved)
+    pub fn withdraw_vault_funds(ctx: Context<WithdrawVaultFunds>, amount: u64) -> Result<()> {
+        instructions::payment::withdraw_vault_funds(ctx, amount)
     }
 
     pub fn toggle_circuit_breaker(ctx: Context<ToggleCircuitBreaker>, paused: bool) -> Result<()> {
@@ -86,6 +87,23 @@ impl TreasuryAccount {
 }
 
 #[account]
+pub struct PaymentReceipt {
+    pub merchant: Pubkey,
+    pub payer: Pubkey,
+    pub amount: u64,
+    pub fee: u64,
+    pub merchant_amount: u64,
+    pub nonce: u64,
+    pub created_at: u64,
+    pub memo_hash: [u8; 32],
+    pub bump: u8,
+}
+
+impl PaymentReceipt {
+    pub const LEN: usize = 32 + 32 + 8 + 8 + 8 + 8 + 8 + 32 + 1;
+}
+
+#[account]
 pub struct TerminalNonce {
     pub merchant: Pubkey,
     pub terminal_id: String,
@@ -97,22 +115,30 @@ pub struct TerminalNonce {
 }
 
 impl TerminalNonce {
-    pub const LEN: usize = 32 + 4 + 8 + 8 + 1 + 1 + 4;
+    pub const MAX_TERMINAL_ID_LEN: usize = 32;
+    pub const MAX_MEMO_LEN: usize = 64;
+    pub const LEN: usize = 32 + 4 + Self::MAX_TERMINAL_ID_LEN + 8 + 8 + 1 + 1 + 4 + Self::MAX_MEMO_LEN;
 }
 
 #[event]
 pub struct PaymentSettled {
     pub merchant: Pubkey,
+    pub payer: Pubkey,
+    pub receipt: Pubkey,
     pub amount: u64,
     pub fee: u64,
     pub merchant_amount: u64,
     pub nonce: u64,
+    pub created_at: u64,
+    pub memo_hash: [u8; 32],
 }
 
 #[error_code]
 pub enum ErrorCode {
     #[msg("invalid fee configuration")]
     InvalidFee,
+    #[msg("string exceeds the maximum length")]
+    InvalidStringLength,
     #[msg("math overflow")]
     MathOverflow,
     #[msg("nonce already used")]
@@ -123,8 +149,8 @@ pub enum ErrorCode {
     NonceExpired,
     #[msg("circuit breaker open")]
     CircuitBreakerOpen,
-    #[msg("withdrawal not approved")]
-    WithdrawNotApproved,
     #[msg("unauthorized authority")]
     UnauthorizedAuthority,
+    #[msg("amount must be greater than zero")]
+    InvalidAmount,
 }

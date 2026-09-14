@@ -3,6 +3,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useEffect, useState, useMemo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 import { useCurrency } from '@/lib/context/CurrencyContext';
 import { Search, RotateCcw, Copy, Check, AlertTriangle, X } from 'lucide-react';
 
@@ -18,12 +19,15 @@ export default function VaultDashboard() {
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Refund Modal State
   const [selectedTxForRefund, setSelectedTxForRefund] = useState<any | null>(null);
   const [refundInput, setRefundInput] = useState("");
   const [refundLoading, setRefundLoading] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
+  const [refundWallet, setRefundWallet] = useState<string | null>(null);
+  const [merchantReady, setMerchantReady] = useState(false);
 
   // Copy Feedback State
   const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
@@ -31,79 +35,11 @@ export default function VaultDashboard() {
   const persistTransactions = (nextTransactions: any[] | ((current: any[]) => any[])) => {
     setTransactions((current) => {
       const resolved = typeof nextTransactions === 'function' ? nextTransactions(current) : nextTransactions;
-      try {
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('opayque_tx', JSON.stringify(resolved));
-        }
-      } catch {
-        // ignore storage errors
-      }
       return resolved;
     });
   };
 
   // Load from local storage and listen for cross-tab or component updates
-  useEffect(() => {
-    const reloadFromStorage = () => {
-      try {
-        const savedTx = localStorage.getItem("opayque_tx");
-        if (!savedTx) return;
-        const parsed = JSON.parse(savedTx);
-        if (Array.isArray(parsed)) {
-          setTransactions(parsed);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    // Initial load
-    reloadFromStorage();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || e.key === "opayque_tx") reloadFromStorage();
-    };
-
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("opayque_tx_updated", reloadFromStorage as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("opayque_tx_updated", reloadFromStorage as EventListener);
-    };
-  }, []);
-
-  // Live refresh when registry/terminal payments write local activity
-  useEffect(() => {
-    const hydrateFromLocal = () => {
-      try {
-        const raw = window.localStorage.getItem("opayque_tx");
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setTransactions(parsed);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    const onCustom = () => hydrateFromLocal();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "opayque_tx") hydrateFromLocal();
-    };
-
-    window.addEventListener("opayque_tx_updated", onCustom as EventListener);
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", hydrateFromLocal);
-
-    return () => {
-      window.removeEventListener("opayque_tx_updated", onCustom as EventListener);
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", hydrateFromLocal);
-    };
-  }, []);
-
   useEffect(() => {
     const resolvedBalance = transactions.reduce((sum, tx) => {
       const amount = Number(tx.amount ?? 0);
@@ -129,17 +65,14 @@ export default function VaultDashboard() {
   }, [transactions]);
 
   useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
     try {
-      const supabase = createSupabaseBrowserClient();
+      const seedTransactions = async (merchantId: string) => {
+        const response = await fetch('/api/merchant/activity?page=1&pageSize=20', { credentials: 'include', cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        const data = response.ok ? payload.data : null;
 
-      const seedTransactions = async () => {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20);
-
-        if (!error && Array.isArray(data)) {
+        if (Array.isArray(data)) {
           const mapped = data.map((row: any) => ({
             id: String(row.id ?? row.tx_hash ?? row.signature ?? 'pending'),
             staff: row.source_name ?? (row.terminal_id ? 'Merchant Terminal' : 'System'),
@@ -157,13 +90,36 @@ export default function VaultDashboard() {
         }
       };
 
-      void seedTransactions();
+      let channel: any = null;
+      void (async () => {
+        const merchantId = await getAuthenticatedMerchantId();
+        if (!merchantId) {
+          setMerchantReady(false);
+          setTransactions([]);
+          return;
+        }
+        setMerchantReady(true);
 
-      const channel = supabase
-        .channel('vault-dashboard-transactions')
+        const { data: merchant } = await supabase
+          .from("merchants")
+          .select("refund_wallet_address, settlement_wallet_address, wallet_address")
+          .eq("id", merchantId)
+          .maybeSingle();
+        // Refund signer resolution: dedicated refund wallet, settlement wallet, then connected vault authority.
+        setRefundWallet(
+          merchant?.refund_wallet_address ||
+          merchant?.settlement_wallet_address ||
+          merchant?.wallet_address ||
+          publicKey?.toBase58() ||
+          null
+        );
+
+        await seedTransactions(merchantId);
+        channel = supabase
+          .channel(`vault-dashboard-transactions-${merchantId}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'transactions' },
+          { event: 'INSERT', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
           (payload) => {
             const row = payload.new as any;
             if (!row) return;
@@ -181,7 +137,7 @@ export default function VaultDashboard() {
         )
         .on(
           'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'transactions' },
+          { event: 'UPDATE', schema: 'public', table: 'payment_ledger', filter: `merchant_id=eq.${merchantId}` },
           (payload) => {
             const row = payload.new as any;
             if (!row) return;
@@ -205,42 +161,59 @@ export default function VaultDashboard() {
             });
           }
         )
-        .subscribe();
+          .subscribe();
+      })();
 
       return () => {
-        void supabase.removeChannel(channel);
+        if (channel) void supabase.removeChannel(channel);
       };
     } catch (error) {
       console.warn('Vault dashboard Supabase sync failed', error);
     }
   }, []);
 
-  const handleSettlement = () => {
+  const handleSettlement = async () => {
     if (privateBalance <= 0) return;
     setFlushLoading(true);
 
-    setTimeout(() => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId) throw new Error("Authenticated merchant not found");
+
+      const supabase = createSupabaseBrowserClient();
       const settleTx = {
-        id: `SETTLE-${Math.random().toString(36).toUpperCase().slice(0, 6)}`,
-        staff: "System (L1 Flush)",
+        merchant_id: merchantId,
+        terminal_id: null,
+        signature: null,
+        token_symbol: "USDC",
         amount: -privateBalance,
-        status: "Settled",
-        time: new Date().toISOString()
+        status: "settled",
+        payload_hash: `demo-l1-settlement-${Date.now()}`,
       };
 
-      persistTransactions((current) => [settleTx, ...current].slice(0, 20));
-      setPrivateBalance(0);
+      const { data, error } = await supabase
+        .from("payment_ledger")
+        .insert(settleTx)
+        .select()
+        .single();
 
-      try {
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('opayque_balance', '0');
-        }
-      } catch {
-        // ignore storage errors
-      }
-      
+      if (error || !data) throw new Error(error?.message || "Failed to persist demo settlement");
+
+      persistTransactions((current) => [{
+        id: String(data.id),
+        staff: "System (DEMO L1 Settlement)",
+        category: "Settlement",
+        amount: Number(data.amount),
+        status: String(data.status),
+        time: data.created_at,
+        terminalId: null,
+      }, ...current].slice(0, 20));
+      setPrivateBalance(0);
+    } catch (error) {
+      console.error("Demo L1 settlement failed", error);
+    } finally {
       setFlushLoading(false);
-    }, 2000);
+    }
   };
 
   const handleCopyTxId = (id: string, e: React.MouseEvent) => {
@@ -262,27 +235,34 @@ export default function VaultDashboard() {
 
     try {
       const targetTx = selectedTxForRefund;
+      const merchantId = await getAuthenticatedMerchantId();
+      if (!merchantId) throw new Error("Authenticated merchant not found");
+      const sourceWallet = refundWallet;
+      if (!sourceWallet) throw new Error("Configure a refund wallet before issuing refunds.");
 
-      // 1. Attempt optional API call if endpoint exists
-      try {
-        await fetch('/api/v1/refund', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transactionId: targetTx.id,
-            amount: targetTx.amount,
-          }),
-        });
-      } catch (e) {
-        console.warn('Backend refund endpoint offline; executing locally and via Supabase.', e);
+      // Refund funds must be executed by the refund backend using this payout-out signer.
+      // This UI does not initialize or move a merchant vault for refunds.
+      const refundResponse = await fetch('/api/v1/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: targetTx.id,
+          amount: targetTx.amount,
+          refundWalletAddress: sourceWallet,
+        }),
+      });
+      if (!refundResponse.ok) {
+        const body = await refundResponse.json().catch(() => ({}));
+        throw new Error(body?.error || 'Refund execution service is unavailable.');
       }
 
       // 2. Sync status to Supabase if accessible
       try {
         const supabase = createSupabaseBrowserClient();
         await supabase
-          .from('transactions')
+          .from('payment_ledger')
           .update({ status: 'REFUNDED' })
+          .eq('merchant_id', merchantId)
           .eq('id', targetTx.id);
       } catch (e) {
         console.warn('Supabase refund update skipped.', e);
@@ -334,17 +314,27 @@ export default function VaultDashboard() {
 
   // Filter transactions based on Tx ID or Endpoint search
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery.trim()) return transactions;
     const query = searchQuery.toLowerCase().trim();
     return transactions.filter(
       (tx) =>
-        String(tx.id ?? '').toLowerCase().includes(query) ||
-        String(tx.staff ?? '').toLowerCase().includes(query) ||
-        String(tx.category ?? '').toLowerCase().includes(query) ||
-        String(tx.status ?? '').toLowerCase().includes(query) ||
-        String(tx.amount ?? '').includes(query)
+        (statusFilter === "ALL" || String(tx.status ?? "").toUpperCase() === statusFilter) &&
+        (!query ||
+          String(tx.id ?? '').toLowerCase().includes(query) ||
+          String(tx.staff ?? '').toLowerCase().includes(query) ||
+          String(tx.category ?? '').toLowerCase().includes(query) ||
+          String(tx.status ?? '').toLowerCase().includes(query) ||
+          String(tx.amount ?? '').includes(query))
     );
-  }, [transactions, searchQuery]);
+  }, [transactions, searchQuery, statusFilter]);
+
+  const statusOptions = useMemo(() => {
+    const statuses = new Set(
+      transactions
+        .map((tx) => String(tx.status ?? "").trim().toUpperCase())
+        .filter(Boolean)
+    );
+    return Array.from(statuses).sort();
+  }, [transactions]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -383,17 +373,32 @@ export default function VaultDashboard() {
         
         <button 
           onClick={handleSettlement}
-          disabled={privateBalance <= 0 || flushLoading || !connected}
+          disabled={privateBalance <= 0 || flushLoading || !merchantReady}
           className="px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
         >
-          {flushLoading ? "TEE Settlement in Progress..." : "Execute L1 Settlement"}
+          {flushLoading ? "Saving Demo Settlement..." : "Execute Demo L1 Settlement"}
         </button>
       </div>
 
       {/* Activity Table Card */}
       <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 px-2">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+            <select
+              aria-label="Filter activity by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-full border border-white/10 bg-zinc-950/80 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-300 outline-none transition focus:border-purple-500/50"
+            >
+              <option value="ALL">All</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
           
           {/* TX ID Search Bar */}
           <div className="relative w-full sm:w-72">
@@ -474,7 +479,7 @@ export default function VaultDashboard() {
               ) : (
                 <tr>
                   <td colSpan={5} className="py-20 text-center text-zinc-600 italic">
-                    {searchQuery ? "No matching transactions found." : "No merchant activity detected."}
+                    {searchQuery || statusFilter !== "ALL" ? "No matching transactions found." : "No merchant activity detected."}
                   </td>
                 </tr>
               )}

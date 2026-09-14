@@ -19,6 +19,8 @@ interface PairingModalProps {
   timeLeft: string;
   terminalName?: string;
   onTerminalNameChange?: (value: string) => void;
+  onTerminalNameCommit?: (value: string) => void;
+  isRefreshingCode?: boolean;
   pairingState?: "idle" | "waiting" | "used";
 }
 
@@ -30,9 +32,12 @@ export default function PairingModal({
   timeLeft,
   terminalName,
   onTerminalNameChange,
+  onTerminalNameCommit,
+  isRefreshingCode = false,
   pairingState = "idle",
 }: PairingModalProps) {
   const [copied, setCopied] = useState(false);
+  const [isSuccessFading, setIsSuccessFading] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -47,8 +52,13 @@ export default function PairingModal({
   // Auto-close shortly after successful pair so parent can refresh fleet
   useEffect(() => {
     if (!isOpen || pairingState !== "used") return;
-    const t = window.setTimeout(() => onClose(), 1200);
-    return () => window.clearTimeout(t);
+    setIsSuccessFading(false);
+    const fadeTimer = window.setTimeout(() => setIsSuccessFading(true), 3500);
+    const closeTimer = window.setTimeout(() => onClose(), 4000);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(closeTimer);
+    };
   }, [isOpen, pairingState, onClose]);
 
   const copyCode = async () => {
@@ -65,7 +75,20 @@ export default function PairingModal({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#121218] p-6 shadow-2xl shadow-black/60">
+      <div className="relative w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#121218] p-6 shadow-2xl shadow-black/60">
+        {pairingState === "used" && (
+          <div className={`absolute inset-0 z-20 flex items-center justify-center rounded-[2.5rem] bg-purple-600/20 backdrop-blur-xl transition-opacity duration-500 ${isSuccessFading ? "opacity-0" : "animate-in fade-in zoom-in duration-300 opacity-100"}`}>
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="mb-4 rounded-full bg-white p-4 shadow-2xl animate-bounce">
+                <LucideCheck size={40} className="text-purple-600" />
+              </div>
+              <p className="text-sm font-black uppercase tracking-[0.3em] text-white">
+                Pairing successful
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end">
           <button
             onClick={onClose}
@@ -96,9 +119,24 @@ export default function PairingModal({
             <input
               value={terminalName ?? ""}
               onChange={(e) => onTerminalNameChange?.(e.target.value)}
+              onBlur={(e) => onTerminalNameCommit?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onTerminalNameCommit?.(e.currentTarget.value);
+                }
+              }}
               placeholder="Front Desk 1, Bar Tablet"
               className="mt-2 w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-sm text-white outline-none"
             />
+            <button
+              type="button"
+              onClick={() => onTerminalNameCommit?.(terminalName ?? "")}
+              disabled={isRefreshingCode || !(terminalName ?? "").trim()}
+              className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-300 transition hover:text-purple-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isRefreshingCode ? "Updating code..." : "Apply terminal name"}
+            </button>
           </div>
 
           <div className="flex items-center justify-between gap-3">
@@ -107,7 +145,7 @@ export default function PairingModal({
                 Auth Code
               </p>
               <p className="mt-2 font-mono text-3xl font-black tracking-[0.4em] text-white">
-                {authCode}
+                {authCode || "---"}
               </p>
             </div>
             <div className="flex flex-col gap-2">

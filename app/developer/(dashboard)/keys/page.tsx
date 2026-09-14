@@ -6,21 +6,25 @@ import { clearActiveSession } from "@/lib/crypto/session";
 import { useEnvironment } from "@/lib/context/EnvironmentContext";
 import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
+import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
+import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
+import type { TransferMode } from "@/lib/payments/transferMode";
+import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
   AlertCircle,
   ArrowLeft,
-  Building2,
   Check,
   Copy,
   Eye,
   EyeOff,
-  Image as ImageIcon,
   Key,
   Lock,
   LogOut,
   Plus,
   Send,
   ShieldCheck,
+  Trash2,
   Unlock,
   Upload,
   Wallet,
@@ -43,16 +47,14 @@ function computeEffectiveMerchantStatus(merchant: any) {
     merchant?.secondary_email ||
     merchant?.settlement_wallet_address ||
     merchant?.website_url ||
-    merchant?.webhook_url ||
-    merchant?.api_key
+    merchant?.webhook_url
   );
 
-  const nextStatus = resolveMerchantAccessStatus(merchant?.api_access_status, merchant?.api_key);
-  const hasUsableKey = Boolean(merchant?.api_key && String(merchant.api_key).trim());
+  const nextStatus = resolveMerchantAccessStatus(merchant?.api_access_status, null);
 
   if (nextStatus === "approved") return "active";
-  if (nextStatus === "pending" && hasSavedMerchantProfile && hasUsableKey) return "active";
   if (nextStatus === "active" || nextStatus === "revoked") return nextStatus;
+  if (hasSavedMerchantProfile) return "active";
 
   return "pending";
 }
@@ -65,6 +67,7 @@ export default function ApiKeysPage() {
   const [keyPairs, setKeyPairs] = useState<ApiKeyPair[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null);
   const [visibleSecretId, setVisibleSecretId] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
@@ -75,6 +78,7 @@ export default function ApiKeysPage() {
   const [settlementWalletAddress, setSettlementWalletAddress] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [defaultTransferMode, setDefaultTransferMode] = useState<TransferMode>("private");
 
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -84,8 +88,8 @@ export default function ApiKeysPage() {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
-  const [isEmailReadOnly, setIsEmailReadOnly] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const goToDestination = (path: string) => {
     if (isNavigating) return;
@@ -107,30 +111,31 @@ export default function ApiKeysPage() {
       const localName = window.localStorage.getItem("merchant_name") || "";
       const localLogo = window.localStorage.getItem("merchant_logo") || "";
       const localSecondary = window.localStorage.getItem("secondary_email") || "";
-      const localWallet = window.localStorage.getItem("settlement_wallet_address") || "";
       const localWebsite = window.localStorage.getItem("website_url") || "";
       const localWebhook = window.localStorage.getItem("webhook_url") || "";
+      const localSettlementWallet = window.localStorage.getItem("settlement_wallet_address") || "";
+      const localTransferMode = window.localStorage.getItem("default_transfer_mode");
 
       if (localEmail) setMerchantEmail(localEmail);
       if (localName) setMerchantName(localName);
       if (localLogo) setMerchantLogo(localLogo);
       if (localSecondary) setSecondaryEmail(localSecondary);
-      if (localWallet) setSettlementWalletAddress(localWallet);
       if (localWebsite) setWebsiteUrl(localWebsite);
       if (localWebhook) setWebhookUrl(localWebhook);
-
-      const cachedKeys = window.localStorage.getItem("opayque_api_keys");
-      if (cachedKeys) {
-        try {
-          const parsed = JSON.parse(cachedKeys);
-          if (Array.isArray(parsed)) setKeyPairs(parsed);
-        } catch (error) {
-          console.warn("Failed to parse cached keys", error);
-        }
-      }
+      if (localSettlementWallet) setSettlementWalletAddress(localSettlementWallet);
+      if (localTransferMode === "public" || localTransferMode === "private") setDefaultTransferMode(localTransferMode);
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+          setKeyPairs([]);
+          window.localStorage.removeItem("opayque_api_keys");
+          setLoadingKeys(false);
+          return;
+        }
+
+        window.localStorage.removeItem("opayque_api_keys");
 
         const [merchantRes, keysRes] = await Promise.all([
           fetch("/api/v1/merchant").catch(() => null),
@@ -140,26 +145,17 @@ export default function ApiKeysPage() {
         if (user) {
           const { data: merchantData } = await supabase
             .from("merchants")
-            .select("api_key, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url")
+            .select("id, api_access_status, email, merchant_name, merchant_logo, secondary_email, settlement_wallet_address, website_url, webhook_url, default_transfer_mode")
             .eq("auth_user_id", user.id)
             .maybeSingle();
 
-          if (merchantData?.api_key) {
-            setKeyPairs((prev) => {
-              if (prev.length > 0) return prev;
-              const prefix = merchantData.api_key.startsWith("osk_test_") ? "osk_test_" : "osk_live_";
-              return [{
-                id: "db-key-1",
-                publishable: `${prefix}pub_saved`,
-                secret: merchantData.api_key,
-                createdAt: new Date().toISOString(),
-                lastUsed: "never",
-                environment: prefix.includes("test") ? "devnet" : "mainnet",
-              }];
-            });
-          }
-
           if (merchantData) {
+            if (merchantData.id) {
+              bindAuthenticatedMerchantSession({
+                merchantId: merchantData.id,
+                walletAddress: merchantData.settlement_wallet_address || null,
+              });
+            }
             const effectiveStatus = computeEffectiveMerchantStatus(merchantData) as "pending" | "active" | "revoked";
             setMerchantApiAccessStatus(effectiveStatus);
             if (effectiveStatus === "active") {
@@ -177,9 +173,13 @@ export default function ApiKeysPage() {
               window.localStorage.setItem("merchant_logo", merchantData.merchant_logo);
             }
             if (merchantData.secondary_email) setSecondaryEmail(merchantData.secondary_email);
-            if (merchantData.settlement_wallet_address) setSettlementWalletAddress(merchantData.settlement_wallet_address);
+            if (merchantData.settlement_wallet_address) {
+              setSettlementWalletAddress(merchantData.settlement_wallet_address);
+              window.localStorage.setItem("settlement_wallet_address", merchantData.settlement_wallet_address);
+            }
             if (merchantData.website_url) setWebsiteUrl(merchantData.website_url);
             if (merchantData.webhook_url) setWebhookUrl(merchantData.webhook_url);
+            setDefaultTransferMode(merchantData.default_transfer_mode === "public" ? "public" : "private");
           }
         }
 
@@ -187,6 +187,12 @@ export default function ApiKeysPage() {
           const payload = await merchantRes.json();
           const merchant = payload?.merchant;
           if (merchant) {
+            if (merchant.id) {
+              bindAuthenticatedMerchantSession({
+                merchantId: merchant.id,
+                walletAddress: merchant.settlement_wallet_address || null,
+              });
+            }
             const effectiveStatus = computeEffectiveMerchantStatus(merchant) as "pending" | "active" | "revoked";
             setMerchantApiAccessStatus(effectiveStatus);
             window.localStorage.setItem("merchant_api_access_status", effectiveStatus === "active" ? "active" : "pending");
@@ -200,10 +206,18 @@ export default function ApiKeysPage() {
               window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
             }
             if (merchant.secondary_email) setSecondaryEmail(merchant.secondary_email);
-            if (merchant.settlement_wallet_address) setSettlementWalletAddress(merchant.settlement_wallet_address);
+            if (merchant.settlement_wallet_address) {
+              setSettlementWalletAddress(merchant.settlement_wallet_address);
+              window.localStorage.setItem("settlement_wallet_address", merchant.settlement_wallet_address);
+            }
             if (merchant.website_url) setWebsiteUrl(merchant.website_url);
             if (merchant.webhook_url) setWebhookUrl(merchant.webhook_url);
+            setDefaultTransferMode(merchant.default_transfer_mode === "public" ? "public" : "private");
+          } else {
+            clearMerchantProfileCache();
           }
+        } else if (merchantRes?.status === 401 || merchantRes?.status === 404) {
+          clearMerchantProfileCache();
         }
 
         if (keysRes && keysRes.ok) {
@@ -212,16 +226,12 @@ export default function ApiKeysPage() {
             const transformed: ApiKeyPair[] = data.keys.map((k: any) => ({
               id: String(k.id || ""),
               publishable: k.prefix ? `${k.prefix}pub_${String(k.id || "").slice(0, 8)}` : `osk_pub_${String(k.id || "").slice(0, 8)}`,
-              secret: k.rawSecretKey || undefined,
               createdAt: k.created_at || new Date().toISOString(),
               lastUsed: k.last_used_at ? "recent" : "never",
               environment: (k.environment === "mainnet" || k.environment === "live") ? "mainnet" : "devnet",
             }));
 
-            if (transformed.length > 0) {
-              setKeyPairs(transformed);
-              window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
-            }
+            setKeyPairs(transformed);
           }
         }
       } catch (error) {
@@ -275,6 +285,7 @@ export default function ApiKeysPage() {
     const targetEnv = isSandbox ? 'devnet' : 'mainnet';
 
     try {
+      await reauthenticateForSensitiveAction();
       const res = await fetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +318,6 @@ export default function ApiKeysPage() {
 
       setKeyPairs((current) => {
         const updated = [newKey, ...current];
-        window.localStorage.setItem('opayque_api_keys', JSON.stringify(updated));
         return updated;
       });
 
@@ -322,6 +332,35 @@ export default function ApiKeysPage() {
     }
   };
 
+  const handleDeleteKey = async (keyId: string) => {
+    if (deletingKeyId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this API key? Existing requests using it will stop working.")) return;
+
+    setDeletingKeyId(keyId);
+    setProfileMessage(null);
+    setProfileError(null);
+    try {
+      await reauthenticateForSensitiveAction();
+      const response = await fetch(`/api/v1/keys?id=${encodeURIComponent(keyId)}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete API key");
+      }
+
+      setKeyPairs((current) => {
+        const updated = current.filter((key) => key.id !== keyId);
+        return updated;
+      });
+      setVisibleSecretId((current) => (current === keyId ? null : current));
+      setCopiedKeyId((current) => (current === keyId ? null : current));
+      setProfileMessage("API key deleted.");
+    } catch (error: any) {
+      setProfileError(error?.message || "Could not delete API key");
+    } finally {
+      setDeletingKeyId(null);
+    }
+  };
+
   const handleSaveProfile = async () => {
     setProfileSaving(true);
     setProfileMessage(null);
@@ -332,47 +371,33 @@ export default function ApiKeysPage() {
       window.localStorage.setItem("merchant_name", merchantName.trim());
       window.localStorage.setItem("merchant_logo", merchantLogo.trim());
       window.localStorage.setItem("secondary_email", secondaryEmail.trim());
-      window.localStorage.setItem("settlement_wallet_address", settlementWalletAddress.trim());
       window.localStorage.setItem("website_url", websiteUrl.trim());
       window.localStorage.setItem("webhook_url", webhookUrl.trim());
+      window.localStorage.setItem("default_transfer_mode", defaultTransferMode);
     }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
+      if (merchantEmail.trim() !== (user.email ?? "").trim()) {
+        await reauthenticateForSensitiveAction();
+        const { error: emailError } = await supabase.auth.updateUser({ email: merchantEmail.trim() });
+        if (emailError) throw emailError;
+      }
+
       const payload = {
         email: merchantEmail.trim() || null,
         merchantName: merchantName.trim() || null,
         merchantLogo: merchantLogo.trim() || null,
         secondaryEmail: secondaryEmail.trim() || null,
-        settlementWalletAddress: settlementWalletAddress.trim() || null,
         websiteUrl: websiteUrl.trim() || null,
         webhookUrl: webhookUrl.trim() || null,
+        defaultTransferMode,
       };
-
-      const { error: supabaseError } = await supabase
-        .from("merchants")
-        .update({
-          email: payload.email,
-          merchant_name: payload.merchantName,
-          merchant_logo: payload.merchantLogo,
-          secondary_email: payload.secondaryEmail,
-          settlement_wallet_address: payload.settlementWalletAddress,
-          website_url: payload.websiteUrl,
-          webhook_url: payload.webhookUrl,
-          api_access_status: "active",
-          onboarding_status: "completed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("auth_user_id", user.id);
 
       if (typeof window !== "undefined") {
         window.localStorage.setItem("merchant_api_access_status", "active");
-      }
-
-      if (supabaseError) {
-        throw new Error(supabaseError.message || "Supabase merchant update failed");
       }
 
       const res = await fetch("/api/v1/merchant", {
@@ -392,14 +417,13 @@ export default function ApiKeysPage() {
       const data = await res.json();
       const normalizedStatus = computeEffectiveMerchantStatus(data?.merchant ?? {
         api_access_status: "active",
-        api_key: data?.merchant?.api_key || null,
         email: payload.email,
         merchant_name: payload.merchantName,
         merchant_logo: payload.merchantLogo,
         secondary_email: payload.secondaryEmail,
-        settlement_wallet_address: payload.settlementWalletAddress,
         website_url: payload.websiteUrl,
         webhook_url: payload.webhookUrl,
+        default_transfer_mode: payload.defaultTransferMode,
       }) as "pending" | "active" | "revoked";
 
       setProfileMessage("Merchant details saved to Supabase.");
@@ -414,9 +438,16 @@ export default function ApiKeysPage() {
         if (updated.merchant_name) setMerchantName(updated.merchant_name);
         if (updated.merchant_logo) setMerchantLogo(updated.merchant_logo);
         if (updated.secondary_email) setSecondaryEmail(updated.secondary_email);
-        if (updated.settlement_wallet_address) setSettlementWalletAddress(updated.settlement_wallet_address);
+        if (updated.settlement_wallet_address) {
+          setSettlementWalletAddress(updated.settlement_wallet_address);
+          window.localStorage.setItem("settlement_wallet_address", updated.settlement_wallet_address);
+        }
         if (updated.website_url) setWebsiteUrl(updated.website_url);
         if (updated.webhook_url) setWebhookUrl(updated.webhook_url);
+        setDefaultTransferMode(updated.default_transfer_mode === "public" ? "public" : "private");
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("merchant_profile_updated"));
       }
     } catch (error: any) {
       console.error("Supabase update failed", error);
@@ -449,6 +480,9 @@ export default function ApiKeysPage() {
   };
 
   const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
     try {
       await supabase.auth.signOut();
     } catch (error) {
@@ -464,7 +498,7 @@ export default function ApiKeysPage() {
       window.localStorage.removeItem("opayque_api_keys");
       window.localStorage.setItem("opayque_next_route", "/onboarding");
     }
-    goToDestination("/onboarding");
+    router.push("/onboarding");
   };
 
   return (
@@ -502,18 +536,37 @@ export default function ApiKeysPage() {
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
-                  <h2 className="mt-2 text-2xl font-bold text-white">Business details</h2>
+              <div className="mb-6">
+                <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
+              </div>
+
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="group relative mb-6">
+                  <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-purple-500/50 bg-purple-500/10">
+                    {merchantLogo ? (
+                      <img
+                        src={merchantLogo}
+                        alt="Merchant logo"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Upload className="h-10 w-10 text-purple-400" />
+                    )}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsEmailReadOnly((prev) => !prev)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.22em] text-zinc-300"
+                <label
+                  htmlFor="merchant-logo-upload"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-purple-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-purple-500"
                 >
-                  {isEmailReadOnly ? "Edit" : "Lock"}
-                </button>
+                  <Upload size={14} /> Update picture
+                </label>
+                <input
+                  id="merchant-logo-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -521,7 +574,6 @@ export default function ApiKeysPage() {
                   <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Primary email</span>
                   <input
                     value={merchantEmail}
-                    readOnly={isEmailReadOnly}
                     onChange={(event) => setMerchantEmail(event.target.value)}
                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
                     placeholder="merchant@company.com"
@@ -568,15 +620,10 @@ export default function ApiKeysPage() {
                   />
                 </label>
 
-                <label className="space-y-2">
-                  <span className="text-xs uppercase tracking-[0.2em] text-zinc-400">Settlement wallet</span>
-                  <input
-                    value={settlementWalletAddress}
-                    onChange={(event) => setSettlementWalletAddress(event.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition focus:border-purple-400/60"
-                    placeholder="Solana wallet address"
-                  />
-                </label>
+                <SettlementWalletSection
+                  currentWallet={settlementWalletAddress}
+                  onWalletUpdated={setSettlementWalletAddress}
+                />
               </div>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -600,13 +647,6 @@ export default function ApiKeysPage() {
                   {sendingNotification ? "Sending..." : "Send access"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-red-200 transition hover:bg-red-500/20"
-                >
-                  <LogOut size={14} /> Sign out
-                </button>
               </div>
 
               {(profileMessage || profileError || notificationMessage || notificationError) && (
@@ -622,53 +662,30 @@ export default function ApiKeysPage() {
 
           <aside className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Branding</p>
-                  <h2 className="mt-2 text-xl font-bold text-white">Merchant logo</h2>
+              <fieldset className="space-y-3">
+                <legend className="text-xs uppercase tracking-[0.2em] text-zinc-400">Default transfer mode</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(["private", "public"] as const).map((mode) => (
+                    <label key={mode} className={`cursor-pointer rounded-xl border p-4 transition ${defaultTransferMode === mode ? "border-purple-400/70 bg-purple-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}>
+                      <input
+                        type="radio"
+                        name="default-transfer-mode"
+                        value={mode}
+                        checked={defaultTransferMode === mode}
+                        onChange={() => setDefaultTransferMode(mode)}
+                        className="sr-only"
+                      />
+                      <span className="flex items-center justify-between text-sm font-bold text-white">
+                        {mode === "private" ? "Private" : "Standard"}
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{defaultTransferMode === mode ? "Selected" : "Select"}</span>
+                      </span>
+                      <span className="mt-2 block text-xs leading-5 text-zinc-400">
+                        {mode === "private" ? "MagicBlock shields amounts and counterparties. Failures never become public." : "Standard Solana USDC transfer. Fully visible on explorers."}
+                      </span>
+                    </label>
+                  ))}
                 </div>
-                <div className="rounded-full border border-white/10 bg-white/5 p-2 text-purple-300">
-                  <ImageIcon size={18} />
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/10 bg-black/20 p-4">
-                {merchantLogo ? (
-                  <img src={merchantLogo} alt="Merchant logo" className="h-24 w-24 rounded-2xl object-cover" />
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-zinc-800 text-zinc-400">
-                    <Building2 size={30} />
-                  </div>
-                )}
-
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-zinc-200">
-                  <Upload size={14} /> Upload logo
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Environment</p>
-                  <h2 className="mt-2 text-xl font-bold text-white">{isSandbox ? "Sandbox" : "Production"}</h2>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${isSandbox ? "bg-amber-500/20 text-amber-200" : "bg-emerald-500/20 text-emerald-200"}`}>
-                  {isSandbox ? "Devnet" : "Mainnet"}
-                </span>
-              </div>
-
-              <div className="space-y-3 text-sm text-zinc-300">
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <span>API access</span>
-                  <span className={merchantApiAccessStatus === "active" ? "text-emerald-300" : "text-amber-300"}>{merchantApiAccessStatus === "active" ? "Active" : "Pending"}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <span>Wallet attached</span>
-                  <span className="text-purple-300">{settlementWalletAddress ? "Ready" : "Not set"}</span>
-                </div>
-              </div>
+              </fieldset>
             </div>
           </aside>
         </section>
@@ -736,6 +753,16 @@ export default function ApiKeysPage() {
                           {isCopied ? <Check size={12} /> : <Copy size={12} />}
                           {isCopied ? "Copied" : "Copy"}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteKey(keyPair.id)}
+                          disabled={deletingKeyId === keyPair.id || Boolean(deletingKeyId)}
+                          aria-label={`Delete ${keyPair.publishable}`}
+                          title="Delete API key"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
 
@@ -765,6 +792,27 @@ export default function ApiKeysPage() {
           )}
         </section>
       </div>
+
+      <section className="mt-10 rounded-[2rem] border border-red-500/30 bg-red-950/20 p-6 shadow-[0_0_30px_rgba(239,68,68,0.12)]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.34em] text-red-300/80">Danger zone</p>
+            <h3 className="text-2xl font-black uppercase tracking-tight text-white">Sign out and remove access</h3>
+            <p className="max-w-2xl text-sm text-zinc-300">
+              Sign out completely from the vault. You can sign in again to re-register or continue with your existing credentials.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={isSigningOut}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_0_24px_rgba(220,38,38,0.35)] transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSigningOut ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
+      </section>
     </main>
   );
 }

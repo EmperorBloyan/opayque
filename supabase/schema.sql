@@ -19,7 +19,15 @@ create table if not exists merchants (
   merchant_name text not null,
   merchant_logo text,
   secondary_email text,
-  api_key text,
+  settlement_wallet_address text,
+  refund_wallet_address text,
+  preferred_currency text not null default 'USD',
+  screening_status text not null default 'pending' check (screening_status in ('pending', 'approved', 'rejected', 'review')),
+  risk_score text,
+  provider_ref text,
+  screened_at timestamptz,
+  screening_country text,
+  screening_business_name text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -30,6 +38,8 @@ create table if not exists api_keys (
   environment text not null check (environment in ('mainnet', 'sandbox')),
   prefix text not null,
   key_hash text not null,
+  status text not null default 'active' check (status in ('active', 'revoked')),
+  revoked_at timestamptz,
   created_at timestamptz not null default now(),
   last_used_at timestamptz
 );
@@ -49,9 +59,13 @@ create table if not exists terminals (
   id uuid primary key default gen_random_uuid(),
   merchant_id uuid not null references merchants(id) on delete cascade,
   terminal_label text not null,
-  device_token text not null unique,
+  device_token_hash text unique,
+  label text,
   status text not null default 'offline',
-  last_active timestamptz not null default now()
+  last_active timestamptz not null default now(),
+  is_active boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists transactions (
@@ -61,9 +75,10 @@ create table if not exists transactions (
   signature text,
   token_symbol text not null,
   amount numeric not null default 0,
-  status text not null default 'pending',
+  status text not null default 'created' check (status in ('created', 'pending_signature', 'submitted', 'confirmed', 'failed', 'expired')),
   payload_hash text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists terminal_pairing_codes (
@@ -84,84 +99,12 @@ create trigger webhooks_set_updated_at
   before update on webhooks
   for each row execute function set_updated_at();
 
-alter table merchants enable row level security;
-alter table api_keys enable row level security;
-alter table webhooks enable row level security;
-alter table terminals enable row level security;
-alter table transactions enable row level security;
-alter table terminal_pairing_codes enable row level security;
-
-create policy "Authenticated merchant can manage own profile"
-  on merchants
-  for all
-  using (auth.uid() = auth_user_id)
-  with check (auth.uid() = auth_user_id);
-
-create policy "Merchant owners can manage api keys"
-  on api_keys
-  for all
-  using (
-    merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
-    )
-  )
-  with check (
-    merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
-    )
-  );
-
-create policy "Merchant owners can manage webhooks"
-  on webhooks
-  for all
-  using (
-    merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
-    )
-  )
-  with check (
-    merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
-    )
-  );
-
-create table if not exists terminals (
-  id uuid primary key default gen_random_uuid(),
-  merchant_id uuid not null references merchants(id) on delete cascade,
-  terminal_label text not null,
-  device_token text not null unique,
-  status text not null default 'offline',
-  last_active timestamptz not null default now()
-);
-
-create table if not exists transactions (
-  id uuid primary key default gen_random_uuid(),
-  merchant_id uuid not null references merchants(id) on delete cascade,
-  terminal_id uuid references terminals(id) on delete set null,
-  signature text,
-  token_symbol text not null,
-  amount numeric not null default 0,
-  status text not null default 'pending',
-  payload_hash text,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists terminal_pairing_codes (
-  code text primary key,
-  merchant_id uuid,
-  terminal_id uuid,
-  terminal_label text,
-  status text not null default 'PENDING' check (status in ('PENDING', 'USED', 'EXPIRED')),
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null
-);
-
-create trigger merchants_set_updated_at
-  before update on merchants
+create trigger terminals_set_updated_at
+  before update on terminals
   for each row execute function set_updated_at();
 
-create trigger webhooks_set_updated_at
-  before update on webhooks
+create trigger transactions_set_updated_at
+  before update on transactions
   for each row execute function set_updated_at();
 
 alter table merchants enable row level security;
@@ -174,33 +117,81 @@ alter table terminal_pairing_codes enable row level security;
 create policy "Authenticated merchant can manage own profile"
   on merchants
   for all
-  using (auth.uid() = auth_user_id)
-  with check (auth.uid() = auth_user_id);
+  to authenticated
+  using ((select auth.uid()) = auth_user_id)
+  with check ((select auth.uid()) = auth_user_id);
 
 create policy "Merchant owners can manage api keys"
   on api_keys
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );
 
 create policy "Merchant owners can manage webhooks"
   on webhooks
   for all
+  to authenticated
   using (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   )
   with check (
     merchant_id in (
-      select id from merchants where auth_user_id = auth.uid()
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  );
+
+create policy "Merchant owners can manage terminals"
+  on terminals
+  for all
+  to authenticated
+  using (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  )
+  with check (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  );
+
+create policy "Merchant owners can manage transactions"
+  on transactions
+  for all
+  to authenticated
+  using (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  )
+  with check (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  );
+
+create policy "Merchant owners can manage pairing codes"
+  on terminal_pairing_codes
+  for all
+  to authenticated
+  using (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
+    )
+  )
+  with check (
+    merchant_id in (
+      select id from merchants where auth_user_id = (select auth.uid())
     )
   );

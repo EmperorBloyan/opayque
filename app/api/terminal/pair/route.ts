@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { randomUUID } from "crypto";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
 
 interface PairTerminalRequest {
   merchant_id?: string;
@@ -9,16 +11,44 @@ interface PairTerminalRequest {
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = await strictLimit(`terminal:pair:${getClientAddress(request)}`, true);
+    if (!rateLimit.allowed) return NextResponse.json({ success: false, error: rateLimit.error || "Too many pairing requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
     const body = (await request.json()) as PairTerminalRequest;
-    const merchantId = body.merchant_id?.trim();
     const terminalLabel = body.terminal_label?.trim();
 
-    if (!merchantId || !terminalLabel) {
-      return NextResponse.json({ success: false, error: "merchant_id and terminal_label are required" }, { status: 400 });
+    if (!terminalLabel) {
+      return NextResponse.json({ success: false, error: "terminal_label is required" }, { status: 400 });
+    }
+    if (terminalLabel.length > 80) {
+      return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
     }
 
+    const supabase = await createSupabaseServerClient(request);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: merchant, error: merchantError } = await supabase
+      .from("merchants")
+      .select("id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (merchantError) {
+      return NextResponse.json({ success: false, error: merchantError.message }, { status: 500 });
+    }
+
+    if (!merchant?.id) {
+      return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 404 });
+    }
+
+    const merchantId = merchant.id;
     const deviceToken = randomUUID();
-    const supabase = await createSupabaseServerClient();
 
     try {
       const { data, error } = await supabase
@@ -26,7 +56,7 @@ export async function POST(request: Request) {
         .insert({
           merchant_id: merchantId,
           terminal_label: terminalLabel,
-          device_token: deviceToken,
+          device_token_hash: hashDeviceToken(deviceToken),
           status: "online",
         })
         .select()

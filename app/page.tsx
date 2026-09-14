@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import { clearActiveSession, createSessionChallenge, createTerminalSession, getA
 import { configureConfidentialAccount } from "@/lib/solana/confidential";
 import { getAssetMintAddress } from "@/lib/solana/constants";
 import { PublicKey } from "@solana/web3.js";
+import { createClient } from "@/lib/supabase/client";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") {
@@ -82,7 +83,7 @@ function openPhantomUniversalLink(targetUrl: string) {
     return;
   }
 
-  const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(targetUrl)}`;
+  const phantomUrl = `https://phantom.app/ul/v1/browse?url=${encodeURIComponent(targetUrl)}`;
   const popup = window.open(phantomUrl, "_blank", "noopener,noreferrer");
 
   if (!popup) {
@@ -94,20 +95,19 @@ export default function UnifiedLanding() {
   const [mounted, setMounted] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { connected, publicKey, signMessage, signTransaction, signAndSendTransaction, connect } = useWallet();
+  const { connected, publicKey, signMessage, signTransaction, connect } = useWallet();
   const router = useRouter();
   const mobileWalletContext = getMobileWalletContext();
 
   useEffect(() => {
     setMounted(true);
-    if (getActiveSession()) {
-      setIsAuthorizing(true);
-    }
+    // Do not treat an existing session as an in-flight vault authorization.
+    // The spinner should only be active while the user is actively authorizing.
   }, []);
 
   const handleVaultEntrance = async () => {
     const canSignMessage = Boolean(signMessage);
-    const canSignTransaction = Boolean(signTransaction || signAndSendTransaction);
+    const canSignTransaction = Boolean(signTransaction);
     const canPerformConfidentialSetup = canSignMessage || canSignTransaction;
 
     if (!connected || !publicKey) {
@@ -148,7 +148,7 @@ export default function UnifiedLanding() {
       const merchantId = await registerMerchant(publicKey.toBase58());
       const challenge = createSessionChallenge();
       const message = new TextEncoder().encode(challenge.nonce);
-      const signature = canSignMessage ? await signMessage(message) : new Uint8Array();
+      const signature = signMessage ? await signMessage(message) : new Uint8Array();
       const session = await createTerminalSession({
         merchantId,
         walletAddress: publicKey.toBase58(),
@@ -158,7 +158,7 @@ export default function UnifiedLanding() {
 
       const mint = new PublicKey(getAssetMintAddress("USDC", true));
       const confidentialSummary = await configureConfidentialAccount(
-        { publicKey, signMessage, signTransaction, signAndSendTransaction },
+        { publicKey, signMessage, signTransaction },
         mint
       );
 
@@ -173,9 +173,32 @@ export default function UnifiedLanding() {
       router.push("/vault/registry");
     } catch (error) {
       clearActiveSession();
-      setIsAuthorizing(false);
       setAuthError(error instanceof Error ? error.message : "Wallet signing was rejected.");
+    } finally {
+      setIsAuthorizing(false);
     }
+  };
+
+  const handleAccessVault = async () => {
+    setAuthError(null);
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) {
+      router.push(`/login?next=${encodeURIComponent("/vault")}`);
+      return;
+    }
+    router.push("/vault");
+  };
+
+  const handleDeveloperDashboard = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) {
+      router.push("/login?next=%2Fdeveloper%2Foverview");
+      return;
+    }
+    router.push("/developer/overview");
   };
 
   if (!mounted) return null;
@@ -196,7 +219,7 @@ export default function UnifiedLanding() {
           <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Merchant Authorization</h2>
           <div className="flex items-center gap-3 text-zinc-500">
             <LucideLoader2 size={14} className="animate-spin" />
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Shielded Identity...</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em]">Verifying Wallet Identity...</p>
           </div>
           {authError ? (
             <p className="mt-4 max-w-sm text-sm text-amber-400">{authError}</p>
@@ -207,7 +230,7 @@ export default function UnifiedLanding() {
           <header className="text-center mb-16">
             <h1 className="text-6xl font-black italic uppercase tracking-tighter mb-2">Opayque</h1>
             <p className="text-[10px] text-zinc-500 uppercase tracking-[0.5em] font-bold">
-              Shielded POS Infrastructure
+              Private-Payment POS Infrastructure
             </p>
           </header>
 
@@ -220,19 +243,13 @@ export default function UnifiedLanding() {
                   <LucideLock className="text-zinc-700" size={20} />
                 </div>
                 <p className="text-zinc-500 text-sm mb-12 h-12">
-                  Manage staff, pair terminals, and audit transactions via TEE-shielded protocols.
+                  Manage staff, pair terminals, and audit transactions. Private payments require the MagicBlock path.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  const nextRoute = "/vault/registry";
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem("opayque_next_route", nextRoute);
-                  }
-                  router.push(`/login?next=${encodeURIComponent(nextRoute)}`);
-                }}
+                onClick={() => void handleAccessVault()}
                 className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-purple-500 transition-all active:scale-[0.98]"
               >
                 Access Vault
@@ -277,7 +294,8 @@ export default function UnifiedLanding() {
 
               <div className="flex gap-3">
                 <Link
-                  href={`/login?next=${encodeURIComponent("/developer/overview")}`}
+                  href="/developer/overview"
+                  onClick={(event) => void handleDeveloperDashboard(event)}
                   className="flex-1"
                 >
                   <button className="w-full py-5 bg-zinc-800 text-white text-center rounded-2xl font-black uppercase text-xs tracking-widest group-hover:bg-zinc-700 transition-all">
@@ -299,7 +317,6 @@ export default function UnifiedLanding() {
       <footer className="absolute bottom-10 opacity-20">
         <div className="flex flex-col items-center gap-2">
           <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-500">Global Settlement Layer</span>
-          <p className="text-[9px] font-mono uppercase tracking-widest">Built for Solana Radar 2026</p>
         </div>
       </footer>
 

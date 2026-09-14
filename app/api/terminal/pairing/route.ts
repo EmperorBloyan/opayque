@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { randomBytes, randomUUID } from "node:crypto";
+import { hashDeviceToken } from "@/lib/terminal/deviceAuth";
+import { safeErrorMessage } from "@/lib/error-handler";
 
 function isValidMerchantId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -7,249 +11,208 @@ function isValidMerchantId(value: unknown): value is string {
 
 function createPairingCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const random = randomBytes(6);
   let code = "";
-  for (let index = 0; index < 6; index += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
+  for (let index = 0; index < 6; index += 1) code += chars[random[index] % chars.length];
   return code;
 }
 
 function normalizeWalletAddress(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value.trim();
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = await strictLimit(
+      `terminal:pairing:${getClientAddress(request)}`,
+      process.env.NODE_ENV === "production"
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: rateLimit.error || "Too many pairing requests" },
+        { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const action = typeof body?.action === "string" ? body.action : "create";
     const merchantId = typeof body?.merchant_id === "string" ? body.merchant_id : null;
     const walletAddress = typeof body?.wallet_address === "string" ? body.wallet_address.trim() : null;
-    const code = typeof body?.code === "string" ? body.code.toUpperCase() : null;
-
-    const supabase = await createSupabaseServerClient();
+    const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : null;
+    const supabase = createSupabaseServerClient(request);
 
     if (action === "create") {
-      if (!isValidMerchantId(merchantId) || merchantId === "merchant-vault") {
-        return NextResponse.json({ success: false, error: "Valid merchant wallet context required. Use vault registry to generate codes." }, { status: 400 });
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+
+      const { data: merchant, error: merchantError } = await supabase
+        .from("merchants")
+        .select("id, wallet_address, settlement_wallet_address")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
+      if (isValidMerchantId(merchantId) && merchantId !== merchant.id) {
+        return NextResponse.json({ success: false, error: "Merchant does not belong to the authenticated session" }, { status: 403 });
       }
 
-      const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
+      const merchantWallet = normalizeWalletAddress(merchant.settlement_wallet_address || merchant.wallet_address);
+      if (!merchantWallet) {
+        return NextResponse.json({ success: false, error: "Save a settlement wallet in Vault before generating a pairing code." }, { status: 409 });
+      }
+      if (walletAddress && walletAddress !== merchantWallet) {
+        return NextResponse.json({ success: false, error: "The pairing wallet does not match the merchant settlement wallet." }, { status: 409 });
+      }
+
+      const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
+      if (terminalLabel && terminalLabel.length > 80) {
+        return NextResponse.json({ success: false, error: "terminal_label must be 80 characters or fewer" }, { status: 400 });
+      }
+
+      const adminSupabase = createSupabaseServerClient();
       const pairingCode = createPairingCode();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      const terminalLabel = typeof body?.terminal_label === "string" ? body.terminal_label.trim() : null;
-
-      if (normalizedWalletAddress) {
-        const { error: merchantUpdateError } = await supabase
-          .from("merchants")
-          .update({ wallet_address: normalizedWalletAddress, updated_at: new Date().toISOString() })
-          .eq("id", merchantId);
-
-        if (merchantUpdateError) {
-          console.warn("Failed to link merchant wallet to pairing record", merchantUpdateError);
-        }
-      }
-
-      const { error } = await supabase.from("terminal_pairing_codes").insert({
+      const { error } = await adminSupabase.from("terminal_pairing_codes").insert({
         code: pairingCode,
-        merchant_id: merchantId,
+        merchant_id: merchant.id,
         status: "PENDING",
         expires_at: expiresAt,
         terminal_label: terminalLabel,
       });
+      if (error) return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing code creation failed") }, { status: 500 });
 
-      if (error) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, code: pairingCode, expiresAt, terminalLabel });
+      return NextResponse.json(
+        { success: true, code: pairingCode, expiresAt, terminalLabel },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
+      );
     }
 
     if (action === "verify") {
-      if (!code) {
-        return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
-      }
+      if (!code) return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
 
-      const { data, error } = await supabase
+      const adminSupabase = createSupabaseServerClient();
+      const { data: pairing, error: pairingError } = await adminSupabase
         .from("terminal_pairing_codes")
         .select("code, status, expires_at, merchant_id, terminal_label")
         .eq("code", code)
-        .single();
+        .maybeSingle();
+      if (pairingError || !pairing) return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
 
-      if (error || !data) {
-        return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 404 });
-      }
-
-      const expiresAtMs = new Date(data.expires_at).getTime();
-      const isExpired = Number.isNaN(expiresAtMs) || Date.now() >= expiresAtMs;
-      const isPending = data.status === "PENDING";
-
-      if (!isPending || isExpired) {
+      const expiresAt = new Date(pairing.expires_at).getTime();
+      if (pairing.status !== "PENDING" || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
         return NextResponse.json({ success: false, error: "PAIRING CODE REJECTED" }, { status: 409 });
       }
 
       const requestedMerchantId = isValidMerchantId(merchantId) ? merchantId : null;
-      const storedMerchantId = isValidMerchantId(data.merchant_id) ? data.merchant_id : null;
-
+      const storedMerchantId = isValidMerchantId(pairing.merchant_id) ? pairing.merchant_id : null;
       if (requestedMerchantId && storedMerchantId && requestedMerchantId !== storedMerchantId) {
         return NextResponse.json({ success: false, error: "This pairing code belongs to a different vault merchant." }, { status: 409 });
       }
+      const resolvedMerchantId = storedMerchantId || requestedMerchantId;
+      if (!resolvedMerchantId) return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
 
-      const resolvedMerchantId = storedMerchantId ?? requestedMerchantId;
-
-      if (!resolvedMerchantId) {
-        return NextResponse.json({ success: false, error: "This pairing code is not linked to a vault merchant." }, { status: 400 });
-      }
-
-      let merchantData: { id: string; wallet_address?: string | null; settlement_wallet_address?: string | null; merchant_name?: string | null; merchant_logo?: string | null } | null = null;
-      const { data: fetchedMerchantData, error: merchantError } = await supabase
+      const { data: merchant, error: merchantError } = await adminSupabase
         .from("merchants")
         .select("id, wallet_address, settlement_wallet_address, merchant_name, merchant_logo")
         .eq("id", resolvedMerchantId)
-        .single();
-
-      merchantData = fetchedMerchantData ?? null;
-      const suppliedWalletAddress = normalizeWalletAddress(walletAddress);
-      let merchantWalletAddress = normalizeWalletAddress(merchantData?.wallet_address ?? merchantData?.settlement_wallet_address ?? "");
-
-      if (!merchantError && !merchantWalletAddress && suppliedWalletAddress && resolvedMerchantId) {
-        const { error: walletPatchError } = await supabase
-          .from("merchants")
-          .update({ wallet_address: suppliedWalletAddress, updated_at: new Date().toISOString() })
-          .eq("id", resolvedMerchantId);
-
-        if (!walletPatchError) {
-          merchantWalletAddress = suppliedWalletAddress;
-          merchantData = { ...(merchantData ?? { id: resolvedMerchantId }), wallet_address: suppliedWalletAddress };
-        }
-      }
-
-      if (merchantError || !merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
-        }, { status: 404 });
-      }
-
-      if (suppliedWalletAddress && suppliedWalletAddress !== merchantWalletAddress) {
-        return NextResponse.json({
-          success: false,
-          error: "This pairing code is not linked to a vault merchant wallet. Use a code generated in the vault registry.",
-        }, { status: 409 });
-      }
-
-      // Mark pairing code as used
-      const { error: updateError } = await supabase
-        .from("terminal_pairing_codes")
-        .update({ status: "USED", merchant_id: resolvedMerchantId })
-        .eq("code", code);
-
-      if (updateError) {
-        return NextResponse.json(
-          { success: false, error: updateError.message },
-          { status: 500 }
-        );
-      }
-
-      const terminalLabel =
-        (typeof data.terminal_label === "string" && data.terminal_label.trim()) ||
-        "Fleet Terminal";
-
-      const nowIso = new Date().toISOString();
-      const terminalId = `term_${resolvedMerchantId.slice(0, 8)}_${code}`;
-
-      // Find existing fleet row by merchant + label (tolerant)
-      const { data: existingTerminal } = await supabase
-        .from("terminals")
-        .select("id")
-        .eq("merchant_id", resolvedMerchantId)
-        .or(`terminal_label.eq.${terminalLabel},label.eq.${terminalLabel}`)
         .maybeSingle();
+      const merchantWallet = normalizeWalletAddress(merchant?.settlement_wallet_address || merchant?.wallet_address);
+      if (merchantError || !merchant || !merchantWallet) {
+        return NextResponse.json({ success: false, error: "Merchant has no settlement wallet. Save a settlement address and generate a new code." }, { status: 404 });
+      }
+      if (walletAddress && walletAddress !== merchantWallet) {
+        return NextResponse.json({ success: false, error: "Wallet mismatch. Pair with a fresh code from the correct vault." }, { status: 409 });
+      }
 
-      // Minimal core fields first (always safe)
-      const coreUpdate = {
-        status: "online",
-        label: terminalLabel,
-        terminal_label: terminalLabel,
-      };
+      const terminalId = randomUUID();
+      const deviceToken = randomBytes(32).toString("base64url");
+      const terminalLabel = typeof pairing.terminal_label === "string" && pairing.terminal_label.trim()
+        ? pairing.terminal_label.trim()
+        : "Fleet Terminal";
+      const { data: redeemed, error: redemptionError } = await adminSupabase.rpc("redeem_terminal_pairing", {
+        p_code: code,
+        p_merchant_id: resolvedMerchantId,
+        p_terminal_id: terminalId,
+        p_terminal_label: terminalLabel,
+        p_device_token_hash: hashDeviceToken(deviceToken),
+      });
 
-      // Optional enrichment (may not exist on every schema)
-      const richUpdate = {
-        ...coreUpdate,
-        last_active: nowIso,
-        is_active: true,
-        device_token: code,
-      };
+      if (redemptionError || !redeemed?.[0]) {
+        const message = redemptionError?.message?.includes("PAIRING_CODE_REJECTED")
+          ? "PAIRING CODE REJECTED"
+          : redemptionError?.message?.includes("PAIRING_MERCHANT_MISMATCH")
+            ? "This pairing code belongs to a different vault merchant."
+            : redemptionError?.message?.includes("PAIRING_REQUEST_INVALID")
+              ? "Invalid pairing request."
+            : "Terminal pairing could not be persisted. Please try again.";
+        return NextResponse.json({ success: false, error: message }, { status: message === "PAIRING CODE REJECTED" || message === "Invalid pairing request." ? 409 : 500 });
+      }
 
-      if (existingTerminal?.id) {
-        let { error: terminalUpdateError } = await supabase
-          .from("terminals")
-          .update(richUpdate)
-          .eq("id", existingTerminal.id);
-
-        // Fallback if optional columns don't exist
-        if (terminalUpdateError) {
-          const retry = await supabase
-            .from("terminals")
-            .update(coreUpdate)
-            .eq("id", existingTerminal.id);
-          terminalUpdateError = retry.error;
-        }
-
-        if (terminalUpdateError) {
-          console.warn("Failed to update terminal fleet row", terminalUpdateError);
-        }
-      } else {
-        const richInsert = {
-          id: terminalId,
-          merchant_id: resolvedMerchantId,
-          label: terminalLabel,
-          terminal_label: terminalLabel,
-          status: "online",
-          created_at: nowIso,
-          last_active: nowIso,
-          is_active: true,
-          device_token: code,
-        };
-
-        let { error: terminalInsertError } = await supabase
-          .from("terminals")
-          .insert(richInsert);
-
-        // Fallback to minimal insert
-        if (terminalInsertError) {
-          const retry = await supabase.from("terminals").insert({
-            id: terminalId,
-            merchant_id: resolvedMerchantId,
-            label: terminalLabel,
-            terminal_label: terminalLabel,
-            status: "online",
-            created_at: nowIso,
-          });
-          terminalInsertError = retry.error;
-        }
-
-        if (terminalInsertError) {
-          console.warn("Failed to insert terminal fleet row", terminalInsertError);
-        }
+      const { data: terminal, error: terminalError } = await adminSupabase
+        .from("terminals")
+        .select("id, merchant_id, terminal_label, label, status, is_active, last_active")
+        .eq("id", terminalId)
+        .maybeSingle();
+      if (terminalError || !terminal) {
+        return NextResponse.json({ success: false, error: "Terminal pairing was saved but the terminal record could not be loaded." }, { status: 500 });
       }
 
       return NextResponse.json({
         success: true,
         code,
+        terminalId,
+        deviceToken,
         merchantId: resolvedMerchantId,
-        walletAddress: merchantWalletAddress,
-        merchantName: merchantData?.merchant_name ?? null,
-        merchantLogo: merchantData?.merchant_logo ?? null,
-        terminalLabel,
+        walletAddress: merchantWallet,
+        merchantName: merchant.merchant_name ?? null,
+        merchantLogo: merchant.merchant_logo ?? null,
+        terminalLabel: terminal.terminal_label,
+        terminal,
       });
+    }
+
+    if (action === "cancel") {
+      if (!code) return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+
+      const { data: merchant, error: merchantError } = await supabase
+        .from("merchants")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (merchantError || !merchant) return NextResponse.json({ success: false, error: "Merchant profile not found" }, { status: 403 });
+
+      const adminSupabase = createSupabaseServerClient();
+      const { data: pairing, error: pairingError } = await adminSupabase
+        .from("terminal_pairing_codes")
+        .select("code, merchant_id, status")
+        .eq("code", code)
+        .maybeSingle();
+      if (pairingError || !pairing || pairing.merchant_id !== merchant.id) {
+        return NextResponse.json({ success: false, error: "Pairing code not found" }, { status: 404 });
+      }
+      if (pairing.status !== "PENDING") return NextResponse.json({ success: true, cancelled: false });
+
+      const { error: cancelError } = await adminSupabase
+        .from("terminal_pairing_codes")
+        .update({ status: "EXPIRED" })
+        .eq("code", code)
+        .eq("merchant_id", merchant.id)
+        .eq("status", "PENDING");
+      if (cancelError) return NextResponse.json({ success: false, error: "Pairing code could not be cancelled" }, { status: 500 });
+
+      return NextResponse.json({ success: true, cancelled: true });
     }
 
     return NextResponse.json({ success: false, error: "Unsupported action" }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Pairing failed" }, { status: 500 });
+    return NextResponse.json({ success: false, error: safeErrorMessage(error, "Pairing failed") }, { status: 500 });
   }
 }

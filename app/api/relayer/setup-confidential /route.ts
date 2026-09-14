@@ -6,10 +6,15 @@ import {
   SystemProgram,
   Transaction,
 } from "@solana/web3.js";
-import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
+import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/opayque.json";
+import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
+import { getClientAddress, strictLimit } from "@/lib/rate-limit";
+import { getOwnedMerchantForWallet } from "@/lib/auth/merchantRequest";
+import * as Sentry from "@/lib/sentry";
+import { getComputeBudgetInstructions } from "@/lib/solana/priorityFee";
+import { assertProductionConfig } from "@/lib/solana/constants";
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 
 export async function POST(req: Request) {
@@ -17,11 +22,26 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { merchantPublicKey, feeBps = 0, tokenDecimals = 6 } = body;
 
+    const rateLimit = await strictLimit(`relayer:setup:${getClientAddress(req)}`, true);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ success: false, error: rateLimit.error || "Too many initialization requests" }, { status: rateLimit.error ? 503 : 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } });
+    }
+
     if (!merchantPublicKey) {
       return NextResponse.json(
         { success: false, error: "Missing merchantPublicKey" },
         { status: 400 }
       );
+    }
+
+    const ownership = await getOwnedMerchantForWallet(req, merchantPublicKey);
+    if ("error" in ownership) return NextResponse.json({ success: false, error: ownership.error }, { status: ownership.status });
+    const userRateLimit = await strictLimit(`relayer:setup:user:${ownership.user.id}`, true);
+    if (!userRateLimit.allowed) {
+      return NextResponse.json({ success: false, error: userRateLimit.error || "Too many initialization requests" }, { status: userRateLimit.error ? 503 : 429, headers: { "Retry-After": String(userRateLimit.retryAfterSeconds) } });
+    }
+    if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1000 || !Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 18) {
+      return NextResponse.json({ success: false, error: "Invalid vault fee or token decimals" }, { status: 400 });
     }
 
     if (!RELAYER_SECRET) {
@@ -35,10 +55,12 @@ export async function POST(req: Request) {
     const secretKey = Uint8Array.from(JSON.parse(RELAYER_SECRET));
     const relayerKeypair = Keypair.fromSecretKey(secretKey);
 
-    const connection = new Connection(RPC_URL, "confirmed");
+    assertProductionConfig();
+    const rpcUrl = await selectHealthyRpcUrl();
+    const connection = new Connection(rpcUrl, "confirmed");
     const merchant = new PublicKey(merchantPublicKey);
 
-    // Wallet adapter for the relayer
+    // Wallet adapter interface for the relayer
     const wallet = {
       publicKey: relayerKeypair.publicKey,
       signTransaction: async (tx: Transaction) => {
@@ -65,6 +87,17 @@ export async function POST(req: Request) {
       program.programId
     );
 
+    // Guard: Check if vault already exists
+    const vaultInfo = await connection.getAccountInfo(merchantVaultPda);
+    if (vaultInfo) {
+      return NextResponse.json({
+        success: true,
+        alreadyExists: true,
+        message: "Merchant vault already initialized",
+        merchantVault: merchantVaultPda.toBase58(),
+      });
+    }
+
     const [treasuryPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("opayque_treasury"), merchant.toBuffer()],
       program.programId
@@ -75,29 +108,46 @@ export async function POST(req: Request) {
       program.programId
     );
 
-    // Build the transaction
-    const tx = await program.methods
+    // Build instruction
+    const tx = await (program.methods as any)
       .initializeMerchantVault(
-        new (await import("@coral-xyz/anchor")).BN(feeBps),
+        new BN(feeBps),
         merchant,
         tokenDecimals
       )
       .accounts({
-        merchantAuthority: merchant,          // the merchant wallet
-        payer: relayerKeypair.publicKey,      // relayer pays the fees
+        merchantAuthority: merchant,      // merchant wallet address
+        payer: relayerKeypair.publicKey,  // relayer pays transaction & rent fees
         merchantVault: merchantVaultPda,
         opayqueTreasury: treasuryPda,
         protocolConfig: protocolConfigPda,
         systemProgram: SystemProgram.programId,
       })
       .transaction();
+    tx.instructions.unshift(...getComputeBudgetInstructions());
 
-    // Send with relayer as signer
+    // Attach fresh blockhash and fee payer
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed");
+    
+    tx.feePayer = relayerKeypair.publicKey;
+    tx.recentBlockhash = blockhash;
+
+    // Send transaction signed by relayer
     const signature = await connection.sendTransaction(tx, [relayerKeypair], {
       skipPreflight: false,
+      preflightCommitment: "confirmed",
     });
 
-    await connection.confirmTransaction(signature, "confirmed");
+    // Wait for confirmation
+    await connection.confirmTransaction(
+      {
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      "confirmed"
+    );
 
     return NextResponse.json({
       success: true,
@@ -106,12 +156,13 @@ export async function POST(req: Request) {
       merchantVault: merchantVaultPda.toBase58(),
       treasury: treasuryPda.toBase58(),
     });
-  } catch (error: any) {
-    console.error("Relayer error:", error);
+  } catch (error: unknown) {
+    Sentry.captureException(error);
+    console.error("Relayer error:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to initialize merchant vault",
+        error: "Failed to initialize merchant vault",
       },
       { status: 500 }
     );

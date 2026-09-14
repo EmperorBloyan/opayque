@@ -181,7 +181,7 @@ export default function ApiExplorer() {
                 <div className="space-y-3 animate-in fade-in duration-300">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Response Inspector</span>
-                    <span className="text-[9px] font-mono text-green-400 uppercase tracking-widest">200 OK • TEE Verified</span>
+                    <span className="text-[9px] font-mono text-green-400 uppercase tracking-widest">200 OK • API Response</span>
                   </div>
                   <div className="bg-black/80 border border-green-500/20 rounded-2xl p-5 font-mono text-xs text-green-400 overflow-x-auto">
                     <pre>{responseOutput}</pre>

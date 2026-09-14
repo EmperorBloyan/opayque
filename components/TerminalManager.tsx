@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from "react"
 import { useRouter } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { 
   LucideBell, 
@@ -13,7 +13,8 @@ import {
   LucideRefreshCw, 
   LucideTrash2, 
   LucideAlertTriangle, 
-  LucideHome 
+  LucideHome,
+  LucideCheckCircle2,
 } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -23,12 +24,12 @@ import {
   getStoredMerchantId,
 } from "@/lib/crypto/session";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
-import { sendJitoBundle } from "@/lib/solana/jito";
+import { sendLegacyPayment, sendPayment } from "@/lib/solana/sendPayment";
 import type { Terminal } from "@/lib/types";
+import type { TransferMode } from "@/lib/payments/transferMode";
 import PairingModal from "./PairingModal";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-const JITO_TIP_ACCOUNT = new PublicKey("96gYZGLnJYVFmbjzopA9f848uwF32vRkeXaE4W36fT23");
 const JUPITER_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
 const JUPITER_SWAP_INSTRUCTIONS_URL = "https://quote-api.jup.ag/v6/swap-instructions";
 
@@ -60,11 +61,6 @@ function createAccessCode() {
   return code;
 }
 
-function createDefaultTerminalLabel() {
-  const shortId = crypto.randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase();
-  return `Terminal-${shortId}`;
-}
-
 function isValidUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -90,20 +86,6 @@ function formatBaseUnits(amount: bigint, decimals: number): string {
   const fraction = amount % base;
   const fractionString = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
   return fractionString.length > 0 ? `${whole.toString()}.${fractionString}` : whole.toString();
-}
-
-function toBase64(bytes: Uint8Array): string {
-  if (typeof window !== "undefined" && window.btoa) {
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    return window.btoa(binary);
-  }
-
-  return Buffer.from(bytes).toString("base64");
 }
 
 function fromBase64(base64: string): Uint8Array {
@@ -182,33 +164,6 @@ async function resolveMerchantId(): Promise<string | null> {
   return insertedMerchant.id;
 }
 
-async function ensureActiveMerchantWalletRecord(): Promise<{ merchantId: string | null; walletAddress: string | null }> {
-  const session = getActiveSession();
-  const walletAddress = session?.walletAddress?.trim() || null;
-
-  if (!walletAddress) {
-    return { merchantId: null, walletAddress: null };
-  }
-
-  const supabase = createSupabaseBrowserClient();
-  const merchantName = typeof window !== "undefined"
-    ? window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant"
-    : "Opayque Merchant";
-
-  const { data, error } = await supabase
-    .from("merchants")
-    .upsert({ wallet_address: walletAddress, merchant_name: merchantName }, { onConflict: "wallet_address" })
-    .select("id, wallet_address")
-    .single();
-
-  if (error || !data?.id) {
-    console.error("Failed to persist active merchant wallet record", error);
-    return { merchantId: null, walletAddress: walletAddress };
-  }
-
-  return { merchantId: data.id, walletAddress: data.wallet_address ?? walletAddress };
-}
-
 function normalizeTerminals(items: Terminal[] = []): Terminal[] {
   return items.map((terminal) => ({
     ...terminal,
@@ -249,6 +204,7 @@ export default function TerminalManager({
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number | null>(null);
   const [isRefreshingCode, setIsRefreshingCode] = useState(false);
   const [newTerminalLabel, setNewTerminalLabel] = useState("");
+  const [pendingTerminal, setPendingTerminal] = useState<Terminal | null>(null);
   const [pairingState, setPairingState] = useState<"idle" | "waiting" | "used">("idle");
   const [toast, setToast] = useState<string | null>(null);
   
@@ -259,8 +215,13 @@ export default function TerminalManager({
   const [quoteInputAmount, setQuoteInputAmount] = useState<bigint | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState<{
+    amount: number;
+    currency: string;
+    signature?: string;
+  } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const checkoutInFlightRef = useRef(false);
+  const [transferMode, setTransferMode] = useState<TransferMode>("private");
 
   // Runtime Error Recovery State
   const [errorState, setErrorState] = useState<{
@@ -269,8 +230,10 @@ export default function TerminalManager({
   } | null>(null);
 
   const fleetChannelRef = useRef<any | null>(null);
+  const pairingRequestRef = useRef(false);
+  const previousTerminalCountRef = useRef<number | null>(null);
 
-  const { publicKey, signTransaction, signAndSendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();
 
   const networkIsDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK !== "mainnet-beta";
@@ -306,9 +269,9 @@ export default function TerminalManager({
     [setTerminals, notifyFleetUpdated]
   );
 
-  const loadFromSupabase = useCallback(async () => {
+  const loadFromSupabase = useCallback(async (showLoading = true) => {
     if (!resolvedMerchantId) return;
-    setIsLoadingTerminals(true);
+    if (showLoading) setIsLoadingTerminals(true);
     try {
       const supabase = createSupabaseBrowserClient();
 
@@ -321,6 +284,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("last_active", { ascending: false });
         data = res.data;
         error = res.error;
@@ -331,6 +295,7 @@ export default function TerminalManager({
           .from("terminals")
           .select("*")
           .eq("merchant_id", resolvedMerchantId)
+          .not("status", "in", "(revoked,unpaired,deleted)")
           .order("created_at", { ascending: false });
         data = res.data;
         error = res.error;
@@ -347,36 +312,61 @@ export default function TerminalManager({
         return {
           id: row.id,
           label: row.terminal_label || row.label || "Terminal Node",
-          status: row.status === "online" ? "online" : "offline",
+          status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
           lastSeen: new Date(when).getTime(),
-          accessCode: row.device_token || row.access_code || createAccessCode(),
+          accessCode: row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
+      }).filter((terminal, index) => {
+        const source = data?.[index];
+        return !["revoked", "unpaired", "deleted"].includes(String(source?.status).toLowerCase());
       });
 
       await persistTerminals(mapped);
     } catch (err: any) {
       console.error("Failed to load terminals from Supabase", err);
     } finally {
-      setIsLoadingTerminals(false);
+      if (showLoading) setIsLoadingTerminals(false);
     }
   }, [persistTerminals, resolvedMerchantId]);
 
   // --- REFACTORED PAIRING CODE GENERATION ---
   const refreshAuthCode = useCallback(
     async (labelOverride?: string) => {
-      const merchantWalletRecord = await ensureActiveMerchantWalletRecord();
-      const merchantIdForPairing = resolvedMerchantId ?? merchantWalletRecord.merchantId;
-      const walletAddressForPairing = merchantWalletRecord.walletAddress;
+      if (pairingRequestRef.current) return;
+      pairingRequestRef.current = true;
 
-      if (!merchantIdForPairing || merchantIdForPairing === "merchant-vault") {
-        setToast("Merchant wallet not linked. Complete vault authorization first.");
+      let merchantResponse: Response;
+      try {
+        merchantResponse = await fetch("/api/v1/merchant", {
+          credentials: "include",
+        });
+      } catch (error) {
+        console.error("Failed to resolve authenticated merchant", error);
+        setToast("Unable to verify the merchant session. Please try again.");
         setTimeout(() => setToast(null), 3000);
+        pairingRequestRef.current = false;
+        return;
+      }
+      const merchantPayload = await merchantResponse.json().catch(() => null);
+      const merchant = merchantPayload?.merchant;
+      const merchantIdForPairing = typeof merchant?.id === "string" ? merchant.id : null;
+      const walletAddressForPairing =
+        (typeof merchant?.settlement_wallet_address === "string" && merchant.settlement_wallet_address.trim()) ||
+        (typeof merchant?.wallet_address === "string" && merchant.wallet_address.trim()) ||
+        getActiveSession()?.walletAddress?.trim() ||
+        null;
+
+      if (!merchantResponse.ok || !merchantIdForPairing) {
+        setToast(merchantPayload?.error || "Merchant profile not found. Complete setup and sign in again.");
+        setTimeout(() => setToast(null), 3000);
+        pairingRequestRef.current = false;
         return;
       }
 
       if (!isValidUuid(merchantIdForPairing)) {
+        pairingRequestRef.current = false;
         setToast("Invalid merchant context. Please re-authorize.");
         setTimeout(() => setToast(null), 3000);
         return;
@@ -387,17 +377,22 @@ export default function TerminalManager({
       setErrorState(null);
 
       try {
-        const terminalLabel = labelOverride || newTerminalLabel || createDefaultTerminalLabel();
+        const terminalLabel = typeof labelOverride === "string"
+          ? labelOverride.trim()
+          : newTerminalLabel.trim();
 
         // Call API to create pairing code - this validates merchant and patches wallet_address
         const response = await fetch("/api/terminal/pairing", {
           method: "POST",
+          credentials: "include",
+          cache: "no-store",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "create",
             merchant_id: merchantIdForPairing,
             wallet_address: walletAddressForPairing,
             terminal_label: terminalLabel,
+            generated_at: Date.now(),
           }),
         });
 
@@ -420,6 +415,7 @@ export default function TerminalManager({
         setTimeLeft("00M 00S");
       } finally {
         setIsRefreshingCode(false);
+        pairingRequestRef.current = false;
       }
     },
     [newTerminalLabel, resolvedMerchantId]
@@ -454,11 +450,11 @@ export default function TerminalManager({
     return () => clearInterval(interval);
   }, [pairingExpiresAt, isPairingOpen]);
 
-  const closePairingModal = () => {
+  const closePairingModal = useCallback(() => {
     setIsPairingOpen(false);
     setPairingState("idle");
-    void loadFromSupabase();
-  };
+    void loadFromSupabase(false);
+  }, [loadFromSupabase]);
 
   const expectedUsdcBaseUnits = useMemo(() => {
     if (!amount || Number.isNaN(amount)) return 0n;
@@ -628,61 +624,52 @@ export default function TerminalManager({
     }
 
     const swapTx = VersionedTransaction.deserialize(fromBase64(swapTransactionBase64));
-    const tipInstruction = SystemProgram.transfer({
-      fromPubkey: publicKey,
-      toPubkey: JITO_TIP_ACCOUNT,
-      lamports: 100_000,
-    });
-
-    const blockhashInfo = await connection.getLatestBlockhash("finalized");
-    const messageV0 = new TransactionMessage({
-      payerKey: publicKey,
-      recentBlockhash: blockhashInfo.blockhash,
-      instructions: [...swapTx.message.instructions, tipInstruction],
-      addressLookupTableAccounts: swapTx.message.addressLookupTableAccounts ?? [],
-    }).compileToV0Message();
-
-    return new VersionedTransaction(messageV0);
+    return swapTx;
   }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, quoteInputAmount, selectedTokenMint, usdcMintAddress]);
 
   const submitSwapPayment = useCallback(async () => {
-    if (!(signTransaction || signAndSendTransaction) || !connection) {
+    if (!signTransaction || !connection) {
       throw new Error("Wallet must support transaction signing");
     }
 
     const transaction = await buildSwapTransaction();
-
-    // signAndSendTransaction already signs and broadcasts the transaction.
-    // Do not fall through to the raw/Jito path, which would prompt for a second signature.
-    if (signAndSendTransaction) {
-      const signature = await signAndSendTransaction(transaction as any);
-      await connection.confirmTransaction(signature as any, "confirmed");
-      return signature;
-    }
-
-    let serialized: Uint8Array;
-    const signed = await signTransaction!(transaction as any);
-    serialized = signed.serialize();
-    const encoded = toBase64(serialized);
-
-    try {
-      const jitoResult = await sendJitoBundle([encoded]);
-      if (jitoResult.success) {
-        return jitoResult.bundleId;
-      }
-      console.warn("Jito bundle failed, falling back to raw send", jitoResult.error);
-    } catch (error) {
-      console.warn("Jito bundle submission error", error);
-    }
-
-    const signature = await connection.sendRawTransaction(serialized, { skipPreflight: true, maxRetries: 5 });
-    await connection.confirmTransaction(signature, "confirmed");
-    return signature;
-  }, [buildSwapTransaction, connection, signTransaction, signAndSendTransaction]);
+    return sendPayment(connection, transaction as VersionedTransaction, signTransaction!);
+  }, [buildSwapTransaction, connection, signTransaction]);
 
   const handleDirectUsdcPay = useCallback(async () => {
-    if (!publicKey || !connection || !(signTransaction || signAndSendTransaction) || !merchantWallet) {
+    if (!publicKey || !connection || !signTransaction || !merchantWallet) {
       throw new Error("Wallet connection is required");
+    }
+
+    if (transferMode === "private") {
+      if (!sessionId) throw new Error("Private terminal payments require a payment intent");
+      const response = await fetch("/api/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: publicKey.toBase58(),
+          recipient: merchantWallet,
+          amount: Number(amount ?? 0),
+          mint: usdcMintAddress,
+          intent_id: sessionId,
+          mode: "private",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.mode !== "private" || typeof payload.transaction !== "string") {
+        throw new Error(payload?.error || "Private terminal payment could not be built");
+      }
+      const transactionBytes = fromBase64(payload.transaction);
+      let transaction: VersionedTransaction | Transaction;
+      try {
+        transaction = VersionedTransaction.deserialize(transactionBytes);
+      } catch {
+        transaction = Transaction.from(transactionBytes);
+      }
+      if (transaction instanceof VersionedTransaction) {
+        return sendPayment(connection, transaction, signTransaction);
+      }
+      return sendLegacyPayment(connection, transaction, signTransaction as any, 90_000);
     }
 
     const usdcMint = new PublicKey(usdcMintAddress);
@@ -691,17 +678,16 @@ export default function TerminalManager({
     const transferIx = createTransferInstruction(payerTokenAccount, destinationTokenAccount, publicKey, expectedUsdcBaseUnits);
 
     const tx = new Transaction().add(transferIx);
-    let signature: string;
-    if (signAndSendTransaction) {
-      const res = await signAndSendTransaction(tx as any);
-      signature = (res && (res as any).signature) || String(res);
-    } else {
-      const signedTx = await signTransaction!(tx as any);
-      signature = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 5 });
-    }
-    await connection.confirmTransaction(signature, "confirmed");
-    return signature;
-  }, [connection, expectedUsdcBaseUnits, merchantWallet, publicKey, signTransaction, signAndSendTransaction, usdcMintAddress]);
+    const blockhash = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash.blockhash;
+    tx.feePayer = publicKey;
+    const versioned = new VersionedTransaction(new TransactionMessage({
+      payerKey: publicKey,
+      recentBlockhash: blockhash.blockhash,
+      instructions: tx.instructions,
+    }).compileToV0Message());
+    return sendPayment(connection, versioned, signTransaction!);
+  }, [amount, connection, expectedUsdcBaseUnits, merchantWallet, publicKey, sendPayment, sessionId, signTransaction, transferMode, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
     if (!isCheckoutMode || checkoutInFlightRef.current) return;
@@ -710,18 +696,24 @@ export default function TerminalManager({
     setCheckoutLoading(true);
     setToast(null);
     setErrorState(null);
+    setPaymentSuccess(null);
 
     try {
+      let signature: string;
       if (usdcBalanceSufficient) {
-        await handleDirectUsdcPay();
+        signature = await handleDirectUsdcPay();
       } else {
         if (!selectedBalance || !quoteInputAmount) {
           throw new Error("Select an alternate token for swap");
         }
-        await submitSwapPayment();
+        signature = await submitSwapPayment();
       }
 
-      setToast("Payment completed successfully");
+      setPaymentSuccess({
+        amount: Number(amount ?? 0),
+        currency: "USDC",
+        signature,
+      });
       onSuccess?.();
     } catch (error: any) {
       console.error("[Terminal Payment Exception]:", error);
@@ -745,6 +737,38 @@ export default function TerminalManager({
 
     return (
       <div className="space-y-6 rounded-[2.5rem] border border-white/10 bg-[#0c0d11] p-6 shadow-2xl shadow-black/40">
+        {paymentSuccess ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="relative isolate flex min-h-[520px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-400/30 bg-[#07090d] px-6 py-12 text-center shadow-[0_0_40px_rgba(168,85,247,0.35),0_0_80px_rgba(16,185,129,0.16)]"
+          >
+            <div className="absolute inset-8 -z-10 rounded-full bg-purple-600/15 blur-3xl animate-pulse" />
+            <div className="absolute inset-0 -z-10 bg-emerald-500/5" />
+            <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-500/10 text-emerald-300 shadow-[0_0_35px_rgba(16,185,129,0.3)] animate-pulse">
+              <LucideCheckCircle2 size={52} strokeWidth={1.8} />
+            </div>
+            <p className="mt-8 text-2xl font-black uppercase tracking-[0.18em] text-emerald-300">
+              Payment Successful
+            </p>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-zinc-300">
+              Shielded transfer of{" "}
+              <span className="font-bold text-white">
+                {paymentSuccess.amount.toFixed(2)} {paymentSuccess.currency}
+              </span>{" "}
+              finalized.
+            </p>
+            {paymentSuccess.signature && (
+              <p className="mt-6 max-w-full break-all font-mono text-[10px] text-zinc-500">
+                Ref: {paymentSuccess.signature}
+              </p>
+            )}
+            <p className="mt-8 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
+              Payment recorded on Solana
+            </p>
+          </div>
+        ) : (
+          <>
         {errorState && (
           <div className="bg-red-950/40 border border-red-500/30 p-6 rounded-3xl animate-in fade-in duration-300 shadow-2xl">
             <div className="flex items-start gap-4 mb-4">
@@ -868,6 +892,8 @@ export default function TerminalManager({
         >
           {checkoutLoading ? "Processing payment…" : usdcBalanceSufficient ? "Pay with USDC" : "Swap & Pay with Jito Bundle"}
         </button>
+          </>
+        )}
       </div>
     );
   };
@@ -894,6 +920,7 @@ export default function TerminalManager({
             walletAddress: merchant.settlement_wallet_address || null,
           });
           setResolvedMerchantId(merchant.id);
+          setTransferMode(merchant.default_transfer_mode === "public" ? "public" : "private");
           return;
         }
       }
@@ -936,7 +963,7 @@ export default function TerminalManager({
           filter: `merchant_id=eq.${resolvedMerchantId}`,
         },
         () => {
-          void loadFromSupabase();
+          void loadFromSupabase(false);
         }
       )
       .subscribe();
@@ -956,7 +983,7 @@ export default function TerminalManager({
 
     const pollForPairingStatus = async () => {
       if (cancelled) return;
-      await loadFromSupabase();
+      await loadFromSupabase(false);
     };
 
     void pollForPairingStatus();
@@ -970,39 +997,104 @@ export default function TerminalManager({
     };
   }, [isPairingOpen, loadFromSupabase, resolvedMerchantId]);
 
+  useEffect(() => {
+    if (!isPairingOpen || pairingState !== "waiting") return;
+
+    const previousCount = previousTerminalCountRef.current ?? safeTerminals.length;
+    if (safeTerminals.length > previousCount) {
+      setPendingTerminal(null);
+      setPairingState("used");
+      setToast("Pairing successful");
+      const timer = window.setTimeout(() => setToast(null), 1200);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isPairingOpen, pairingState, safeTerminals.length]);
+
+  useEffect(() => {
+    const label = newTerminalLabel.trim();
+    if (!isPairingOpen || pairingState !== "waiting" || !label) return;
+
+    const timer = window.setTimeout(() => {
+      void refreshAuthCode(label);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [isPairingOpen, newTerminalLabel, pairingState, refreshAuthCode]);
+
   const pairNewTerminal = async () => {
+    if (pairingRequestRef.current || isRefreshingCode) return;
+
+    previousTerminalCountRef.current = safeTerminals.length;
+
     if (!resolvedMerchantId) {
       setToast("Merchant session loading, please wait...");
       setTimeout(() => setToast(null), 3000);
       return;
     }
 
-    const defaultLabel = createDefaultTerminalLabel();
-    setNewTerminalLabel(defaultLabel);
-    setAuthCode("---");
+    setNewTerminalLabel("");
+    setAuthCode("");
     setPairingState("waiting");
     setPairingExpiresAt(null);
     setTimeLeft("GENERATING...");
     setIsPairingOpen(true);
-    await refreshAuthCode(defaultLabel);
+    await refreshAuthCode();
   };
 
   const disconnectTerminal = async (id: string) => {
-    if (!confirm("Revoke this terminal? It will remain blocked until re-paired.")) {
+    if (pendingTerminal?.id === id) {
+      if (!confirm("Remove this standby terminal? Its pairing code will be cancelled.")) return;
+      try {
+        const response = await fetch("/api/terminal/pairing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "cancel", code: pendingTerminal.accessCode }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) throw new Error(payload?.error || "Unable to cancel pairing code");
+        setPendingTerminal(null);
+        setToast("Standby terminal removed");
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : "Unable to cancel pairing code");
+        setTimeout(() => setToast(null), 3000);
+      }
       return;
     }
 
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("terminals")
-        .update({ status: "revoked", last_active: new Date().toISOString() })
-        .eq("id", id);
+    const terminal = safeTerminals.find((item) => item.id === id);
+    if (!terminal || !confirm("Remove this terminal from the fleet permanently? It must be paired again to reconnect.")) {
+      return;
+    }
 
-      if (error) throw error;
+    let removeSucceeded = false;
+    try {
+      const response = await fetch("/api/terminal/unpair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ terminalId: terminal.id }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.success) {
+        removeSucceeded = true;
+      } else if (response.status === 404) {
+        removeSucceeded = true;
+      } else if (response.status === 401) {
+        throw new Error("Your session has expired. Sign in again to remove this terminal.");
+      } else if (response.status === 403) {
+        throw new Error("Merchant profile not found for this session.");
+      } else {
+        throw new Error(payload?.error || "Unable to remove terminal from the fleet");
+      }
     } catch (error) {
       console.error("Failed to revoke terminal in Supabase", error);
+      setToast(error instanceof Error ? error.message : "Unable to remove terminal from the fleet");
+      setTimeout(() => setToast(null), 3000);
+      return;
     }
+
+    if (!removeSucceeded) return;
 
     // Optimistic local update
     const updated = safeTerminals.filter((terminal) => terminal.id !== id);
@@ -1011,7 +1103,19 @@ export default function TerminalManager({
     // Authoritative refresh
     await loadFromSupabase();
     notifyFleetUpdated();
+    setToast("Terminal removed from fleet");
   };
+
+  useEffect(() => {
+    if (!pendingTerminal) return;
+    if (safeTerminals.some((terminal) => terminal.label === pendingTerminal.label && terminal.isActive)) {
+      setPendingTerminal(null);
+    }
+  }, [pendingTerminal, safeTerminals]);
+
+  const displayTerminals = pendingTerminal
+    ? [pendingTerminal, ...safeTerminals.filter((terminal) => terminal.id !== pendingTerminal.id)]
+    : safeTerminals;
 
   if (isCheckoutMode) {
     return renderCheckoutContent();
@@ -1026,7 +1130,7 @@ export default function TerminalManager({
             <h3 className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Hardware Fleet</h3>
           </div>
           <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">
-            • {safeTerminals.length} secured nodes
+            • {displayTerminals.length} secured nodes
           </p>
         </div>
 
@@ -1051,7 +1155,7 @@ export default function TerminalManager({
       </div>
 
       <div className="rounded-[2rem] border border-white/10 bg-[#050507] p-6">
-        {safeTerminals.length === 0 ? (
+        {displayTerminals.length === 0 ? (
           <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/40 text-zinc-500">
               <LucideHardDrive size={24} />
@@ -1060,7 +1164,7 @@ export default function TerminalManager({
           </div>
         ) : (
           <div className="space-y-3">
-            {safeTerminals.map((terminal) => (
+            {displayTerminals.map((terminal) => (
               <div key={terminal.id} className="flex items-center justify-between rounded-[1.5rem] border border-white/10 bg-black/40 p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-400">
@@ -1069,7 +1173,7 @@ export default function TerminalManager({
                   <div>
                     <p className="text-sm font-medium text-white">{terminal.label}</p>
                     <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">
-                      {terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
+                      {terminal.isPending ? "Standby • Awaiting staff login" : terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
                     </p>
                   </div>
                 </div>
@@ -1096,6 +1200,11 @@ export default function TerminalManager({
         timeLeft={timeLeft}
         terminalName={newTerminalLabel}
         onTerminalNameChange={(v) => setNewTerminalLabel(v)}
+        onTerminalNameCommit={(value) => {
+          const committedLabel = value.trim();
+          if (committedLabel) void refreshAuthCode(committedLabel);
+        }}
+        isRefreshingCode={isRefreshingCode}
         pairingState={pairingState}
       />
       {toast && (

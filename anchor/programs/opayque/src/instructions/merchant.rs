@@ -34,7 +34,8 @@ pub fn initialize_merchant_vault(
     merchant: Pubkey,
     token_decimals: u8,
 ) -> Result<()> {
-    require!(fee_bps <= 10_000, ErrorCode::InvalidFee);
+    require_keys_eq!(ctx.accounts.merchant_authority.key(), merchant, ErrorCode::UnauthorizedAuthority);
+    require!(fee_bps <= 1_000, ErrorCode::InvalidFee);
 
     let vault = &mut ctx.accounts.merchant_vault;
     vault.authority = ctx.accounts.merchant_authority.key();

@@ -7,9 +7,9 @@ import { Check } from "lucide-react";
 import { ConnectionProvider, WalletProvider, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl, Transaction, SystemProgram, PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { getAssociatedTokenAddress, createTransferInstruction } from "@solana/spl-token";
-import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
+import { clusterApiUrl, Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
+import { sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -26,8 +26,10 @@ interface Props {
 
 export default function CheckoutClient({ id, amount, amount_fiat, amount_token, settlement_token, currency, customer_email, solana_pay_url }: Props) {
   const [status, setStatus] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
+  const [merchantWallet, setMerchantWallet] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [payLoading, setPayLoading] = useState(false);
   const { connection } = useConnection();
@@ -52,6 +54,11 @@ export default function CheckoutClient({ id, amount, amount_fiat, amount_token, 
         if (!mounted) return;
         const currentStatus = String(data.status || "pending").toLowerCase();
         setStatus(currentStatus);
+        const currentPaymentStatus = typeof data.paymentStatus === "string"
+          ? data.paymentStatus.toLowerCase()
+          : null;
+        setPaymentStatus(currentPaymentStatus);
+        if (typeof data.merchantWallet === "string") setMerchantWallet(data.merchantWallet);
         if (data.transaction?.signature) setTransactionSignature(data.transaction.signature);
         if (currentStatus === "completed" || currentStatus === "paid") {
           setSuccess(true);
@@ -115,9 +122,11 @@ export default function CheckoutClient({ id, amount, amount_fiat, amount_token, 
                   id={id}
                   amount={amount}
                   currency={currency}
-                  merchantWallet={typeof (window as any) !== 'undefined' ? '' : ''}
+                  merchantWallet={merchantWallet}
+                  settlementAmount={normalizedUsdcEquivalent}
                   disabled={payLoading}
                   status={status}
+                  paymentStatus={paymentStatus}
                   success={success}
                   setToast={setToast}
                   setTransactionSignature={setTransactionSignature}
@@ -156,20 +165,31 @@ export default function CheckoutClient({ id, amount, amount_fiat, amount_token, 
   );
 }
 
-function PayButton({ id, amount, currency, merchantWallet, disabled, status, success, setToast, setTransactionSignature, setSuccess }: any) {
-  const { publicKey, sendTransaction } = useWallet();
+function PayButton({ id, merchantWallet, settlementAmount, disabled, status, paymentStatus, success, setToast, setTransactionSignature, setSuccess }: any) {
+  const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
 
   const handlePay = async () => {
+    if (paymentStatus && ['confirmed', 'completed', 'failed', 'expired', 'canceled', 'cancelled'].includes(paymentStatus)) {
+      setToast(paymentStatus === 'confirmed' || paymentStatus === 'completed'
+        ? 'Payment already completed'
+        : 'This payment link is no longer payable. Create a new payment link.');
+      if (paymentStatus === 'confirmed' || paymentStatus === 'completed') setSuccess(true);
+      return;
+    }
     if (success || (status && ['completed', 'paid'].includes(status.toLowerCase()))) {
       setToast('Payment already completed');
       setSuccess(true);
       return;
     }
 
-    if (!publicKey) {
+    if (!publicKey || !merchantWallet) {
       setToast('Connect your wallet first');
+      return;
+    }
+    if (!signTransaction) {
+      setToast('This wallet does not support private transaction signing');
       return;
     }
     setLoading(true);
@@ -178,37 +198,43 @@ function PayButton({ id, amount, currency, merchantWallet, disabled, status, suc
       const res = await fetch(`/api/v1/checkout/${id}/status`);
       if (!res.ok) throw new Error('Failed to fetch session');
       const sess = await res.json();
-      const merchantWalletAddress = sess.merchantWallet || sess.merchant?.settlement_wallet_address || sess.settlement_wallet_address;
+      const merchantWalletAddress = sess.merchantWallet || sess.merchant?.settlement_wallet_address || sess.settlement_wallet_address || merchantWallet;
+      const transferMode = sess.transferMode === 'public' ? 'public' : 'private';
       if (!merchantWalletAddress) throw new Error('Merchant settlement wallet not configured');
-
-      const tx = new Transaction();
-
-      if (currency === 'USDC') {
-        // Convert amount (assumes `amount` is cents) to token base units using ASSET_MINTS
-        const mint = getAssetMintAddress('USDC' as any, (process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet') !== 'mainnet-beta');
-        const mintPub = new PublicKey(mint);
-        const payerTokenAccount = await getAssociatedTokenAddress(mintPub, publicKey, false, undefined);
-        const destTokenAccount = await getAssociatedTokenAddress(mintPub, new PublicKey(merchantWalletAddress), false, undefined);
-        const decimals = ASSET_MINTS['USDC'].decimals;
-        // assume amount is cents (100 => $1.00)
-        const tokenAmount = BigInt(amount) * BigInt(10 ** (decimals - 2));
-        const instruction = createTransferInstruction(payerTokenAccount, destTokenAccount, publicKey!, Number(tokenAmount));
-        tx.add(instruction);
-      } else {
-        // Default: SOL transfer. Assumes `amount` is lamports.
-        const lamports = Number(amount);
-        tx.add(SystemProgram.transfer({ fromPubkey: publicKey!, toPubkey: new PublicKey(merchantWalletAddress), lamports }));
+      const transferRes = await fetch('/api/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: publicKey.toBase58(),
+          recipient: merchantWalletAddress,
+          amount: Number(settlementAmount),
+          mint: getAssetMintAddress('USDC', isDevnetNetwork()),
+          intent_id: id,
+          memo: id,
+          mode: transferMode,
+        }),
+      });
+      const transfer = await transferRes.json().catch(() => ({}));
+      if (!transferRes.ok || transfer.mode !== transferMode || typeof transfer.transaction !== 'string') {
+        throw new Error(transfer.error || `${transferMode === 'private' ? 'Private' : 'Standard'} payment transaction could not be built`);
       }
-
-      // Add memo linking to checkout session (lightweight identification)
-      const memoIx = new TransactionInstruction({ keys: [], programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'), data: Buffer.from(id) });
-      tx.add(memoIx);
-
-      const signature = await sendTransaction(tx, connection);
+      const transactionBytes = Uint8Array.from(atob(transfer.transaction), (character) => character.charCodeAt(0));
+      let transaction: VersionedTransaction | Transaction;
+      try {
+        transaction = VersionedTransaction.deserialize(transactionBytes);
+      } catch {
+        transaction = Transaction.from(transactionBytes);
+      }
+      if (!(transaction instanceof VersionedTransaction)) {
+        throw new Error('Standard payment returned an unsupported transaction format');
+      }
+      const paymentConnection = transfer.rpcUrl
+        ? new Connection(transfer.rpcUrl, 'confirmed')
+        : connection;
+      const signature = transferMode === "public"
+        ? await sendStandardPayment(paymentConnection, transaction, signTransaction)
+        : await sendPayment(paymentConnection, transaction, signTransaction);
       setTransactionSignature(signature);
-
-      // Await confirmation
-      await connection.confirmTransaction(signature, 'confirmed');
 
       // POST to verify endpoint
       const verifyRes = await fetch('/api/v1/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id, transactionSignature: signature }) });

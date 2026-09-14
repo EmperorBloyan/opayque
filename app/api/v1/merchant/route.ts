@@ -2,6 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
+import { isTransferMode, normalizeTransferMode } from "@/lib/payments/transferMode";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { hasRecentAuthentication } from "@/lib/auth/recentAuth";
 
 function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -27,16 +30,13 @@ function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookie
 }
 
 const MERCHANT_SELECT =
-  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, settlement_wallet_address, website_url, webhook_url, tee_enforcement_enabled, api_key, auth_user_id";
+  "id, email, merchant_name, merchant_logo, secondary_email, onboarding_status, api_access_status, wallet_address, settlement_wallet_address, refund_wallet_address, website_url, webhook_url, tee_enforcement_enabled, default_transfer_mode, auth_user_id";
 
 function normalizeMerchant(merchant: any) {
   if (!merchant) return null;
   return {
     ...merchant,
-    api_access_status: resolveMerchantAccessStatus(
-      merchant.api_access_status,
-      merchant.api_key
-    ),
+    api_access_status: resolveMerchantAccessStatus(merchant.api_access_status),
   };
 }
 
@@ -67,25 +67,36 @@ export async function GET() {
 
     // Fallback for legacy rows missing auth_user_id but matching email
     if (!merchant && user.email) {
-      const fallback = await supabase
+      // RLS intentionally hides unlinked merchant rows from the browser client.
+      // Use the service-role client only after Auth has verified this user's email.
+      const adminSupabase = createSupabaseServerClient();
+      const fallback = await adminSupabase
         .from("merchants")
         .select(MERCHANT_SELECT)
         .eq("email", user.email)
         .maybeSingle();
 
-      if (!fallback.error && fallback.data) {
-        merchant = fallback.data;
+      if (fallback.error) {
+        return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+      }
+
+      if (fallback.data) {
+        const fallbackMerchant = fallback.data;
+        merchant = fallbackMerchant;
 
         // Self-heal link if possible
-        if (!merchant.auth_user_id) {
-          await supabase
+        if (!fallbackMerchant.auth_user_id) {
+          const { error: linkError } = await adminSupabase
             .from("merchants")
             .update({
               auth_user_id: user.id,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", merchant.id);
-          merchant.auth_user_id = user.id;
+            .eq("id", fallbackMerchant.id);
+          if (linkError) {
+            return NextResponse.json({ error: "Merchant account link could not be repaired" }, { status: 500 });
+          }
+          fallbackMerchant.auth_user_id = user.id;
         }
       }
     }
@@ -118,10 +129,16 @@ export async function PATCH(request: Request) {
       merchantLogo,
       secondaryEmail,
       settlementWalletAddress,
+      refundWalletAddress,
       websiteUrl,
       webhookUrl,
       teeEnforcementEnabled,
+        defaultTransferMode,
     } = body;
+
+      if (defaultTransferMode !== undefined && !isTransferMode(defaultTransferMode)) {
+        return NextResponse.json({ error: "defaultTransferMode must be private or public" }, { status: 400 });
+      }
 
     const updates: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -135,10 +152,20 @@ export async function PATCH(request: Request) {
     if (settlementWalletAddress !== undefined) {
       updates.settlement_wallet_address = settlementWalletAddress;
     }
+
+    if (email !== undefined && email?.trim() !== (user.email ?? "").trim() && !hasRecentAuthentication(user.last_sign_in_at)) {
+      return NextResponse.json({ error: "Recent password confirmation required before changing email" }, { status: 428 });
+    }
+    if (refundWalletAddress !== undefined) {
+      updates.refund_wallet_address = refundWalletAddress;
+    }
     if (websiteUrl !== undefined) updates.website_url = websiteUrl;
     if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
     if (teeEnforcementEnabled !== undefined) {
       updates.tee_enforcement_enabled = teeEnforcementEnabled;
+    }
+    if (defaultTransferMode !== undefined) {
+      updates.default_transfer_mode = normalizeTransferMode(defaultTransferMode);
     }
 
     if (
@@ -147,6 +174,7 @@ export async function PATCH(request: Request) {
       merchantLogo !== undefined ||
       secondaryEmail !== undefined ||
       settlementWalletAddress !== undefined ||
+      refundWalletAddress !== undefined ||
       websiteUrl !== undefined ||
       webhookUrl !== undefined
     ) {
@@ -170,18 +198,10 @@ export async function PATCH(request: Request) {
         .select(MERCHANT_SELECT)
         .maybeSingle();
     } else {
-      dbResult = await supabase
-        .from("merchants")
-        .insert({
-          ...updates,
-          auth_user_id: user.id,
-          email: updates.email ?? user.email ?? null,
-          onboarding_status: "completed",
-          api_access_status: updates.api_access_status || "active",
-          created_at: new Date().toISOString(),
-        })
-        .select(MERCHANT_SELECT)
-        .maybeSingle();
+      return NextResponse.json(
+        { error: "Merchant profile not found. Complete onboarding before editing merchant details." },
+        { status: 404 }
+      );
     }
 
     const { data: merchant, error } = dbResult;

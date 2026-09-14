@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
+import { getClientAddress, strictLimit } from '@/lib/rate-limit';
+import { getSolanaNetwork } from '@/lib/solana/constants';
+import { hasRecentAuthentication } from '@/lib/auth/recentAuth';
+import { notifyMerchantSecurityEvent } from '@/lib/notifications/security';
 
 async function getSupabaseClient() {
   const cookieStore = await cookies();
@@ -40,10 +44,9 @@ export async function GET() {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -70,6 +73,8 @@ export async function GET() {
 
 // POST create real key only
 export async function POST(request: Request) {
+  const rateLimit = await strictLimit(`keys:create:${getClientAddress(request)}`, true);
+  if (!rateLimit.allowed) return NextResponse.json({ error: rateLimit.error || 'Too many key creation requests' }, { status: rateLimit.error ? 503 : 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } });
   const supabase = await getSupabaseClient();
 
   const {
@@ -79,6 +84,9 @@ export async function POST(request: Request) {
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!hasRecentAuthentication(user.last_sign_in_at)) {
+    return NextResponse.json({ error: 'Recent password confirmation required' }, { status: 428 });
   }
 
   let body: { environment?: string } = {};
@@ -91,12 +99,15 @@ export async function POST(request: Request) {
   const rawEnv = body.environment || 'sandbox';
   const environment =
     rawEnv === 'mainnet' || rawEnv === 'live' ? 'mainnet' : 'sandbox';
+  if (environment === 'mainnet' && getSolanaNetwork() !== 'mainnet-beta') {
+    return NextResponse.json({ error: 'Mainnet keys can only be created in the mainnet environment' }, { status: 409 });
+  }
   const prefix = environment === 'mainnet' ? 'osk_live_' : 'osk_test_';
 
   // Find merchant
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -104,35 +115,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: merchantError.message }, { status: 500 });
   }
 
-  // Auto-create merchant if missing (prevents temp keys)
   if (!merchant?.id) {
-    const { data: created, error: createError } = await supabase
-      .from('merchants')
-      .insert([
-        {
-          auth_user_id: user.id,
-          email: user.email ?? null,
-          onboarding_status: 'pending',
-          api_access_status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
-      .select('id')
-      .maybeSingle();
-
-    if (createError || !created?.id) {
-      return NextResponse.json(
-        {
-          error:
-            createError?.message ||
-            'Merchant profile not found. Please complete merchant setup first.',
-        },
-        { status: 400 }
-      );
-    }
-
-    merchant = created;
+    return NextResponse.json(
+      { error: 'Merchant profile not found. Please complete merchant setup first.' },
+      { status: 409 }
+    );
   }
 
   // Generate secure key
@@ -161,16 +148,17 @@ export async function POST(request: Request) {
     );
   }
 
-  // Update merchant status + legacy api_key field
+  // Keep only access state on the merchant; the raw secret is returned once.
   await supabase
     .from('merchants')
     .update({
       api_access_status: 'active',
       onboarding_status: 'completed',
-      api_key: rawSecretKey,
       updated_at: new Date().toISOString(),
     })
     .eq('id', merchant.id);
+
+  await notifyMerchantSecurityEvent(merchant, 'api_key', 'A new API key was created.');
 
   return NextResponse.json(
     {
@@ -198,6 +186,9 @@ export async function DELETE(request: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!hasRecentAuthentication(user.last_sign_in_at)) {
+    return NextResponse.json({ error: 'Recent password confirmation required' }, { status: 428 });
+  }
 
   const { searchParams } = new URL(request.url);
   const keyId = searchParams.get('id');
@@ -208,7 +199,7 @@ export async function DELETE(request: Request) {
 
   const { data: merchant } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -225,6 +216,8 @@ export async function DELETE(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await notifyMerchantSecurityEvent(merchant, 'api_key', 'An API key was deleted.');
 
   return NextResponse.json({ success: true });
 }

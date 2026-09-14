@@ -42,7 +42,7 @@ export default async function CheckoutPage({ params }: Props) {
     amount_fiat: amountFiat,
     amount_token: amountToken,
     settlement_token: settlementToken,
-    currency: settlementToken,
+    currency: String(data.currency || "USD").toUpperCase(),
     customer_email: data.customer_email,
     solana_pay_url: data.solana_pay_url,
     status: data.status,

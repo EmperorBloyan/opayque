@@ -2,6 +2,97 @@ import { PublicKey } from "@solana/web3.js";
 
 export const SOLANA_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 export const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
+export const SOLANA_TESTNET_RPC = "https://api.testnet.solana.com";
+
+export type SolanaNetwork = "mainnet-beta" | "testnet" | "devnet";
+
+export interface SolanaNetworkConfig {
+  network: SolanaNetwork;
+  rpcUrls: string[];
+  isMainnet: boolean;
+  isSandbox: boolean;
+}
+
+export function getSolanaNetwork(): SolanaNetwork {
+  const configured = process.env.NEXT_PUBLIC_SOLANA_NETWORK;
+  if (configured === "mainnet-beta" || configured === "testnet" || configured === "devnet") {
+    return configured;
+  }
+  return "devnet";
+}
+
+export function getSolanaRpcUrl(): string {
+  return getSolanaRpcUrls()[0];
+}
+
+export function getSolanaRpcUrls(): string[] {
+  const configured = [
+    process.env.NEXT_PUBLIC_RPC_URL,
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
+    process.env.NEXT_PUBLIC_SOLANA_RPC_FALLBACK_URL,
+  ].map((url) => url?.trim()).filter((url): url is string => Boolean(url));
+  if (configured.length > 0) return [...new Set(configured)];
+
+  const network = getSolanaNetwork();
+  return [network === "mainnet-beta" ? SOLANA_MAINNET_RPC : network === "testnet" ? SOLANA_TESTNET_RPC : SOLANA_DEVNET_RPC];
+}
+
+export interface ProductionConfigIssue {
+  key: string;
+  message: string;
+}
+
+export function getProductionConfigIssues(): ProductionConfigIssue[] {
+  const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV;
+  const isPreview = vercelEnv === "preview";
+  if (process.env.NODE_ENV !== "production" || isPreview) return [];
+
+  const issues: ProductionConfigIssue[] = [];
+  if (!isMainnetNetwork()) {
+    issues.push({ key: "NEXT_PUBLIC_SOLANA_NETWORK", message: "Production must use mainnet-beta" });
+  }
+  if (!process.env.NEXT_PUBLIC_RPC_URL?.trim() && !process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) {
+    issues.push({ key: "NEXT_PUBLIC_RPC_URL", message: "A dedicated mainnet RPC URL is required" });
+  }
+  if (!process.env.NEXT_PUBLIC_MAGICBLOCK_API?.trim()) {
+    issues.push({ key: "NEXT_PUBLIC_MAGICBLOCK_API", message: "MagicBlock private transfer API is required" });
+  }
+  if (!process.env.MAGICBLOCK_API_KEY?.trim()) {
+    issues.push({ key: "MAGICBLOCK_API_KEY", message: "MagicBlock API authentication is required" });
+  }
+  if (!process.env.RELAYER_PRIVATE_KEY?.trim()) {
+    issues.push({ key: "RELAYER_PRIVATE_KEY", message: "Relayer signing key is required" });
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    issues.push({ key: "SUPABASE_SERVICE_ROLE_KEY", message: "Server-side Supabase configuration is required" });
+  }
+  return issues;
+}
+
+export function assertProductionConfig(): void {
+  const issues = getProductionConfigIssues();
+  if (issues.length > 0) {
+    throw new Error(`Production configuration is incomplete: ${issues.map((issue) => issue.message).join("; ")}`);
+  }
+}
+
+export function isDevnetNetwork(): boolean {
+  return getSolanaNetwork() !== "mainnet-beta";
+}
+
+export function isMainnetNetwork(): boolean {
+  return getSolanaNetwork() === "mainnet-beta";
+}
+
+export function getSolanaNetworkConfig(): SolanaNetworkConfig {
+  const network = getSolanaNetwork();
+  return {
+    network,
+    rpcUrls: getSolanaRpcUrls(),
+    isMainnet: network === "mainnet-beta",
+    isSandbox: network !== "mainnet-beta",
+  };
+}
 
 export interface AssetMintConfig {
   symbol: string;

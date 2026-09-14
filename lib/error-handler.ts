@@ -9,8 +9,8 @@ export class AppError extends Error {
   }
 }
 
-export function handleApiError(error: any) {
-  console.error('API Error:', error);
+export function handleApiError(error: unknown) {
+  console.error('API Error:', error instanceof Error ? error.name : 'UnknownError');
 
   if (error instanceof AppError) {
     return Response.json(
@@ -31,6 +31,11 @@ export function handleApiError(error: any) {
     },
     { status: 500 }
   );
+}
+
+export function safeErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AppError) return error.message;
+  return fallback;
 }
 
 // Common payment errors

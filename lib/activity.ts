@@ -8,6 +8,8 @@ export type LocalActivity = {
   source?: string;
 };
 
+// The database transactions ledger is the source of truth; this is only an optional optimistic cache.
+
 export function appendLocalActivity(item: LocalActivity) {
   if (typeof window === "undefined") return;
   try {

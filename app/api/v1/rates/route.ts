@@ -1,32 +1,32 @@
 import { NextResponse } from 'next/server';
 
-// In-memory cache to prevent rate-limiting and speed up responses (expires in 15 mins)
-let cachedRates: { data: Record<string, number>; timestamp: number } | null = null;
-const CACHE_DURATION = 15 * 60 * 1000;
+const CACHE_DURATION = 10 * 60 * 1000;
+let cachedRates: { rates: Record<string, number>; asOf: string; source: string; expiresAt: number } | null = null;
+
+async function fetchRates() {
+  const endpoint = process.env.FX_RATES_URL || 'https://api.frankfurter.app/latest?from=USD';
+  const source = process.env.FX_RATES_PROVIDER || 'frankfurter';
+  const response = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error(`FX provider failed (${response.status})`);
+  const payload = await response.json();
+  const rates = Object.fromEntries(Object.entries(payload?.rates || {}).filter(([, value]) => Number.isFinite(Number(value))).map(([key, value]) => [key.toUpperCase(), Number(value)]));
+  if (!Object.keys(rates).length) throw new Error('FX provider returned no rates');
+  return { rates: { USD: 1, USDC: 1, ...rates }, asOf: payload?.date ? new Date(`${payload.date}T00:00:00Z`).toISOString() : new Date().toISOString(), source };
+}
 
 export async function GET() {
   try {
     const now = Date.now();
-    if (cachedRates && now - cachedRates.timestamp < CACHE_DURATION) {
-      return NextResponse.json({ success: true, rates: cachedRates.data });
+    if (cachedRates && cachedRates.expiresAt > now) {
+      return NextResponse.json({ base: 'USD', rates: cachedRates.rates, asOf: cachedRates.asOf, source: cachedRates.source, stale: false });
     }
-
-    // Fetching base USD rates (USDC is pegged 1:1 to USD)
-    const res = await fetch('https://open.er-api.com/v6/latest/USD');
-    if (!res.ok) throw new Error('Failed to fetch exchange rates');
-
-    const data = await res.json();
-    
-    cachedRates = {
-      data: data.rates,
-      timestamp: now,
-    };
-
-    return NextResponse.json({ success: true, rates: data.rates });
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, message: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    const fresh = await fetchRates();
+    cachedRates = { ...fresh, expiresAt: now + CACHE_DURATION };
+    return NextResponse.json({ base: 'USD', ...fresh, stale: false });
+  } catch (error: unknown) {
+    if (cachedRates) {
+      return NextResponse.json({ base: 'USD', rates: cachedRates.rates, asOf: cachedRates.asOf, source: cachedRates.source, stale: true, warning: 'Approximate or stale rates' });
+    }
+    return NextResponse.json({ base: 'USD', rates: { USD: 1, USDC: 1 }, asOf: new Date().toISOString(), source: 'unavailable', stale: true, warning: 'Approximate rates unavailable' }, { status: 503 });
   }
 }

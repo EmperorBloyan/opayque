@@ -7,11 +7,11 @@ import TerminalManager from "@/components/TerminalManager";
 import ReportingHub from "@/components/ReportingHub";
 import { Endpoint, Terminal } from "@/lib/types";
 import {
-  LucideLock,
   LucideFileSpreadsheet,
   LucideTrash2,
   LucideQrCode,
   LucideShieldCheck,
+  LucideGlobe2,
   LucideX,
   LucidePrinter,
 } from "lucide-react";
@@ -32,15 +32,156 @@ export default function RegistryPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [vaultReady, setVaultReady] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isNavigating, setIsNavigating] = useState(false);
   const [resolvedMerchantId, setResolvedMerchantId] = useState<string | null>(null);
+  const [defaultTransferMode, setDefaultTransferMode] = useState<"private" | "public">("private");
 
-  const goToDestination = (path: string) => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-    router.push(path);
-    setTimeout(() => setIsNavigating(false), 1000);
-  };
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateTransferMode = async () => {
+      try {
+        const response = await fetch("/api/v1/merchant", { credentials: "include" });
+        const payload = await response.json().catch(() => null);
+        if (!cancelled) {
+          setDefaultTransferMode(payload?.merchant?.default_transfer_mode === "public" ? "public" : "private");
+        }
+      } catch (error) {
+        console.warn("Failed to load merchant transfer mode", error);
+      }
+    };
+
+    const handleProfileUpdate = () => {
+      const localMode = window.localStorage.getItem("default_transfer_mode");
+      if (localMode === "public" || localMode === "private") {
+        setDefaultTransferMode(localMode);
+      }
+      void hydrateTransferMode();
+    };
+
+    void hydrateTransferMode();
+    window.addEventListener("merchant_profile_updated", handleProfileUpdate);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("merchant_profile_updated", handleProfileUpdate);
+    };
+  }, []);
+
+  const resolveMerchantId = useCallback(async (): Promise<string | null> => {
+    let merchantId = getActiveMerchantId();
+
+    if (!merchantId || merchantId === "merchant-vault") {
+      try {
+        const res = await fetch("/api/v1/merchant", { credentials: "include" });
+        if (res.ok) {
+          const payload = await res.json();
+          const merchant = payload?.merchant;
+          if (merchant?.id) {
+            merchantId = merchant.id;
+            bindAuthenticatedMerchantSession({
+              merchantId: merchant.id,
+              walletAddress: merchant.settlement_wallet_address || null,
+            });
+
+            if (typeof window !== "undefined") {
+              if (merchant.merchant_name) {
+                window.localStorage.setItem("merchant_name", merchant.merchant_name);
+              }
+              if (merchant.merchant_logo) {
+                window.localStorage.setItem("merchant_logo", merchant.merchant_logo);
+              }
+              if (merchant.settlement_wallet_address) {
+                window.localStorage.setItem(
+                  "settlement_wallet_address",
+                  merchant.settlement_wallet_address
+                );
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to fetch merchant context", error);
+      }
+    }
+
+    if (!merchantId || merchantId === "merchant-vault") return null;
+    return merchantId;
+  }, []);
+
+  const loadTerminalData = useCallback(async (merchantId?: string | null) => {
+    try {
+      const id = merchantId || (await resolveMerchantId());
+      if (!id) {
+        setTerminals([]);
+        return;
+      }
+
+      const supabase = createSupabaseBrowserClient();
+
+      let data: any[] | null = null;
+      let error: any = null;
+
+      {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", id)
+          .not("status", "in", "(revoked,unpaired,deleted)")
+          .order("last_active", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) {
+        const res = await supabase
+          .from("terminals")
+          .select("*")
+          .eq("merchant_id", id)
+          .not("status", "in", "(revoked,unpaired,deleted)")
+          .order("created_at", { ascending: false });
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) throw error;
+
+      const mapped = (data ?? [])
+        .filter((row: any) => !["revoked", "unpaired", "deleted"].includes(String(row.status).toLowerCase()))
+        .map((row: any) => {
+        const when =
+          row.last_active ||
+          row.created_at ||
+          row.updated_at ||
+          new Date().toISOString();
+        return {
+          id: row.id,
+          label: row.terminal_label || row.label || "Fleet Terminal",
+          status: (row.status === "online" ? "online" : "offline") as "online" | "offline",
+          lastSeen: new Date(when).getTime(),
+          accessCode: row.device_token || row.access_code || "",
+          isActive: row.status === "online" || Boolean(row.is_active),
+          lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
+        };
+        });
+
+      setTerminals(mapped);
+    } catch (error) {
+      console.error("Failed to hydrate registry terminals", error);
+      setTerminals([]);
+    }
+  }, [resolveMerchantId]);
+
+  const loadEndpointData = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const storedEndpoints = window.localStorage.getItem("opayque_endpoints");
+    if (!storedEndpoints) return;
+
+    try {
+      const parsed = JSON.parse(storedEndpoints) as Endpoint[];
+      setEndpoints(parsed);
+    } catch (error) {
+      console.warn("Failed to parse stored endpoints", error);
+    }
+  }, []);
 
   const resolveMerchantId = useCallback(async (): Promise<string | null> => {
     let merchantId = getActiveMerchantId();
@@ -256,26 +397,15 @@ export default function RegistryPage() {
 
   return (
     <div className="relative min-h-screen pb-20 animate-in fade-in duration-700">
-      <div className="flex justify-between items-center mb-12 px-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("opayque_next_route", "/vault/registry");
-              }
-              goToDestination("/login?next=%2Fvault%2Fregistry");
-            }}
-            disabled={isNavigating}
-            className="group flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
-          >
-            <LucideLock size={14} className="group-hover:animate-pulse" /> Lock Vault
-          </button>
-        </div>
-
+      <div className="flex justify-end items-center mb-12 px-4">
         <div className="flex items-center gap-2">
-          <LucideShieldCheck size={16} className="text-purple-500" />
+          {defaultTransferMode === "private" ? (
+            <LucideShieldCheck size={16} className="text-purple-500" />
+          ) : (
+            <LucideGlobe2 size={16} className="text-purple-500" />
+          )}
           <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-            TEE Session Active
+            {defaultTransferMode === "private" ? "TEE Session Active" : "Standard Transfer Session"}
           </span>
         </div>
       </div>
@@ -290,17 +420,10 @@ export default function RegistryPage() {
           </section>
 
           <section>
-            <div className="mb-6 ml-4 flex items-center justify-between pr-2">
+            <div className="mb-6 ml-4 pr-2">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 Hardware Fleet
               </h2>
-              <button
-                type="button"
-                onClick={() => void loadTerminalData(resolvedMerchantId)}
-                className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-400 hover:text-purple-300"
-              >
-                Refresh
-              </button>
             </div>
             <TerminalManager
               terminals={terminals}

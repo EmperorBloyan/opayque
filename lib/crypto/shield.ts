@@ -26,6 +26,10 @@ export interface EncryptShieldedPayloadInput {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return new Uint8Array(bytes).buffer as ArrayBuffer;
+}
+
 function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
   const buffer = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
   let binary = "";
@@ -74,10 +78,10 @@ export async function encryptShieldedPayload(input: EncryptShieldedPayloadInput)
   const ciphertext = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
-      iv,
+      iv: asArrayBuffer(iv),
     },
     input.key,
-    plaintext
+    asArrayBuffer(plaintext)
   );
 
   return {
@@ -98,10 +102,10 @@ export async function decryptShieldedPayload(payload: ShieldedPayload, key: Cryp
   const plaintext = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
-      iv,
+      iv: asArrayBuffer(iv),
     },
     key,
-    ciphertext
+    asArrayBuffer(ciphertext)
   );
 
   return JSON.parse(decoder.decode(plaintext) as string) as ShieldedPayloadMetadata;

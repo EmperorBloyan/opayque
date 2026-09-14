@@ -4,8 +4,10 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
+import { useCurrency } from "@/lib/context/CurrencyContext";
 import {
-  ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2,
+  ArrowLeft, Sparkles, Code2, CheckCircle2,
   Copy, Check, Link2, Zap, ExternalLink, Code, AlertCircle
 } from "lucide-react";
 
@@ -45,7 +47,8 @@ export default function QuickstartPage() {
   // Generator Form State
   const [productTitle, setProductTitle] = useState("Custom Order / Payment");
   const [amount, setAmount] = useState("15.00");
-  const [currency, setCurrency] = useState("USDC");
+  const [settlementToken, setSettlementToken] = useState("USDC");
+  const { currency, setCurrency, rates } = useCurrency();
   const [customerEmail, setCustomerEmail] = useState("");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [generatedEmbed, setGeneratedEmbed] = useState<string | null>(null);
@@ -66,43 +69,13 @@ export default function QuickstartPage() {
     try {
       let apiKey: string | null = null;
 
-      try {
-        const merchantRes = await fetch('/api/v1/merchant', {
-          method: 'GET',
-          credentials: 'include'
-        });
-
-        if (merchantRes.ok) {
-          const merchantPayload = await merchantRes.json();
-          const merchant = merchantPayload?.merchant;
-          const merchantStatus = typeof merchant?.api_access_status === "string" ? merchant.api_access_status.trim().toLowerCase() : "";
-          const merchantKey = typeof merchant?.api_key === "string" ? merchant.api_key.trim() : null;
-
-          const hasApprovedMerchantAccess = merchantStatus === "active" || merchantStatus === "approved";
-
-          if (merchantKey && hasApprovedMerchantAccess) {
-            apiKey = merchantKey;
-          }
-        }
-      } catch {
-        apiKey = null;
-      }
-
-      if (!apiKey && typeof window !== 'undefined') {
-        try {
-          const savedKeysRaw = window.localStorage.getItem('opayque_api_keys');
-          if (savedKeysRaw) {
-            const savedKeys = JSON.parse(savedKeysRaw);
-            const selectedKey = Array.isArray(savedKeys) ? savedKeys.find((key: any) => key?.secret)?.secret : null;
-            if (selectedKey) apiKey = selectedKey;
-          }
-        } catch {
-          apiKey = null;
-        }
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('opayque_api_keys');
       }
 
       if (!apiKey) {
         try {
+          await reauthenticateForSensitiveAction();
           const createRes = await fetch('/api/v1/keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -129,8 +102,8 @@ export default function QuickstartPage() {
         body: JSON.stringify({
           order_id: `ORD-${Date.now()}`,
           amount_fiat: parseFloat(amount),
-          currency: "USD", // Fiat amount is always USD
-          settlement_token: currency, // USDC or SOL
+          currency,
+          settlement_token: settlementToken, // USDC or SOL
           customer_email: customerEmail || "buyer@example.com",
           description: productTitle
         })
@@ -145,7 +118,7 @@ export default function QuickstartPage() {
 
       if (data.success && data.payment_url) {
         const url = data.payment_url;
-        const embedCode = `<!-- Opayque Pay Button -->\n<a href="${url}" target="_blank" style="background:#a855f7;color:#fff;padding:12px 24px;border-radius:12px;font-weight:bold;text-decoration:none;display:inline-block;">\n Pay $${amount} with ${currency}\n</a>`;
+        const embedCode = `<!-- Opayque Pay Button -->\n<a href="${url}" target="_blank" style="background:#a855f7;color:#fff;padding:12px 24px;border-radius:12px;font-weight:bold;text-decoration:none;display:inline-block;">\n Pay ${currency} ${amount} with ${settlementToken}\n</a>`;
 
         setGeneratedLink(url);
         setGeneratedEmbed(embedCode);
@@ -226,11 +199,8 @@ export default function QuickstartPage() {
               )}
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border-purple-500/30 bg-purple-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500">
-                  <Terminal size={16} /> Full API Ref
-                </Link>
-                <Link href="/developer/overview" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10">
-                  <ShieldCheck size={16} /> Developer Hub
+                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10">
+                  <Code2 size={16} /> Developer API
                 </Link>
               </div>
             </div>
@@ -268,12 +238,17 @@ export default function QuickstartPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">Amount USD</label>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <label className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">Amount</label>
+                          <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Display currency" className="rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-200 outline-none focus:border-purple-500">
+                            {Object.keys(rates).length > 0 ? Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>) : <option value="USD">USD</option>}
+                          </select>
+                        </div>
                         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none" />
                       </div>
                       <div>
                         <label className="block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-2">Settlement</label>
-                        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none">
+                        <select value={settlementToken} onChange={(e) => setSettlementToken(e.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-medium text-white transition focus:border-purple-500 focus:outline-none">
                           <option value="USDC">USDC</option>
                           <option value="SOL">SOL</option>
                         </select>

@@ -1,28 +1,31 @@
 import { NextResponse } from 'next/server';
-import { initiateFiatPayout } from '@/lib/settlement/offramp';
 import * as Sentry from '@/lib/sentry';
+import { getOfframpProvider } from '@/lib/settlement/offramp';
+import { isAuthorizedCronRequest } from '@/lib/auth/cron';
 
 export async function POST(req: Request) {
-  const auth = req.headers.get('authorization');
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    // TODO: Replace with real DB query later
-    const pending = [{ merchantId: "merch_test", amount: 1250, currency: "USD", bankAccountId: "bank1" }];
+    const provider = getOfframpProvider();
+    if (!provider.isConfigured()) {
+      return NextResponse.json({ success: true, processed: 0, reason: 'not_configured', results: [] });
+    }
+    const pending: Array<{ merchantId: string; amountUsdc: number; destinationRef: string }> = [];
     let successCount = 0;
     const results: Array<{ merchantId: string; success: boolean; error?: string }> = [];
 
     for (const p of pending) {
-      const result = await initiateFiatPayout(p);
-      results.push({ merchantId: p.merchantId, success: result.success, error: result.error });
+      const result = await provider.createPayout(p);
+      results.push({ merchantId: p.merchantId, success: result.success, error: result.success ? undefined : result.message });
       if (result.success) successCount++;
     }
 
     return NextResponse.json({ success: true, processed: successCount, results });
-  } catch (e: any) {
+  } catch (e: unknown) {
     Sentry.captureException(e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: 'Settlement job failed' }, { status: 500 });
   }
 }

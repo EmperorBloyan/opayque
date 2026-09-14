@@ -6,8 +6,9 @@ import {
   createTransferInstruction,
 } from "@solana/spl-token";
 import { type WalletContextState } from "@solana/wallet-adapter-react";
+import { parseAmountToBaseUnits } from "@/lib/payments/amount";
 
-type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction" | "signAndSendTransaction">;
+type ConfidentialWallet = Pick<WalletContextState, "publicKey" | "signMessage" | "signTransaction">;
 
 export interface ConfidentialAccountConfig {
   accountAddress: string;
@@ -22,7 +23,7 @@ export interface ConfidentialTransferSummary {
   instructionCount?: number;
 }
 
-export interface ConfidentialTransferInstructionBundle {
+export interface PublicTransferInstructionBundle {
   instructions: TransactionInstruction[];
   cleanupInstructions: TransactionInstruction[];
   summary: ConfidentialTransferSummary;
@@ -39,7 +40,7 @@ export async function configureConfidentialAccount(
     };
   }
 
-  const canSignTransaction = Boolean(wallet.signTransaction || wallet.signAndSendTransaction);
+  const canSignTransaction = Boolean(wallet.signTransaction);
   const canSignMessage = Boolean(wallet.signMessage);
 
   if (!canSignTransaction && !canSignMessage) {
@@ -56,7 +57,7 @@ export async function configureConfidentialAccount(
         accountAddress: wallet.publicKey.toBase58(),
         supported: true,
       },
-      message: "Confidential account is ready for TEE-shielded operations.",
+      message: "Wallet is ready; private transfers require the MagicBlock payment path.",
       instructionCount: 1,
     };
   } catch (error) {
@@ -67,13 +68,13 @@ export async function configureConfidentialAccount(
   }
 }
 
-export async function createShieldedPaymentInstruction(
+export async function createPublicPaymentInstruction(
   connection: Connection,
   sender: PublicKey,
   recipient: PublicKey,
   amount: number,
   mint: PublicKey
-): Promise<ConfidentialTransferInstructionBundle> {
+): Promise<PublicTransferInstructionBundle> {
   const instructions: TransactionInstruction[] = [];
   const cleanupInstructions: TransactionInstruction[] = [];
 
@@ -81,12 +82,16 @@ export async function createShieldedPaymentInstruction(
     const sourceTokenAccount = getAssociatedTokenAddressSync(mint, sender);
     const destinationTokenAccount = getAssociatedTokenAddressSync(mint, recipient);
     const sourceMint = await getMint(connection, mint);
+    const amountBaseUnits = parseAmountToBaseUnits(amount, sourceMint.decimals);
+    if (!amountBaseUnits || amountBaseUnits > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("Invalid token amount");
+    }
 
     const transferInstruction = createTransferInstruction(
       sourceTokenAccount,
       destinationTokenAccount,
       sender,
-      Math.floor(amount * 10 ** sourceMint.decimals),
+      Number(amountBaseUnits),
       [],
       TOKEN_PROGRAM_ID
     );
@@ -97,7 +102,7 @@ export async function createShieldedPaymentInstruction(
       cleanupInstructions,
       summary: {
         status: "ready",
-        message: "Shielded payment instructions prepared.",
+        message: "Standard on-chain transfer instructions prepared (public).",
         instructionCount: instructions.length,
       },
     };
@@ -107,7 +112,7 @@ export async function createShieldedPaymentInstruction(
       cleanupInstructions,
       summary: {
         status: "error",
-        message: error instanceof Error ? error.message : "Failed to generate shielded payment instructions.",
+          message: error instanceof Error ? error.message : "Failed to generate public payment instructions.",
       },
     };
   }
@@ -125,7 +130,7 @@ export async function applyPendingBalance(
     };
   }
 
-  if (!wallet.signMessage && !wallet.signTransaction && !wallet.signAndSendTransaction) {
+  if (!wallet.signMessage && !wallet.signTransaction) {
     return {
       status: "unsupported",
       message: "Wallet does not support signing.",

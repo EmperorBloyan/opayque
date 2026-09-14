@@ -2,140 +2,70 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Client } from '@upstash/qstash';
 import crypto from 'node:crypto';
 
-const supabaseAdmin = createSupabaseServerClient();
-
-const qstashClient = process.env.QSTASH_TOKEN
-  ? new Client({ token: process.env.QSTASH_TOKEN })
-  : null;
-
 const WEBHOOK_DELIVER_ROUTE = '/api/v1/webhooks/deliver';
 
 interface WebhookPayload {
   merchantId: string;
   eventType: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   environment?: 'mainnet' | 'sandbox';
 }
 
 function getDeliverUrl(): string {
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
-    'http://localhost:3000';
-
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) || 'http://localhost:3000';
   return `${siteUrl.replace(/\/$/, '')}${WEBHOOK_DELIVER_ROUTE}`;
 }
 
-async function deliverViaQstash(
-  webhook: { id: string; endpoint_url: string; secret_hash: string },
-  body: Record<string, unknown>,
-) {
-  const qstashUrl = getDeliverUrl();
-
-  await qstashClient?.publishJSON({
-    url: qstashUrl,
-    method: 'POST',
-    body,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    retries: 3,
-  });
+function getDeliverySecret(): string {
+  const secret = process.env.WEBHOOK_DELIVERY_SECRET?.trim();
+  if (!secret) throw new Error('WEBHOOK_DELIVERY_SECRET is not configured');
+  return secret;
 }
 
-async function deliverDirectly(
-  webhook: { id: string; endpoint_url: string; secret_hash: string },
-  body: Record<string, unknown>,
-) {
-  await fetch(getDeliverUrl(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+async function enqueueDelivery(eventId: string, webhookId: string, qstashClient: Client | null): Promise<void> {
+  const body = { eventId, webhookId };
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-opayque-delivery-secret': getDeliverySecret(),
+  };
+  if (qstashClient) {
+    await qstashClient.publishJSON({ url: getDeliverUrl(), method: 'POST', body, headers, retries: 3 });
+    return;
+  }
+  const response = await fetch(getDeliverUrl(), { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(`Webhook delivery enqueue failed (${response.status})`);
 }
 
-export async function dispatchWebhookEvent({
-  merchantId,
-  eventType,
-  payload,
-  environment = 'sandbox',
-}: WebhookPayload) {
+export async function dispatchWebhookEvent({ merchantId, eventType, payload, environment = 'sandbox' }: WebhookPayload) {
+  const supabaseAdmin = createSupabaseServerClient();
+  const qstashClient = process.env.QSTASH_TOKEN ? new Client({ token: process.env.QSTASH_TOKEN }) : null;
   const { data: webhooks, error } = await supabaseAdmin
     .from('webhooks')
-    .select('id, endpoint_url, secret_hash')
+    .select('id, endpoint_url')
     .eq('merchant_id', merchantId)
     .eq('environment', environment)
     .eq('is_active', true);
 
-  if (error || !webhooks || webhooks.length === 0) return { dispatched: 0 };
+  if (error || !webhooks?.length) return { dispatched: 0 };
 
-  const dispatchPromises = webhooks.map(async (webhook) => {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const eventBody = JSON.stringify({
-      id: `evt_${crypto.randomBytes(12).toString('hex')}`,
-      event: eventType,
-      created_at: timestamp,
-      data: payload,
-    });
-
-    const signature = crypto
-      .createHmac('sha256', webhook.secret_hash)
-      .update(`${timestamp}.${eventBody}`)
-      .digest('hex');
-
-    const deliveryBody = {
-      merchantId,
-      eventType,
-      payload,
-      webhookEndpoint: webhook.endpoint_url,
-      secret: webhook.secret_hash,
-      signature: `t=${timestamp},v1=${signature}`,
-      eventBody,
-    };
-
-    const startTime = Date.now();
-    let statusCode = 202;
+  let dispatched = 0;
+  for (const webhook of webhooks as Array<{ id: string; endpoint_url: string }>) {
+    const eventId = `evt_${crypto.randomBytes(16).toString('hex')}`;
+    const { data: event, error: eventError } = await supabaseAdmin
+      .from('webhook_events')
+      .insert({ event_id: eventId, webhook_id: webhook.id, event_type: eventType, payload, status: 'pending' })
+      .select('id, event_id')
+      .single();
+    if (eventError || !event) continue;
 
     try {
-      if (qstashClient) {
-        await deliverViaQstash(webhook, deliveryBody);
-      } else {
-        const res = await fetch(getDeliverUrl(), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(deliveryBody),
-        });
-
-        statusCode = res.status;
-
-        if (!res.ok) {
-          console.error(`Webhook direct delivery failed for ${webhook.endpoint_url}: ${res.status}`);
-        }
-      }
-    } catch (err) {
-      console.error(`Webhook dispatch failed for ${webhook.endpoint_url}:`, err);
-    } finally {
-      const responseTimeMs = Date.now() - startTime;
-      const insertPayload = {
-        webhook_id: webhook.id,
-        event_type: eventType,
-        status_code: statusCode,
-        payload,
-        response_time_ms: responseTimeMs,
-      };
-
-      try {
-        await supabaseAdmin.from('webhook_delivery_logs').insert([insertPayload]);
-      } catch (logError) {
-        console.error('Failed to record webhook delivery log:', logError);
-      }
+      await enqueueDelivery(event.event_id, webhook.id, qstashClient);
+      await supabaseAdmin.from('webhook_events').update({ status: 'delivering', attempts: 1, updated_at: new Date().toISOString() }).eq('id', event.id);
+      dispatched += 1;
+    } catch (deliveryError) {
+      await supabaseAdmin.from('webhook_events').update({ status: 'failed', attempts: 1, last_error: deliveryError instanceof Error ? deliveryError.message : 'Delivery enqueue failed', next_attempt_at: new Date(Date.now() + 60_000).toISOString(), updated_at: new Date().toISOString() }).eq('id', event.id);
     }
-  });
+  }
 
-  await Promise.all(dispatchPromises);
-  return { dispatched: webhooks.length };
+  return { dispatched };
 }

@@ -4,11 +4,12 @@ import { Component, useState, useEffect, useCallback, useRef, useMemo, type Chan
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Bell, LucideEdit3, X } from "lucide-react";
-import { createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, setActiveSession } from "@/lib/crypto/session";
+import { clearTerminalDeviceCredential, createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, loadTerminalDeviceCredential, saveTerminalDeviceCredential, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { createSupabaseBrowserClient as createSupabaseClient } from "@/lib/supabase/client";
+import { assertTerminalReady, isRealMerchantId, resolveTerminalContext } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
+import type { TransferMode } from "@/lib/payments/transferMode";
 
 interface TerminalPaymentErrorBoundaryProps {
   children: ReactNode;
@@ -69,20 +70,35 @@ export default function TerminalPage() {
   const [asset, setAsset] = useState<"USDC" | "USDT" | "SOL">("USDC");
   const [isPaid, setIsPaid] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isToastVisible, setIsToastVisible] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [transferMode, setTransferMode] = useState<TransferMode>(() => {
+    if (typeof window === "undefined") return "private";
+    return window.localStorage.getItem("terminal_transfer_mode") === "public" ? "public" : "private";
+  });
   const [isPairing, setIsPairing] = useState(false);
-  const [merchantName, setMerchantName] = useState("Opayque Merchant");
+  const [merchantName, setMerchantName] = useState(() => {
+    if (typeof window === "undefined") return "Opayque Merchant";
+    const savedName = window.localStorage.getItem("merchant_name")?.trim();
+    return savedName || "Opayque Merchant";
+  });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState<string>("");
+  const [lockedUsdcAmount, setLockedUsdcAmount] = useState<string>("");
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Correct currency hooks
-  const { currency, setCurrency, rates, convert, toUsdc } = useCurrency();
+  const { currency, setCurrency, rates, toUsdc } = useCurrency();
 
   const pairingRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const activeSession = getActiveSession();
+  const terminalContext = resolveTerminalContext({
+    device: loadTerminalDeviceCredential(),
+    session: activeSession,
+  });
   const router = useRouter();
 
   const persistLocalActivity = useCallback((items: any[]) => {
@@ -107,49 +123,92 @@ export default function TerminalPage() {
       const supabase = createSupabaseBrowserClient();
       const windowNow = Date.now();
       const cutoff = new Date(windowNow - 24 * 60 * 60 * 1000).toISOString();
-      const effectiveTerminalId = terminalId;
-      if (!effectiveTerminalId) {
-        setRecentActivity(readLocalActivity());
+      const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+      if (context.status !== "ready" || !context.terminalId) {
+        setRecentActivity([]);
         return;
       }
 
       const { data, error } = await supabase
-        .from("transactions")
+        .from("payment_ledger")
         .select("*")
-        .eq("terminal_id", effectiveTerminalId)
+        .eq("merchant_id", context.merchantId)
+        .eq("terminal_id", context.terminalId)
         .gte("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(20);
 
       if (error || !Array.isArray(data)) {
-        setRecentActivity(readLocalActivity());
+        setRecentActivity([]);
         return;
       }
 
-      const mapped = data.map((row: any) => ({
-        id: String(row.id ?? row.signature ?? "pending"),
-        status: String(row.status ?? "pending").toUpperCase(),
-        amount: Number(row.amount ?? 0),
-        tokenSymbol: String(row.token_symbol ?? "USDC"),
-        time: row.created_at ?? new Date().toISOString(),
-        walletAddress: row.wallet_address ?? activeSession?.walletAddress ?? null,
-        txHash: row.tx_hash ?? row.signature ?? null,
-      }));
+      const localActivity = readLocalActivity();
+      const mapped = data.map((row: any) => {
+        const id = String(row.id ?? row.signature ?? "pending");
+        const localRecord = localActivity.find((item: any) => String(item.id) === id);
+        return {
+          id,
+          status: String(row.status ?? "pending").toUpperCase(),
+          amount: Number(row.amount ?? 0),
+          tokenSymbol: String(row.token_symbol ?? "USDC"),
+          transferMode: row.transfer_mode === "public" ? "public" : "private",
+          fiatAmount: localRecord?.fiatAmount,
+          displayCurrency: localRecord?.displayCurrency,
+          time: row.created_at ?? new Date().toISOString(),
+          walletAddress: row.wallet_address ?? context.merchantWallet,
+          txHash: row.tx_hash ?? row.signature ?? null,
+        };
+      });
 
-      const merged = [...mapped, ...readLocalActivity().filter((tx: any) => !mapped.some((item) => item.id === tx.id))].slice(0, 20);
+      const merged = [...mapped, ...localActivity.filter((tx: any) => !mapped.some((item) => item.id === tx.id))].slice(0, 20);
       setRecentActivity(merged);
       persistLocalActivity(merged);
     } catch (error) {
       console.warn("Failed to hydrate recent terminal activity", error);
-      setRecentActivity(readLocalActivity());
+      setRecentActivity([]);
     }
-  }, [activeSession?.walletAddress, persistLocalActivity, readLocalActivity, terminalId]);
+  }, [persistLocalActivity, readLocalActivity]);
 
   useEffect(() => {
-    if (!activeSession) {
+    if (!activeSession && !loadTerminalDeviceCredential()) {
       setToast("Ready to pair a terminal. Enter the fleet code to continue.");
     }
   }, [activeSession]);
+
+  useEffect(() => {
+    if (!toast) {
+      setIsToastVisible(false);
+      return;
+    }
+
+    setIsToastVisible(true);
+    const fadeTimer = window.setTimeout(() => setIsToastVisible(false), 3500);
+    const clearTimer = window.setTimeout(() => setToast(null), 4000);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isPaid) return;
+
+    const timer = window.setTimeout(() => {
+      setIsPaid(false);
+      setPaymentStatus(null);
+      setLatestTxHash(null);
+      setTransactionId(null);
+      setLockedAmount("");
+      setLockedUsdcAmount("");
+      setAmount("");
+      setStep("POS");
+      window.localStorage.removeItem("opayque_pending_tx_id");
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [isPaid]);
 
   function createDefaultTerminalLabelLocal() {
     try {
@@ -169,10 +228,11 @@ export default function TerminalPage() {
   // Fixed buildUri — uses toUsdc for settlement
   const buildUri = useCallback(() => {
     try {
-      const recipient =
-        typeof activeSession?.walletAddress === "string"
-          ? activeSession.walletAddress.trim()
-          : "";
+      const context = resolveTerminalContext({
+        device: loadTerminalDeviceCredential(),
+        session: getActiveSession(),
+      });
+      const recipient = context.status === "ready" ? context.merchantWallet : "";
 
       const amountValue = lockedAmount || amount || "";
       const fiatAmount = Number.parseFloat(String(amountValue).trim());
@@ -181,20 +241,27 @@ export default function TerminalPage() {
         return "";
       }
 
-      // Correct conversion: local fiat → USDC for settlement
-      const usdcAmount = toUsdc(fiatAmount, currency);
+      // A resumed transaction is already denominated in USDC. New payments use
+      // the current display-currency rate exactly once.
+      const usdcAmount = lockedUsdcAmount
+        ? Number(lockedUsdcAmount)
+        : toUsdc(fiatAmount, currency);
+      if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
+        return "";
+      }
 
       const origin =
         typeof window !== "undefined" ? window.location.origin : "https://opayque.vercel.app";
 
       const checkoutUrl = new URL("/checkout", origin);
       checkoutUrl.searchParams.set("address", recipient);
-      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(2)); // USDC settlement amount
+      checkoutUrl.searchParams.set("amount", usdcAmount.toFixed(6)); // USDC settlement amount
       checkoutUrl.searchParams.set("fiat_amount", fiatAmount.toFixed(2));
       checkoutUrl.searchParams.set("currency", currency || "USD");
       checkoutUrl.searchParams.set("token", asset || "USDC");
       checkoutUrl.searchParams.set("name", merchantName || "Opayque Merchant");
       if (transactionId) checkoutUrl.searchParams.set("tx_id", transactionId);
+      checkoutUrl.searchParams.set("mode", transferMode);
 
       return checkoutUrl.toString();
     } catch (error) {
@@ -202,14 +269,15 @@ export default function TerminalPage() {
       return "";
     }
   }, [
-    activeSession?.walletAddress,
     amount,
     lockedAmount,
+    lockedUsdcAmount,
     merchantName,
     currency,
     asset,
     toUsdc,
     transactionId,
+    transferMode,
   ]);
 
   const handlePairing = async (e: FormEvent) => {
@@ -233,7 +301,9 @@ export default function TerminalPage() {
 
     try {
       const merchantId = activeSession?.merchantId;
-      const activeWalletAddress = activeSession?.walletAddress;
+      const activeWalletAddress = activeSession?.walletAddress && activeSession.walletAddress !== "email-auth"
+        ? activeSession.walletAddress
+        : undefined;
       const response = await fetch("/api/terminal/pairing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -248,7 +318,9 @@ export default function TerminalPage() {
       }
 
       if (!response.ok || !payload?.success) {
-        const message = payload?.error || `Pairing request failed with status ${response.status}`;
+        const message = response.status === 409
+          ? "This pairing code is expired or already used. Generate a new code in Vault."
+          : payload?.error || `Pairing request failed with status ${response.status}`;
         throw new Error(message);
       }
 
@@ -288,11 +360,10 @@ export default function TerminalPage() {
         window.localStorage.setItem("opayque_terminal_wallet", pairedWalletAddress);
       }
 
-      if (resolvedMerchantName) {
-        setMerchantName(resolvedMerchantName);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("merchant_name", resolvedMerchantName);
-        }
+      const effectiveMerchantName = (resolvedMerchantName || (typeof window !== "undefined" ? window.localStorage.getItem("merchant_name")?.trim() : "") || "Opayque Merchant").trim();
+      setMerchantName(effectiveMerchantName);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("merchant_name", effectiveMerchantName);
       }
 
       if (resolvedMerchantLogo) {
@@ -304,35 +375,41 @@ export default function TerminalPage() {
 
       const resolvedTerminalLabel = typeof payload?.terminalLabel === "string" && payload.terminalLabel.trim()
         ? payload.terminalLabel.trim()
-        : createDefaultTerminalLabelLocal();
+        : "Fleet Terminal";
+
+      const pairedTerminalId = typeof payload?.terminalId === "string" ? payload.terminalId : null;
+      const pairedDeviceToken = typeof payload?.deviceToken === "string" ? payload.deviceToken : null;
+      if (pairedTerminalId && pairedDeviceToken) {
+        const credential = {
+          terminalId: pairedTerminalId,
+          merchantId: resolvedMerchantId,
+          deviceToken: pairedDeviceToken,
+          merchantWallet: pairedWalletAddress,
+          pairedAt: Date.now(),
+        };
+
+        try {
+          window.localStorage.setItem("opayque_terminal_id", pairedTerminalId);
+          window.localStorage.setItem("opayque_terminal_token", pairedDeviceToken);
+          window.localStorage.setItem("opayque_terminal_label", resolvedTerminalLabel);
+          saveTerminalDeviceCredential(credential);
+          const savedCredential = loadTerminalDeviceCredential();
+          if (
+            !savedCredential ||
+            savedCredential.terminalId !== pairedTerminalId ||
+            savedCredential.deviceToken !== pairedDeviceToken
+          ) {
+            throw new Error("Terminal credentials could not be verified in browser storage");
+          }
+        } catch {
+          throw new Error("Terminal paired on the server, but this browser could not save its credentials. Enable local storage and try again.");
+        }
+
+        setTerminalId(pairedTerminalId);
+        setTerminalToken(pairedDeviceToken);
+      }
 
       setActiveSession(session);
-
-      try {
-        const terminalLabel = createDefaultTerminalLabelLocal();
-        const resp = await fetch(`/api/terminal/pair`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ merchant_id: session.merchantId, terminal_label: resolvedTerminalLabel }),
-        });
-
-        const payload = await resp.json().catch(() => null);
-        if (resp.ok && payload?.success && payload?.data?.terminal) {
-          const t = payload.data.terminal as any;
-          const deviceToken = payload.data.device_token ?? null;
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("opayque_terminal_id", String(t.id));
-            if (deviceToken) window.localStorage.setItem("opayque_terminal_token", String(deviceToken));
-            window.localStorage.setItem("opayque_terminal_label", String(t.terminal_label ?? terminalLabel));
-          }
-          setTerminalId(String(t.id));
-          setTerminalToken(deviceToken ?? null);
-        } else {
-          console.warn("Terminal creation returned no terminal, continuing without local pairing.", payload);
-        }
-      } catch (err) {
-        console.error("Failed to create terminal record", err);
-      }
 
       setStep("POS");
       setToast("Terminal paired successfully");
@@ -344,39 +421,109 @@ export default function TerminalPage() {
   };
 
   const generateNewPayment = async () => {
-    if (!isAmountValid) return;
-    try {
-      const supabase = createSupabaseClient();
-      const merchantId = activeSession?.merchantId ?? null;
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert({
-          merchant_id: merchantId,
-          terminal_id: terminalId ?? null,
-          signature: null,
-          token_symbol: asset,
-          amount: numericAmount,
-          status: "pending",
-        })
-        .select()
-        .single();
+    if (!isAmountValid || isGenerating) return;
+    if (asset !== "USDC") {
+      setToast("This hosted checkout currently supports USDC payments only");
+      return;
+    }
 
-      if (error || !data) {
-        throw new Error(error?.message || "Failed to create pending transaction");
+    const settlementAmount = toUsdc(numericAmount, currency);
+    if (!Number.isFinite(settlementAmount) || settlementAmount <= 0 || settlementAmount >= 1_000_000) {
+      setToast(`FX rate unavailable for ${currency}. Refresh rates and try again.`);
+      return;
+    }
+    const normalizedSettlementAmount = Number(settlementAmount.toFixed(6));
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    setIsGenerating(true);
+    try {
+      const currentTerminalContext = resolveTerminalContext({
+        device: loadTerminalDeviceCredential(),
+        session: getActiveSession(),
+      });
+      assertTerminalReady(currentTerminalContext);
+      if (!currentTerminalContext.terminalId || !currentTerminalContext.deviceToken) {
+        throw new Error("Pair this terminal before generating a QR code");
       }
 
-      const pendingRecord = data as TransactionRecord & { tx_hash?: string | null; wallet_address?: string | null; token_symbol?: string | null; created_at?: string };
+      const idempotencyStorageKey = "opayque_terminal_payment_request";
+      const requestAmount = normalizedSettlementAmount.toFixed(6);
+      let idempotencyKey = "";
+      try {
+        const savedRequest = JSON.parse(window.localStorage.getItem(idempotencyStorageKey) || "null");
+        const isReusable = savedRequest?.terminalId === currentTerminalContext.terminalId
+          && savedRequest?.amount === requestAmount
+          && savedRequest?.createdAt
+          && Date.now() - Number(savedRequest.createdAt) < 10 * 60 * 1000;
+        idempotencyKey = isReusable ? String(savedRequest.key) : "";
+      } catch {
+        idempotencyKey = "";
+      }
+      if (!idempotencyKey) {
+        idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+        window.localStorage.setItem(idempotencyStorageKey, JSON.stringify({
+          key: idempotencyKey,
+          terminalId: currentTerminalContext.terminalId,
+          amount: requestAmount,
+          createdAt: Date.now(),
+        }));
+      }
+
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 30_000);
+
+      const response = await fetch("/api/terminal/payments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-terminal-token": currentTerminalContext.deviceToken,
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          terminalId: currentTerminalContext.terminalId,
+          amount: normalizedSettlementAmount,
+          tokenSymbol: "USDC",
+        }),
+        signal: controller.signal,
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success || !data?.id) {
+        if (response.status === 401 && data?.code === "TERMINAL_REVOKED") {
+          clearTerminalDeviceCredential();
+          window.localStorage.removeItem("opayque_terminal_id");
+          window.localStorage.removeItem("opayque_terminal_token");
+          setTerminalId(null);
+          setTerminalToken(null);
+          setStep("PAIRING");
+        }
+        throw new Error(data?.error || "Unable to create payment");
+      }
+
+      const pendingRecord = data as TransactionRecord & {
+        tx_hash?: string | null;
+        wallet_address?: string | null;
+        token_symbol?: string | null;
+        created_at?: string;
+      };
+
       const nextActivity = [{
         id: String(pendingRecord.id),
         status: "PENDING",
-        amount: Number(pendingRecord.amount ?? numericAmount),
-        tokenSymbol: String(pendingRecord.token_symbol ?? asset),
+        amount: Number(pendingRecord.amount ?? normalizedSettlementAmount),
+        tokenSymbol: String(pendingRecord.token_symbol ?? "USDC"),
+        fiatAmount: numericAmount,
+        displayCurrency: currency,
         time: pendingRecord.created_at ?? new Date().toISOString(),
-        walletAddress: activeSession?.walletAddress ?? null,
+        walletAddress: currentTerminalContext.merchantWallet,
         txHash: pendingRecord.tx_hash ?? null,
       }, ...readLocalActivity()];
+
       setRecentActivity(persistLocalActivity(nextActivity));
       setTransactionId(String(pendingRecord.id));
+      const nextTransferMode = pendingRecord.transfer_mode === "public" ? "public" : "private";
+      setTransferMode(nextTransferMode);
+      window.localStorage.setItem("terminal_transfer_mode", nextTransferMode);
       setLatestTxHash(null);
       setIsPaid(false);
 
@@ -385,17 +532,55 @@ export default function TerminalPage() {
           window.localStorage.setItem("opayque_pending_tx_id", String((data as TransactionRecord).id));
         }
       } catch {}
+
       setLockedAmount(numericAmount.toFixed(2));
+      setLockedUsdcAmount(normalizedSettlementAmount.toFixed(6));
       setStep("PAYING");
       setPaymentStatus("PENDING");
       setToast("Pending transaction created");
+      window.localStorage.removeItem(idempotencyStorageKey);
     } catch (err) {
-      setToast(err instanceof Error ? err.message : "Failed to create transaction");
+      setToast(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Payment request timed out. Try again."
+          : err instanceof Error
+          ? err.message
+          : "Unable to create payment"
+      );
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      setIsGenerating(false);
     }
   };
 
   const handleGenerateQR = async () => {
     await generateNewPayment();
+  };
+
+  const handleActivityClick = (transaction: any) => {
+    const transactionAmount = Number(transaction.amount);
+    if (!transaction.id || !Number.isFinite(transactionAmount) || transactionAmount <= 0) {
+      setToast("Payment details are unavailable");
+      return;
+    }
+
+    const nextStatus = String(transaction.status ?? "").toUpperCase();
+    const isSettled = nextStatus === "SETTLED" || nextStatus === "CONFIRMED";
+    if (["FAILED", "EXPIRED", "CANCELLED", "CANCELED"].includes(nextStatus)) {
+      setToast("This payment is no longer payable. Generate a new QR code.");
+      return;
+    }
+
+    setTransactionId(String(transaction.id));
+    setLockedAmount(Number(transaction.fiatAmount ?? transactionAmount).toFixed(2));
+    setLockedUsdcAmount(transactionAmount.toFixed(6));
+    setAmount(transactionAmount.toFixed(2));
+    setPaymentStatus(isSettled ? "SETTLED" : "PENDING");
+    setLatestTxHash(isSettled ? (transaction.txHash ?? null) : null);
+    setIsPaid(isSettled);
+    setTransferMode(transaction.transferMode === "public" ? "public" : "private");
+    setIsActivityOpen(false);
+    setStep("PAYING");
   };
 
   const triggerSuccess = useCallback(async () => {
@@ -425,31 +610,62 @@ export default function TerminalPage() {
       console.warn("Unable to read merchant preferences from storage", error);
     }
 
-    const persistedPendingTxId = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id")?.trim() : null;
-    if (persistedPendingTxId) {
-      setTransactionId(persistedPendingTxId);
-      setStep("PAYING");
-      setPaymentStatus("PENDING");
-    }
-
     try {
       if (typeof window !== "undefined") {
         const storedId = window.localStorage.getItem("opayque_terminal_id")?.trim() || null;
         const storedToken = window.localStorage.getItem("opayque_terminal_token")?.trim() || null;
         if (storedId) {
-          const supabase = createSupabaseBrowserClient();
+          const storedCredential = loadTerminalDeviceCredential();
+          if (storedCredential?.terminalId === storedId && storedCredential.deviceToken === storedToken) {
+            setTerminalId(storedCredential.terminalId);
+            setTerminalToken(storedCredential.deviceToken);
+            const savedName = window.localStorage.getItem("merchant_name")?.trim();
+            if (savedName) {
+              setMerchantName(savedName);
+            }
+            setStep("POS");
+          }
+
           (async () => {
             try {
-              const { data, error } = await supabase.from("terminals").select("*").eq("id", storedId).single();
-              if (!error && data) {
-                if (!storedToken || String(data.device_token) === String(storedToken)) {
-                  setTerminalId(storedId);
-                  setTerminalToken(storedToken);
-                  setStep("POS");
-                } else {
-                  window.localStorage.removeItem("opayque_terminal_id");
-                  window.localStorage.removeItem("opayque_terminal_token");
-                }
+              if (!storedToken) return;
+              const response = await fetch(`/api/terminal/bootstrap?terminalId=${encodeURIComponent(storedId)}`, {
+                headers: { "x-terminal-token": storedToken },
+              });
+              const payload = await response.json().catch(() => null);
+
+              if (
+                response.ok &&
+                payload?.success &&
+                typeof payload.merchantId === "string" &&
+                isRealMerchantId(payload.merchantId) &&
+                typeof payload.merchantWallet === "string" &&
+                payload.merchantWallet.trim()
+              ) {
+                const nextName = String(payload.merchantName || window.localStorage.getItem("merchant_name")?.trim() || "Opayque Merchant").trim();
+                saveTerminalDeviceCredential({
+                  terminalId: String(payload.terminalId ?? storedId),
+                  merchantId: String(payload.merchantId),
+                  deviceToken: storedToken,
+                  merchantWallet: String(payload.merchantWallet),
+                  pairedAt: loadTerminalDeviceCredential()?.pairedAt ?? Date.now(),
+                });
+                setTerminalId(String(payload.terminalId ?? storedId));
+                setTerminalToken(storedToken);
+                setMerchantName(nextName);
+                window.localStorage.setItem("merchant_name", nextName);
+                setAvatarPreview(payload.merchantLogo || null);
+                setStep("POS");
+              } else if (response.status === 401 && payload?.code === "TERMINAL_REVOKED") {
+                window.localStorage.removeItem("opayque_terminal_id");
+                window.localStorage.removeItem("opayque_terminal_token");
+                clearTerminalDeviceCredential();
+                setTerminalId(null);
+                setTerminalToken(null);
+                setStep("PAIRING");
+                setToast("Terminal session is invalid. Enter a fresh pairing code from Vault.");
+              } else if (response.status === 401 && payload?.code === "TERMINAL_CREDENTIALS_INVALID") {
+                setToast("Terminal credentials need refresh. Pairing was preserved.");
               }
             } catch (err) {
               console.warn("Failed to validate stored terminal", err);
@@ -463,197 +679,63 @@ export default function TerminalPage() {
   }, [activeSession]);
 
   useEffect(() => {
+    if (terminalId) void hydrateRecentActivity();
+  }, [hydrateRecentActivity, terminalId]);
+
+  useEffect(() => {
     if (!transactionId) {
       return;
     }
 
     const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`transactions:${transactionId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "transactions", filter: `id=eq.${transactionId}` },
-        (payload) => {
-          const record = payload.new as TransactionRecord | null;
-          if (!record) return;
-          const nextActivityItem = {
-            id: String(record.id ?? transactionId),
-            status: String(record.status ?? "pending").toUpperCase(),
-            amount: Number(record.amount ?? 0),
-            tokenSymbol: String((record as any).token_symbol ?? asset),
-            time: (record as any).created_at ?? new Date().toISOString(),
-            walletAddress: activeSession?.walletAddress ?? null,
-            txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
-          };
-          const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
-          setRecentActivity(persistLocalActivity(merged));
-          if (record.status === "settled") {
-            setPaymentStatus("SETTLED");
-            setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
-            setIsPaid(true);
-            setToast("Transaction settled on-chain");
-            requestAnimationFrame(() => {
-              successRef.current?.focus();
-            });
-          } else if (record.status) {
-            setToast(`Transaction status: ${record.status}`);
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    void (async () => {
+      const context = resolveTerminalContext({ device: loadTerminalDeviceCredential(), session: getActiveSession() });
+      if (context.status !== "ready") return;
+      const merchantId = context.merchantId;
+      channel = supabase
+        .channel(`transactions:${merchantId}:${transactionId}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "payment_ledger", filter: `merchant_id=eq.${merchantId}` },
+          (payload) => {
+            const record = payload.new as TransactionRecord | null;
+            if (!record || String(record.id) !== transactionId) return;
+            const nextActivityItem = {
+              id: String(record.id ?? transactionId),
+              status: String(record.status ?? "pending").toUpperCase(),
+              amount: Number(record.amount ?? 0),
+              tokenSymbol: String((record as any).token_symbol ?? asset),
+              fiatAmount: readLocalActivity().find((item: any) => String(item.id) === String(record.id ?? transactionId))?.fiatAmount,
+              displayCurrency: readLocalActivity().find((item: any) => String(item.id) === String(record.id ?? transactionId))?.displayCurrency,
+              time: (record as any).created_at ?? new Date().toISOString(),
+              walletAddress: context.merchantWallet,
+              txHash: (record as any).tx_hash ?? (record as any).signature ?? null,
+            };
+            const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
+            setRecentActivity(persistLocalActivity(merged));
+            if (["settled", "confirmed"].includes(String(record.status).toLowerCase())) {
+              setPaymentStatus("SETTLED");
+              setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
+              setIsPaid(true);
+              setToast("Payment Successful");
+              window.setTimeout(() => setToast(null), 3200);
+              requestAnimationFrame(() => {
+                successRef.current?.focus();
+              });
+            } else if (record.status) {
+              setToast(`Transaction status: ${record.status}`);
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    })();
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
-
-  useEffect(() => {
-    if (!terminalId) return;
-
-    const supabase = createSupabaseBrowserClient();
-
-    (async () => {
-      try {
-        const stored = typeof window !== "undefined" ? window.localStorage.getItem("opayque_pending_tx_id") : null;
-        if (stored) {
-          const { data: storedRow, error: err } = await supabase.from("transactions").select("*").eq("id", stored).single();
-          if (!err && storedRow) {
-            if (String(storedRow.status) === "settled") {
-              setPaymentStatus("SETTLED");
-              setLatestTxHash(storedRow.tx_hash ?? storedRow.signature ?? null);
-              setIsPaid(true);
-              setStep("PAYING");
-            } else {
-              setTransactionId(String(storedRow.id));
-              setLatestTxHash(null);
-              setIsPaid(false);
-              setLockedAmount(String(Number(storedRow.amount ?? 0).toFixed(2)));
-              setStep("PAYING");
-              setPaymentStatus(String(storedRow.status ?? "pending"));
-            }
-            return;
-          }
-        }
-
-        const { data, error } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("terminal_id", terminalId)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const row = data[0] as any;
-          if (String(row.status) === "settled") {
-            setPaymentStatus("SETTLED");
-            setLatestTxHash(row.tx_hash ?? row.signature ?? null);
-            setIsPaid(true);
-            setStep("PAYING");
-          } else {
-            setTransactionId(String(row.id));
-            setLatestTxHash(null);
-            setIsPaid(false);
-            setLockedAmount(String(Number(row.amount ?? 0).toFixed(2)));
-            setStep("PAYING");
-            setPaymentStatus(String(row.status ?? "pending"));
-            try {
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("opayque_pending_tx_id", String(row.id));
-              }
-            } catch {}
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to restore terminal transaction state", err);
-      }
-    })();
-  }, [terminalId]);
-
-  useEffect(() => {
-    if (!terminalId) return;
-
-    const restoreLatestTransaction = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data, error } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("terminal_id", terminalId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        if (error || !data) {
-          return;
-        }
-
-        const status = String(data.status ?? "pending").toLowerCase();
-        const restoredId = String(data.id);
-        const resolvedAmount = Number(data.amount ?? 0);
-
-        setTransactionId(restoredId);
-        setLockedAmount(Number.isFinite(resolvedAmount) ? resolvedAmount.toFixed(2) : "");
-        setStep("PAYING");
-        setPaymentStatus(status.toUpperCase());
-        setLatestTxHash((data as any).tx_hash ?? (data as any).signature ?? null);
-        setIsPaid(status === "settled");
-      } catch (error) {
-        console.warn("Failed to restore terminal transaction state", error);
-      }
-    };
-
-    void restoreLatestTransaction();
-
-    const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`terminal-${terminalId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "transactions", filter: `terminal_id=eq.${terminalId}` },
-        (payload) => {
-          const rec = payload.new as TransactionRecord | null;
-          if (!rec) return;
-          if (rec.status === "settled") {
-            setPaymentStatus("SETTLED");
-            setLatestTxHash((rec as any).tx_hash ?? (rec as any).signature ?? null);
-            setIsPaid(true);
-            setStep("PAYING");
-            setToast("Transaction settled on-chain");
-            requestAnimationFrame(() => {
-              successRef.current?.focus();
-            });
-          } else {
-            setPaymentStatus(String(rec.status ?? "PENDING").toUpperCase());
-            setIsPaid(false);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [terminalId]);
-
-  const unpairTerminal = async () => {
-    try {
-      if (terminalId) {
-        const supabase = createSupabaseBrowserClient();
-        await supabase.from("terminals").update({ status: "revoked", last_active: new Date().toISOString() }).eq("id", terminalId);
-      }
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("opayque_terminal_id");
-        window.localStorage.removeItem("opayque_terminal_token");
-        window.localStorage.removeItem("opayque_terminal_label");
-      }
-      setTerminalId(null);
-      setTerminalToken(null);
-      setStep("PAIRING");
-      setToast("Terminal unpaired");
-    } catch (err) {
-      console.error("Failed to unpair terminal", err);
-    }
-  };
 
   if (!mounted) return null;
 
@@ -704,10 +786,11 @@ export default function TerminalPage() {
                 </button>
                 {terminalId ? (
                   <button
-                    onClick={() => void unpairTerminal()}
+                    type="button"
+                    onClick={() => router.push("/")}
                     className="text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-2 rounded-xl border border-white/10 bg-zinc-900/50 hover:bg-red-600/20"
                   >
-                    Unpair
+                    Return Home
                   </button>
                 ) : null}
               </div>
@@ -772,10 +855,10 @@ export default function TerminalPage() {
             />
             <button
               onClick={handleGenerateQR}
-              disabled={!isAmountValid}
+              disabled={!isAmountValid || terminalContext.status !== "ready" || isGenerating}
               className="w-full py-8 bg-purple-600 rounded-[2.2rem] font-black text-2xl shadow-2xl disabled:opacity-20 uppercase tracking-tighter"
             >
-              Generate QR
+              {isGenerating ? "Creating..." : "Generate QR"}
             </button>
           </div>
         )}
@@ -787,6 +870,7 @@ export default function TerminalPage() {
                 setStep("POS");
                 setIsPaid(false);
                 setLockedAmount("");
+                setLockedUsdcAmount("");
                 setAmount("");
                 setTransactionId(null);
                 setPaymentStatus(null);
@@ -826,13 +910,24 @@ export default function TerminalPage() {
                   ref={successRef}
                   tabIndex={-1}
                   aria-live="polite"
-                  className="flex flex-col items-center"
+                  className="relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden rounded-[3rem] bg-green-500/20 px-8 py-12 text-center backdrop-blur-xl animate-in fade-in zoom-in duration-300"
                 >
-                  <div className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center mb-6">
-                    <span className="text-4xl italic font-black">✓</span>
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="mb-6 rounded-full bg-white p-4 shadow-2xl animate-bounce">
+                      <span className="text-4xl font-black text-green-600">✓</span>
+                    </div>
+                    <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white">
+                      Payment Successful
+                    </h2>
+                    <p className="mt-4 text-sm text-green-100">
+                      Payment of{" "}
+                      <span className="font-bold text-white">
+                        {lockedAmount || amount} {asset}
+                      </span>{" "}
+                      finalized.
+                    </p>
                   </div>
-                  <h2 className="text-5xl font-black italic uppercase">Settled</h2>
-                  <div className="mt-4 space-y-2 text-center text-xs font-mono uppercase tracking-[0.2em] text-zinc-300">
+                  <div className="relative z-10 mt-6 space-y-2 text-center text-xs font-mono uppercase tracking-[0.2em] text-green-100">
                     {activeSession?.walletAddress && (
                       <p>From {`${activeSession.walletAddress.slice(0, 3)}...${activeSession.walletAddress.slice(-3)}`}</p>
                     )}
@@ -847,7 +942,7 @@ export default function TerminalPage() {
         )}
 
         {toast && (
-          <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-white/10 px-6 py-3 rounded-full text-[10px] font-bold uppercase">
+          <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-6 py-3 text-[10px] font-bold uppercase transition duration-500 ${isToastVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}>
             {toast}
           </div>
         )}
@@ -860,6 +955,7 @@ export default function TerminalPage() {
                 setLatestTxHash(null);
                 setTransactionId(null);
                 setLockedAmount("");
+                setLockedUsdcAmount("");
                 setAmount("");
                 setStep("POS");
                 setToast("Ready for a new payment");
@@ -901,18 +997,28 @@ export default function TerminalPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10 bg-black/30">
-                    {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => (
-                      <tr key={`${tx.id ?? idx}`} className="hover:bg-white/5">
-                        <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
-                            {tx.status || "PENDING"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-bold text-violet-300">{convert(Number(tx.amount ?? 0)).formatted}</td>
-                        <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                      </tr>
-                    )) : (
+                    {renderActivityList.length > 0 ? renderActivityList.map((tx: any, idx: number) => {
+                      const displayAmount = tx.fiatAmount ?? tx.amount;
+                      const displayCurrency = tx.displayCurrency ?? tx.tokenSymbol ?? "USDC";
+                      return (
+                        <tr
+                          key={`${tx.id ?? idx}`}
+                          onClick={() => handleActivityClick(tx)}
+                          className="cursor-pointer hover:bg-white/5"
+                        >
+                          <td className="px-4 py-3 font-mono text-zinc-300">{tx.id ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}` : "—"}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+                              {tx.status || "PENDING"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-violet-300">
+                            {Number(displayAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {String(displayCurrency).toUpperCase()}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">{tx.time ? new Date(tx.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
                         <td colSpan={4} className="px-4 py-10 text-center text-zinc-500">No transactions received in the last 24 hours.</td>
                       </tr>
