@@ -152,6 +152,7 @@ export default function TerminalPage() {
           status: String(row.status ?? "pending").toUpperCase(),
           amount: Number(row.amount ?? 0),
           tokenSymbol: String(row.token_symbol ?? "USDC"),
+          transferMode: row.transfer_mode === "public" ? "public" : "private",
           fiatAmount: localRecord?.fiatAmount,
           displayCurrency: localRecord?.displayCurrency,
           time: row.created_at ?? new Date().toISOString(),
@@ -445,14 +446,38 @@ export default function TerminalPage() {
         throw new Error("Pair this terminal before generating a QR code");
       }
 
+      const idempotencyStorageKey = "opayque_terminal_payment_request";
+      const requestAmount = normalizedSettlementAmount.toFixed(6);
+      let idempotencyKey = "";
+      try {
+        const savedRequest = JSON.parse(window.localStorage.getItem(idempotencyStorageKey) || "null");
+        const isReusable = savedRequest?.terminalId === currentTerminalContext.terminalId
+          && savedRequest?.amount === requestAmount
+          && savedRequest?.createdAt
+          && Date.now() - Number(savedRequest.createdAt) < 10 * 60 * 1000;
+        idempotencyKey = isReusable ? String(savedRequest.key) : "";
+      } catch {
+        idempotencyKey = "";
+      }
+      if (!idempotencyKey) {
+        idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+        window.localStorage.setItem(idempotencyStorageKey, JSON.stringify({
+          key: idempotencyKey,
+          terminalId: currentTerminalContext.terminalId,
+          amount: requestAmount,
+          createdAt: Date.now(),
+        }));
+      }
+
       const controller = new AbortController();
-      timeout = setTimeout(() => controller.abort(), 12_000);
+      timeout = setTimeout(() => controller.abort(), 30_000);
 
       const response = await fetch("/api/terminal/payments", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-terminal-token": currentTerminalContext.deviceToken,
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
           terminalId: currentTerminalContext.terminalId,
@@ -513,6 +538,7 @@ export default function TerminalPage() {
       setStep("PAYING");
       setPaymentStatus("PENDING");
       setToast("Pending transaction created");
+      window.localStorage.removeItem(idempotencyStorageKey);
     } catch (err) {
       setToast(
         err instanceof DOMException && err.name === "AbortError"
@@ -539,7 +565,11 @@ export default function TerminalPage() {
     }
 
     const nextStatus = String(transaction.status ?? "").toUpperCase();
-    const isSettled = nextStatus === "SETTLED";
+    const isSettled = nextStatus === "SETTLED" || nextStatus === "CONFIRMED";
+    if (["FAILED", "EXPIRED", "CANCELLED", "CANCELED"].includes(nextStatus)) {
+      setToast("This payment is no longer payable. Generate a new QR code.");
+      return;
+    }
 
     setTransactionId(String(transaction.id));
     setLockedAmount(Number(transaction.fiatAmount ?? transactionAmount).toFixed(2));
@@ -548,6 +578,7 @@ export default function TerminalPage() {
     setPaymentStatus(isSettled ? "SETTLED" : "PENDING");
     setLatestTxHash(isSettled ? (transaction.txHash ?? null) : null);
     setIsPaid(isSettled);
+    setTransferMode(transaction.transferMode === "public" ? "public" : "private");
     setIsActivityOpen(false);
     setStep("PAYING");
   };
@@ -684,7 +715,7 @@ export default function TerminalPage() {
             };
             const merged = [nextActivityItem, ...readLocalActivity().filter((tx: any) => tx.id !== nextActivityItem.id)].slice(0, 20);
             setRecentActivity(persistLocalActivity(merged));
-            if (record.status === "settled") {
+            if (["settled", "confirmed"].includes(String(record.status).toLowerCase())) {
               setPaymentStatus("SETTLED");
               setLatestTxHash((record as any).tx_hash ?? (record as any).signature ?? null);
               setIsPaid(true);

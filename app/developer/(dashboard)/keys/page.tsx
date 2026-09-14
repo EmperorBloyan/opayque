@@ -538,7 +538,6 @@ export default function ApiKeysPage() {
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 shadow-2xl shadow-zinc-950/30 backdrop-blur-sm">
               <div className="mb-6">
                 <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
-                <h2 className="mt-2 text-2xl font-bold text-white">Business details</h2>
               </div>
 
               <div className="mb-8 flex flex-col items-center text-center">

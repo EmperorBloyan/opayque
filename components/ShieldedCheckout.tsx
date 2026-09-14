@@ -332,9 +332,12 @@ export default function ShieldedCheckout({
       setStatus("error");
       const isWalletApprovalTimeout = /wallet approval timed out/i.test(errorMessage);
       const isRpcTimeout = /blockhash request|transaction simulation|transaction submission|transaction confirmation timed out/i.test(errorMessage);
+      const isFeeEstimationError = /estimate(?:d|s)?\s+(?:the\s+)?fee|fee\s+estimation|insufficient.*(?:lamports|sol)/i.test(errorMessage);
       setMessage(
         isWalletApprovalTimeout
           ? "Wallet approval took too long. Please approve the transaction and try again."
+          : isFeeEstimationError
+          ? `Your wallet could not estimate network fees. Add ${isDevnetNetwork() ? "Devnet" : "Mainnet"} SOL to the paying wallet and try again.`
           : isRpcTimeout || /blockhash|expired|last valid/i.test(errorMessage)
           ? "Transaction expired or took too long. Please try again."
           : errorMessage
