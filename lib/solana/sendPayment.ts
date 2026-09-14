@@ -7,6 +7,8 @@ export class BlockhashExpiredError extends Error { constructor() { super("Transa
 export class PaymentTimeoutError extends Error { constructor(message = "Transaction confirmation timed out") { super(message); this.name = "PaymentTimeoutError"; } }
 export class PaymentRpcError extends Error { constructor(message: string) { super(message); this.name = "PaymentRpcError"; } }
 
+const WALLET_APPROVAL_TIMEOUT_MS = 300_000;
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new PaymentTimeoutError(`${label} timed out`)), timeoutMs);
@@ -67,7 +69,7 @@ export async function sendPayment(
     try {
       onStage?.("approving");
       logLifecycle("info", "wallet_payment", "approving", getSolanaNetwork());
-      signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
+      signed = await withTimeout(signTransaction(transaction), WALLET_APPROVAL_TIMEOUT_MS, "Wallet approval");
     } catch (error) {
       if (isWalletRejection(error)) throw new UserRejectedError();
       if (error instanceof PaymentTimeoutError) throw error;
@@ -136,7 +138,7 @@ export async function sendStandardPayment(
 
     let signed: VersionedTransaction;
     try {
-      signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
+      signed = await withTimeout(signTransaction(transaction), WALLET_APPROVAL_TIMEOUT_MS, "Wallet approval");
     } catch (error) {
       if (isWalletRejection(error)) throw new UserRejectedError();
       throw error;
@@ -194,7 +196,7 @@ export async function sendLegacyPayment(
 
     try {
       onStage?.("approving");
-      const signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
+      const signed = await withTimeout(signTransaction(transaction), WALLET_APPROVAL_TIMEOUT_MS, "Wallet approval");
       const simulation: any = await withTimeout(
         (connection.simulateTransaction as any)(signed, { sigVerify: false }),
         15_000,
