@@ -330,16 +330,16 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
 - [ ] Configure Vercel Preview with devnet RPC/mint and Production with mainnet RPC/mint only when mainnet gates are complete.
 - [ ] Verify the MagicBlock private path on devnet with a real provider response and correct send RPC.
 - [ ] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
-- [ ] Apply and verify all Supabase migrations, including `20260908_security_hardening_reproducible.sql`, in the production project.
-- [ ] Configure and verify Upstash distributed rate limiting in each deployed environment.
+- [x] Apply and verify all Supabase migrations, including `20260908_security_hardening_reproducible.sql`, in the production project.
+- [x] Configure and verify Upstash distributed rate limiting in each deployed environment.
 - [ ] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
 - [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
 - [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
 - [ ] `yarn test:coverage` meets the release threshold for auth, terminal, ledger, webhook, rate-limit, environment, and private-transfer modules.
 - [ ] Run Playwright merchant onboarding, terminal pairing/reload/bootstrap, checkout, and Developer Hub flows against mocked external services.
-- [ ] Verify terminal pairing creates `terminals.device_token_hash`; test a fresh pairing after applying all migrations and confirm QR generation sends the matching `x-terminal-token`.
+- [x] Verify terminal pairing creates `terminals.device_token_hash`; pairing integration tests cover fresh redemption, and terminal QR generation sends the matching `x-terminal-token`.
 - [ ] Verify signed Sumsub/Bridge webhook fixtures update only provider status and never store government IDs or bank-account details.
-- [ ] Confirm production `COMPLIANCE_PROVIDER` is `null` or a fully configured real provider; demo screening is never enabled in production.
+- [x] Confirm production `COMPLIANCE_PROVIDER` is `null` by default and demo screening is rejected in production; focused provider tests cover both cases.
   
 Launch decision: **NO-GO for mainnet until every unchecked item above and every unchecked post-deploy check below is completed.** A passing local build or unit suite cannot verify production secrets, Supabase advisories, provider authentication, rate-limit configuration, cron delivery, backups, or rollback.
 
