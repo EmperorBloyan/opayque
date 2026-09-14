@@ -7,7 +7,7 @@ import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
 import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import {
-  ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2,
+  ArrowLeft, Sparkles, Code2, CheckCircle2,
   Copy, Check, Link2, Zap, ExternalLink, Code, AlertCircle
 } from "lucide-react";
 
@@ -199,11 +199,8 @@ export default function QuickstartPage() {
               )}
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border-purple-500/30 bg-purple-600 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:bg-purple-500">
-                  <Terminal size={16} /> Full API Ref
-                </Link>
-                <Link href="/developer/overview" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10">
-                  <ShieldCheck size={16} /> Developer Hub
+                <Link href="/developer/docs" className="inline-flex items-center justify-center gap-2 rounded-[2.5rem] border border-white/10 bg-white/5 px-6 py-4 text-xs font-black uppercase tracking-[0.25em] text-white transition hover:border-purple-500/40 hover:bg-white/10">
+                  <Code2 size={16} /> Developer API
                 </Link>
               </div>
             </div>
