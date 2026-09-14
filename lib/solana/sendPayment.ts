@@ -117,6 +117,65 @@ export async function sendPayment(
   throw lastError instanceof Error ? lastError : new BlockhashExpiredError();
 }
 
+export async function sendStandardPayment(
+  connection: Connection,
+  unsigned: VersionedTransaction,
+  signTransaction: (transaction: VersionedTransaction) => Promise<VersionedTransaction>,
+  timeoutMs = 45_000,
+): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const validity = await withTimeout(
+      connection.getLatestBlockhash("confirmed"),
+      10_000,
+      "Blockhash request",
+    );
+    const transaction = VersionedTransaction.deserialize(unsigned.serialize());
+    transaction.message.recentBlockhash = validity.blockhash;
+
+    let signed: VersionedTransaction;
+    try {
+      signed = await withTimeout(signTransaction(transaction), 120_000, "Wallet approval");
+    } catch (error) {
+      if (isWalletRejection(error)) throw new UserRejectedError();
+      throw error;
+    }
+
+    let signature: string;
+    try {
+      signature = await withTimeout(
+        connection.sendRawTransaction(signed.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 3,
+        }),
+        30_000,
+        "Transaction submission",
+      );
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (/blockhash|expired|last valid block/i.test(message) && attempt === 0) continue;
+      throw error;
+    }
+
+    try {
+      await withTimeout(
+        connection.confirmTransaction({ signature, ...validity }, "confirmed"),
+        timeoutMs,
+        "Payment confirmation",
+      );
+      return signature;
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new BlockhashExpiredError();
+}
+
 export async function sendLegacyPayment(
   connection: Connection,
   unsigned: Transaction,

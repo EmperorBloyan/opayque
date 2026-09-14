@@ -28,21 +28,7 @@ function maskApiKey(value: string) {
 }
 
 function readSandboxKey() {
-  if (typeof window === "undefined") return "";
-  try {
-    const cached = JSON.parse(window.localStorage.getItem("opayque_api_keys") || "[]");
-    if (!Array.isArray(cached)) return "";
-    const candidates = cached.filter(
-      (key) => typeof key?.secret === "string" && key.secret.startsWith("osk_test_")
-    );
-    const candidate = candidates[0];
-    if (!candidate?.secret) {
-      window.localStorage.removeItem("opayque_api_keys");
-    }
-    return candidate?.secret || "";
-  } catch {
-    return "";
-  }
+  return "";
 }
 
 async function resolveTestApiKey(): Promise<string> {

@@ -333,7 +333,13 @@ export default function OnboardingPage() {
         userId = signInData.user.id;
       } else {
         const { data: signUpData, error: signUpError } =
-          await supabase.auth.signUp({ email, password });
+          await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(getRedirectTarget("/onboarding"))}`,
+            },
+          });
 
         if (signUpError) {
           const msg = String(signUpError.message || "").toLowerCase();
@@ -346,11 +352,10 @@ export default function OnboardingPage() {
         }
 
         userId = signUpData.user?.id ?? null;
-
-        const { data: secondSignIn, error: secondSignInError } =
-          await supabase.auth.signInWithPassword({ email, password });
-        if (secondSignInError) throw secondSignInError;
-        userId = secondSignIn.user?.id ?? userId;
+        if (!signUpData.session) {
+          setErrorMessage("Account created. Check your email and confirm your address before continuing setup.");
+          return;
+        }
       }
 
       if (!userId) {

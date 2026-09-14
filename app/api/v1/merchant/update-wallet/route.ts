@@ -7,6 +7,8 @@ import {
   consumeWalletChallenge,
   getWalletChallenge,
 } from "@/lib/auth/walletChallenge";
+import { hasRecentAuthentication } from "@/lib/auth/recentAuth";
+import { notifyMerchantSecurityEvent } from "@/lib/notifications/security";
 
 function decodeSignature(value: string): Uint8Array | null {
   const candidates: Uint8Array[] = [];
@@ -37,10 +39,13 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+    if (!hasRecentAuthentication(user.last_sign_in_at)) {
+      return NextResponse.json({ success: false, error: "Recent password confirmation required" }, { status: 428 });
+    }
 
     const { data: merchant, error: merchantError } = await supabase
       .from("merchants")
-      .select("id")
+      .select("id, email, secondary_email, merchant_name")
       .eq("auth_user_id", user.id)
       .maybeSingle();
 
@@ -133,6 +138,7 @@ export async function POST(request: Request) {
     }
 
     consumeWalletChallenge(nonce);
+    await notifyMerchantSecurityEvent(merchant, "wallet", `${purpose === "refund" ? "Refund" : "Settlement"} wallet was changed.`);
 
     return NextResponse.json({
       success: true,

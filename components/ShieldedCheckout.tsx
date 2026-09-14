@@ -9,7 +9,7 @@ import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-rea
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
-import { sendLegacyPayment, sendPayment } from "@/lib/solana/sendPayment";
+import { sendLegacyPayment, sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
 import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
 import type { TransferMode } from "@/lib/payments/transferMode";
 
@@ -262,7 +262,9 @@ export default function ShieldedCheckout({
       if (built.transaction instanceof VersionedTransaction && signTransaction) {
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-        signature = await sendPayment(paymentConnection, built.transaction, signTransaction);
+        signature = transferMode === "public"
+          ? await sendStandardPayment(paymentConnection, built.transaction, signTransaction)
+          : await sendPayment(paymentConnection, built.transaction, signTransaction);
         setMessage("Payment confirmed on Solana.");
       } else if (built.transaction instanceof Transaction && signTransaction) {
         setMessage("Approve in your wallet...");

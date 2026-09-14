@@ -9,7 +9,7 @@ import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-r
 import { PhantomWalletAdapter, SolflareWalletAdapter, CoinbaseWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { clusterApiUrl, Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssetMintAddress, isDevnetNetwork } from "@/lib/solana/constants";
-import { sendPayment } from "@/lib/solana/sendPayment";
+import { sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -231,7 +231,9 @@ function PayButton({ id, merchantWallet, settlementAmount, disabled, status, pay
       const paymentConnection = transfer.rpcUrl
         ? new Connection(transfer.rpcUrl, 'confirmed')
         : connection;
-      const signature = await sendPayment(paymentConnection, transaction, signTransaction);
+      const signature = transferMode === "public"
+        ? await sendStandardPayment(paymentConnection, transaction, signTransaction)
+        : await sendPayment(paymentConnection, transaction, signTransaction);
       setTransactionSignature(signature);
 
       // POST to verify endpoint

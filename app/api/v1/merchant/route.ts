@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { isTransferMode, normalizeTransferMode } from "@/lib/payments/transferMode";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { hasRecentAuthentication } from "@/lib/auth/recentAuth";
 
 function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -150,6 +151,10 @@ export async function PATCH(request: Request) {
     if (secondaryEmail !== undefined) updates.secondary_email = secondaryEmail;
     if (settlementWalletAddress !== undefined) {
       updates.settlement_wallet_address = settlementWalletAddress;
+    }
+
+    if (email !== undefined && email?.trim() !== (user.email ?? "").trim() && !hasRecentAuthentication(user.last_sign_in_at)) {
+      return NextResponse.json({ error: "Recent password confirmation required before changing email" }, { status: 428 });
     }
     if (refundWalletAddress !== undefined) {
       updates.refund_wallet_address = refundWalletAddress;

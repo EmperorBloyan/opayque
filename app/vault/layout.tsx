@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { clearActiveSession } from "@/lib/crypto/session";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
 import type { TransferMode } from "@/lib/payments/transferMode";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
 import {
@@ -178,6 +179,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     localStorage.setItem("default_transfer_mode", defaultTransferMode);
 
     try {
+      const authenticatedUser = (await createClient().auth.getUser()).data.user;
+      if (!authenticatedUser) throw new Error("Not logged in");
+      if (draftEmail.trim() !== (authenticatedUser.email ?? "").trim()) {
+        await reauthenticateForSensitiveAction();
+        const { error: emailError } = await createClient().auth.updateUser({ email: draftEmail.trim() });
+        if (emailError) throw emailError;
+      }
       const response = await fetch("/api/v1/merchant", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -218,6 +226,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     setWalletUpdateLoading(true);
     setWalletUpdateError(null);
     try {
+      await reauthenticateForSensitiveAction();
       const newWalletAddress = publicKey.toBase58();
       const challengeResponse = await fetch("/api/v1/merchant/wallet-challenge", {
         method: "POST",

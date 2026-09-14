@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UserRejectedError, sendPayment } from "./sendPayment";
+import { UserRejectedError, sendPayment, sendStandardPayment } from "./sendPayment";
 import { Keypair, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 describe("sendPayment", () => {
@@ -50,5 +50,42 @@ describe("sendPayment", () => {
     expect(signature).toBe("replacement-signature");
     expect(signingRequest).toBe(2);
     expect(submissionRequest).toBe(2);
+  });
+
+  it("confirms standard payments with the blockhash used for signing", async () => {
+    const payer = Keypair.generate();
+    const builtBlockhash = Keypair.generate().publicKey.toBase58();
+    const freshBlockhash = Keypair.generate().publicKey.toBase58();
+    const unsigned = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: payer.publicKey,
+        recentBlockhash: builtBlockhash,
+        instructions: [],
+      }).compileToV0Message(),
+    );
+    let signedBlockhash = "";
+    let confirmed: any = null;
+    const connection = {
+      getLatestBlockhash: async () => ({ blockhash: freshBlockhash, lastValidBlockHeight: 250 }),
+      sendRawTransaction: async () => "standard-signature",
+      confirmTransaction: async (strategy: any) => {
+        confirmed = strategy;
+        return { value: { err: null } };
+      },
+    } as any;
+
+    const signature = await sendStandardPayment(connection, unsigned, async (transaction) => {
+      signedBlockhash = transaction.message.recentBlockhash;
+      transaction.sign([payer]);
+      return transaction;
+    });
+
+    expect(signature).toBe("standard-signature");
+    expect(signedBlockhash).toBe(freshBlockhash);
+    expect(confirmed).toMatchObject({
+      signature: "standard-signature",
+      blockhash: freshBlockhash,
+      lastValidBlockHeight: 250,
+    });
   });
 });

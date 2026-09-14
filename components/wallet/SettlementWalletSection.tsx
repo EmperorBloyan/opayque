@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Check, Copy, ShieldCheck, X } from "lucide-react";
 import WalletConnectPanel from "@/components/wallet/WalletConnectPanel";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
 
 interface SettlementWalletSectionProps {
   currentWallet: string;
@@ -63,7 +64,7 @@ export default function SettlementWalletSection({
     setMessage(null);
 
     try {
-      // TODO: Add password re-authentication when a lightweight auth flow is available.
+      await reauthenticateForSensitiveAction();
       const challengeResponse = await fetch("/api/v1/merchant/wallet-challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

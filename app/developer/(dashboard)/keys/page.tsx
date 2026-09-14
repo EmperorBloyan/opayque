@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
 import type { TransferMode } from "@/lib/payments/transferMode";
 import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
@@ -134,15 +135,7 @@ export default function ApiKeysPage() {
           return;
         }
 
-        const cachedKeys = window.localStorage.getItem("opayque_api_keys");
-        if (cachedKeys) {
-          try {
-            const parsed = JSON.parse(cachedKeys);
-            if (Array.isArray(parsed)) setKeyPairs(parsed);
-          } catch (error) {
-            console.warn("Failed to parse cached keys", error);
-          }
-        }
+        window.localStorage.removeItem("opayque_api_keys");
 
         const [merchantRes, keysRes] = await Promise.all([
           fetch("/api/v1/merchant").catch(() => null),
@@ -233,14 +226,12 @@ export default function ApiKeysPage() {
             const transformed: ApiKeyPair[] = data.keys.map((k: any) => ({
               id: String(k.id || ""),
               publishable: k.prefix ? `${k.prefix}pub_${String(k.id || "").slice(0, 8)}` : `osk_pub_${String(k.id || "").slice(0, 8)}`,
-              secret: k.rawSecretKey || undefined,
               createdAt: k.created_at || new Date().toISOString(),
               lastUsed: k.last_used_at ? "recent" : "never",
               environment: (k.environment === "mainnet" || k.environment === "live") ? "mainnet" : "devnet",
             }));
 
             setKeyPairs(transformed);
-            window.localStorage.setItem("opayque_api_keys", JSON.stringify(transformed));
           }
         }
       } catch (error) {
@@ -294,6 +285,7 @@ export default function ApiKeysPage() {
     const targetEnv = isSandbox ? 'devnet' : 'mainnet';
 
     try {
+      await reauthenticateForSensitiveAction();
       const res = await fetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -326,7 +318,6 @@ export default function ApiKeysPage() {
 
       setKeyPairs((current) => {
         const updated = [newKey, ...current];
-        window.localStorage.setItem('opayque_api_keys', JSON.stringify(updated));
         return updated;
       });
 
@@ -349,6 +340,7 @@ export default function ApiKeysPage() {
     setProfileMessage(null);
     setProfileError(null);
     try {
+      await reauthenticateForSensitiveAction();
       const response = await fetch(`/api/v1/keys?id=${encodeURIComponent(keyId)}`, { method: "DELETE" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) {
@@ -357,7 +349,6 @@ export default function ApiKeysPage() {
 
       setKeyPairs((current) => {
         const updated = current.filter((key) => key.id !== keyId);
-        window.localStorage.setItem("opayque_api_keys", JSON.stringify(updated));
         return updated;
       });
       setVisibleSecretId((current) => (current === keyId ? null : current));
@@ -389,6 +380,12 @@ export default function ApiKeysPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not logged in");
 
+      if (merchantEmail.trim() !== (user.email ?? "").trim()) {
+        await reauthenticateForSensitiveAction();
+        const { error: emailError } = await supabase.auth.updateUser({ email: merchantEmail.trim() });
+        if (emailError) throw emailError;
+      }
+
       const payload = {
         email: merchantEmail.trim() || null,
         merchantName: merchantName.trim() || null,
@@ -399,28 +396,8 @@ export default function ApiKeysPage() {
         defaultTransferMode,
       };
 
-      const { error: supabaseError } = await supabase
-        .from("merchants")
-        .update({
-          email: payload.email,
-          merchant_name: payload.merchantName,
-          merchant_logo: payload.merchantLogo,
-          secondary_email: payload.secondaryEmail,
-          website_url: payload.websiteUrl,
-          webhook_url: payload.webhookUrl,
-          default_transfer_mode: payload.defaultTransferMode,
-          api_access_status: "active",
-          onboarding_status: "completed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("auth_user_id", user.id);
-
       if (typeof window !== "undefined") {
         window.localStorage.setItem("merchant_api_access_status", "active");
-      }
-
-      if (supabaseError) {
-        throw new Error(supabaseError.message || "Supabase merchant update failed");
       }
 
       const res = await fetch("/api/v1/merchant", {

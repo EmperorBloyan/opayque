@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
+import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import {
   ArrowLeft, Terminal, ShieldCheck, Sparkles, Code2, CheckCircle2,
@@ -69,22 +70,12 @@ export default function QuickstartPage() {
       let apiKey: string | null = null;
 
       if (typeof window !== 'undefined') {
-        try {
-          const savedKeysRaw = window.localStorage.getItem('opayque_api_keys');
-          if (savedKeysRaw) {
-            const savedKeys = JSON.parse(savedKeysRaw);
-            const selectedKey = Array.isArray(savedKeys)
-              ? savedKeys.find((key: any) => typeof key?.secret === 'string' && key.secret.startsWith('osk_test_'))?.secret
-              : null;
-            if (selectedKey) apiKey = selectedKey;
-          }
-        } catch {
-          apiKey = null;
-        }
+        window.localStorage.removeItem('opayque_api_keys');
       }
 
       if (!apiKey) {
         try {
+          await reauthenticateForSensitiveAction();
           const createRes = await fetch('/api/v1/keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -94,13 +85,6 @@ export default function QuickstartPage() {
           if (createRes.ok) {
             const data = await createRes.json();
             apiKey = data?.rawSecretKey || null;
-            if (apiKey && typeof window !== 'undefined') {
-              const stored = JSON.parse(window.localStorage.getItem('opayque_api_keys') || '[]');
-              const next = Array.isArray(stored)
-                ? [{ id: String(data?.id || 'new-sandbox-key'), secret: apiKey, createdAt: new Date().toISOString(), environment: 'devnet' }, ...stored]
-                : [{ id: String(data?.id || 'new-sandbox-key'), secret: apiKey, createdAt: new Date().toISOString(), environment: 'devnet' }];
-              window.localStorage.setItem('opayque_api_keys', JSON.stringify(next));
-            }
           }
         } catch {
           apiKey = null;

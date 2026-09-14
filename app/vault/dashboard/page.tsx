@@ -19,6 +19,7 @@ export default function VaultDashboard() {
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Refund Modal State
   const [selectedTxForRefund, setSelectedTxForRefund] = useState<any | null>(null);
@@ -312,17 +313,27 @@ export default function VaultDashboard() {
 
   // Filter transactions based on Tx ID or Endpoint search
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery.trim()) return transactions;
     const query = searchQuery.toLowerCase().trim();
     return transactions.filter(
       (tx) =>
-        String(tx.id ?? '').toLowerCase().includes(query) ||
-        String(tx.staff ?? '').toLowerCase().includes(query) ||
-        String(tx.category ?? '').toLowerCase().includes(query) ||
-        String(tx.status ?? '').toLowerCase().includes(query) ||
-        String(tx.amount ?? '').includes(query)
+        (statusFilter === "ALL" || String(tx.status ?? "").toUpperCase() === statusFilter) &&
+        (!query ||
+          String(tx.id ?? '').toLowerCase().includes(query) ||
+          String(tx.staff ?? '').toLowerCase().includes(query) ||
+          String(tx.category ?? '').toLowerCase().includes(query) ||
+          String(tx.status ?? '').toLowerCase().includes(query) ||
+          String(tx.amount ?? '').includes(query))
     );
-  }, [transactions, searchQuery]);
+  }, [transactions, searchQuery, statusFilter]);
+
+  const statusOptions = useMemo(() => {
+    const statuses = new Set(
+      transactions
+        .map((tx) => String(tx.status ?? "").trim().toUpperCase())
+        .filter(Boolean)
+    );
+    return Array.from(statuses).sort();
+  }, [transactions]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -371,7 +382,22 @@ export default function VaultDashboard() {
       {/* Activity Table Card */}
       <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 px-2">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
+            <select
+              aria-label="Filter activity by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-full border border-white/10 bg-zinc-950/80 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-300 outline-none transition focus:border-purple-500/50"
+            >
+              <option value="ALL">All</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
           
           {/* TX ID Search Bar */}
           <div className="relative w-full sm:w-72">
@@ -452,7 +478,7 @@ export default function VaultDashboard() {
               ) : (
                 <tr>
                   <td colSpan={5} className="py-20 text-center text-zinc-600 italic">
-                    {searchQuery ? "No matching transactions found." : "No merchant activity detected."}
+                    {searchQuery || statusFilter !== "ALL" ? "No matching transactions found." : "No merchant activity detected."}
                   </td>
                 </tr>
               )}

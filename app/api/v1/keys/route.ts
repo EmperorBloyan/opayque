@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getClientAddress, strictLimit } from '@/lib/rate-limit';
 import { getSolanaNetwork } from '@/lib/solana/constants';
+import { hasRecentAuthentication } from '@/lib/auth/recentAuth';
+import { notifyMerchantSecurityEvent } from '@/lib/notifications/security';
 
 async function getSupabaseClient() {
   const cookieStore = await cookies();
@@ -42,10 +44,9 @@ export async function GET() {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   const { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -84,6 +85,9 @@ export async function POST(request: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!hasRecentAuthentication(user.last_sign_in_at)) {
+    return NextResponse.json({ error: 'Recent password confirmation required' }, { status: 428 });
+  }
 
   let body: { environment?: string } = {};
   try {
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
   // Find merchant
   let { data: merchant, error: merchantError } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -154,6 +158,8 @@ export async function POST(request: Request) {
     })
     .eq('id', merchant.id);
 
+  await notifyMerchantSecurityEvent(merchant, 'api_key', 'A new API key was created.');
+
   return NextResponse.json(
     {
       id: data.id,
@@ -180,6 +186,9 @@ export async function DELETE(request: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!hasRecentAuthentication(user.last_sign_in_at)) {
+    return NextResponse.json({ error: 'Recent password confirmation required' }, { status: 428 });
+  }
 
   const { searchParams } = new URL(request.url);
   const keyId = searchParams.get('id');
@@ -190,7 +199,7 @@ export async function DELETE(request: Request) {
 
   const { data: merchant } = await supabase
     .from('merchants')
-    .select('id')
+    .select('id, email, secondary_email, merchant_name')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -207,6 +216,8 @@ export async function DELETE(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await notifyMerchantSecurityEvent(merchant, 'api_key', 'An API key was deleted.');
 
   return NextResponse.json({ success: true });
 }
