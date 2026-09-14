@@ -8,7 +8,7 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
-import { getAssetMintAddress, getSolanaRpcUrl, isDevnetNetwork } from "@/lib/solana/constants";
+import { getAssetMintAddress, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
 import { sendLegacyPayment, sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
 import { clearPendingPayment, readPendingPayment, writePendingPayment } from "@/lib/solana/paymentRecovery";
 import type { TransferMode } from "@/lib/payments/transferMode";
@@ -45,6 +45,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
         reject(err);
       });
   });
+}
+
+async function loadWalletBalances(
+  rpcUrls: string[],
+  publicKey: PublicKey,
+  mint: PublicKey,
+): Promise<{ connection: Connection; rpcUrl: string; solLamports: number; tokenAccounts: Awaited<ReturnType<Connection["getParsedTokenAccountsByOwner"]>> }> {
+  let lastError: unknown;
+
+  for (const rpcUrl of [...new Set(rpcUrls)]) {
+    const connection = new Connection(rpcUrl, "confirmed");
+    try {
+      const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
+        connection.getBalance(publicKey, "confirmed"),
+        connection.getParsedTokenAccountsByOwner(publicKey, { mint }),
+      ]), 10_000, "Wallet balance check");
+      return { connection, rpcUrl, solLamports, tokenAccounts };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Wallet balance check failed");
 }
 
 export default function ShieldedCheckout({
@@ -183,14 +206,14 @@ export default function ShieldedCheckout({
 
     let paymentConnection: Connection | null = null;
     try {
-      const rpc = getSolanaRpcUrl();
-      const connection = new Connection(rpc, "confirmed");
       const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
-      const [solLamports, tokenAccounts] = await withTimeout(Promise.all([
-        connection.getBalance(publicKey, "confirmed"),
-        connection.getParsedTokenAccountsByOwner(publicKey, { mint }),
-      ]), 10000, "Wallet balance check");
+      const rpcUrls = getSolanaRpcUrls();
+      const { connection, rpcUrl: selectedRpc, solLamports, tokenAccounts } = await loadWalletBalances(
+        rpcUrls,
+        publicKey,
+        mint,
+      );
       const usdcBaseUnits = tokenAccounts.value.reduce(
         (total, account) => total + BigInt(account.account.data.parsed?.info?.tokenAmount?.amount ?? "0"),
         0n
@@ -253,7 +276,7 @@ export default function ShieldedCheckout({
 
       let signature: string | null = null;
 
-      paymentConnection = new Connection(built.rpcUrl || rpc, "confirmed");
+      paymentConnection = new Connection(built.rpcUrl || selectedRpc, "confirmed");
 
       if (built.mode !== transferMode) {
         throw new Error(`${transferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
