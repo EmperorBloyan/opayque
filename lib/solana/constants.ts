@@ -42,10 +42,11 @@ export interface ProductionConfigIssue {
   message: string;
 }
 
-export function getProductionConfigIssues(): ProductionConfigIssue[] {
+export function getProductionConfigIssues(options: { requireMagicBlock?: boolean } = {}): ProductionConfigIssue[] {
   const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV;
   const isPreview = vercelEnv === "preview";
   if (process.env.NODE_ENV !== "production" || isPreview) return [];
+  const requireMagicBlock = options.requireMagicBlock ?? true;
 
   const issues: ProductionConfigIssue[] = [];
   if (!isMainnetNetwork()) {
@@ -54,10 +55,10 @@ export function getProductionConfigIssues(): ProductionConfigIssue[] {
   if (!process.env.NEXT_PUBLIC_RPC_URL?.trim() && !process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) {
     issues.push({ key: "NEXT_PUBLIC_RPC_URL", message: "A dedicated mainnet RPC URL is required" });
   }
-  if (!process.env.NEXT_PUBLIC_MAGICBLOCK_API?.trim()) {
+  if (requireMagicBlock && !process.env.NEXT_PUBLIC_MAGICBLOCK_API?.trim()) {
     issues.push({ key: "NEXT_PUBLIC_MAGICBLOCK_API", message: "MagicBlock private transfer API is required" });
   }
-  if (!process.env.MAGICBLOCK_API_KEY?.trim()) {
+  if (requireMagicBlock && !process.env.MAGICBLOCK_API_KEY?.trim()) {
     issues.push({ key: "MAGICBLOCK_API_KEY", message: "MagicBlock API authentication is required" });
   }
   if (!process.env.RELAYER_PRIVATE_KEY?.trim()) {
@@ -69,8 +70,8 @@ export function getProductionConfigIssues(): ProductionConfigIssue[] {
   return issues;
 }
 
-export function assertProductionConfig(): void {
-  const issues = getProductionConfigIssues();
+export function assertProductionConfig(options: { requireMagicBlock?: boolean } = {}): void {
+  const issues = getProductionConfigIssues(options);
   if (issues.length > 0) {
     throw new Error(`Production configuration is incomplete: ${issues.map((issue) => issue.message).join("; ")}`);
   }

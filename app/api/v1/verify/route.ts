@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Verify against Solana RPC
-    assertProductionConfig();
+    assertProductionConfig({ requireMagicBlock: submitted.transfer_mode !== 'public' });
     const rpcUrl = await selectHealthyRpcUrl();
     const isDevnet = isDevnetNetwork();
     const settlementToken = String(session.settlement_token || 'USDC').toUpperCase();

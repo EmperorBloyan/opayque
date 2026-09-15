@@ -20,7 +20,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const supabase = createSupabaseServerClient();
     const { data: transaction, error: transactionError } = await supabase
       .from("payment_ledger")
-      .select("id, merchant_id, terminal_id, amount, amount_base_units, mint, sender_address, recipient_address, token_symbol, status, signature")
+      .select("id, merchant_id, terminal_id, amount, amount_base_units, mint, sender_address, recipient_address, token_symbol, transfer_mode, status, signature")
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -64,7 +64,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ success: false, error: "Payment recipient does not match the merchant settlement wallet" }, { status: 409 });
     }
 
-    assertProductionConfig();
+    assertProductionConfig({ requireMagicBlock: transaction.transfer_mode !== "public" });
     const rpcUrl = await selectHealthyRpcUrl();
     const isDevnet = isDevnetNetwork();
     const tokenSymbol = String(transaction.token_symbol || "USDC").toUpperCase();
