@@ -47,9 +47,10 @@ export function getProductionConfigIssues(options: { requireMagicBlock?: boolean
   const isPreview = vercelEnv === "preview";
   if (process.env.NODE_ENV !== "production" || isPreview) return [];
   const requireMagicBlock = options.requireMagicBlock ?? true;
+  const requireMainnet = process.env.REQUIRE_MAINNET_PRODUCTION === "true";
 
   const issues: ProductionConfigIssue[] = [];
-  if (!isMainnetNetwork()) {
+  if (requireMainnet && !isMainnetNetwork()) {
     issues.push({ key: "NEXT_PUBLIC_SOLANA_NETWORK", message: "Production must use mainnet-beta" });
   }
   if (!process.env.NEXT_PUBLIC_RPC_URL?.trim() && !process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) {
