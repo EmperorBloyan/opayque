@@ -141,6 +141,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (error) {
     console.error("Terminal payment settlement failed", error instanceof Error ? error.name : "UnknownError");
-    return NextResponse.json({ success: false, error: "Unable to settle terminal payment" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown settlement error";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

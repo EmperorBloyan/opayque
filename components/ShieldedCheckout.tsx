@@ -284,6 +284,18 @@ export default function ShieldedCheckout({
       }
 
       if (built.transaction instanceof VersionedTransaction && signTransaction) {
+        const feeMessage = built.transaction.message;
+        const feeEstimate = await withTimeout(
+          paymentConnection.getFeeForMessage(feeMessage, "confirmed"),
+          10_000,
+          "Network fee estimate"
+        );
+        if (feeEstimate.value === null) {
+          throw new Error("The network could not estimate fees for this transaction. Please retry with a funded wallet.");
+        }
+        if (solLamports < feeEstimate.value) {
+          throw new Error(`Insufficient SOL for network fees. Add at least ${(feeEstimate.value / 1_000_000_000).toFixed(4)} SOL to this wallet.`);
+        }
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
         signature = transferMode === "public"
