@@ -35,8 +35,6 @@ function getRedirectTarget(defaultTarget = "/vault/registry") {
 }
 
 export default function OnboardingPage() {
-  const { publicKey, signTransaction, connected } = useWallet();
-  const { connection } = useConnection();
   const router = useRouter();
   const { connected, publicKey, signMessage, signTransaction } = useWallet();
 
@@ -503,7 +501,7 @@ export default function OnboardingPage() {
         error?.message || "Failed to create account. Please try again."
       );
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 

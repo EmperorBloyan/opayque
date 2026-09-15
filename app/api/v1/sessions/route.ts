@@ -200,22 +200,6 @@ export async function POST(request: Request) {
       },
     ]);
 
-    // Keep session record for tracking (optional but useful)
-    const { error: insertError } = await supabase.from("checkout_sessions").insert([
-      {
-        id: sessionId,
-        merchant_id: auth.merchantId,
-        environment: auth.environment,
-        amount: Number(amountFiat),
-        currency: settlementToken,
-        customer_email: customerEmail,
-        reference_id: orderId,
-        status: "pending",
-        solana_pay_url: paymentUrl,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-
     // Do not hard-fail payment link if session table insert fails
     if (insertError) {
       console.error("POST /api/v1/sessions checkout_sessions insert failed", {

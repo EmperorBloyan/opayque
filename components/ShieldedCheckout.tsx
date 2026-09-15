@@ -118,17 +118,6 @@ export default function ShieldedCheckout({
 
   const isLocked = status === "success" || status === "processing";
 
-  const effectiveAmount = allowCustomAmount ? Number(draftAmount) : Number(amount);
-  const safeAmount =
-    Number.isFinite(effectiveAmount) && effectiveAmount > 0 ? effectiveAmount : 0;
-
-  const fiatLabelAmount =
-    Number.isFinite(Number(displayFiatAmount)) && Number(displayFiatAmount) > 0
-      ? Number(displayFiatAmount)
-      : safeAmount;
-
-  const isLocked = status === "success" || status === "processing";
-
   // Success countdown → close back toward wallet/native context
   useEffect(() => {
     if (status !== "success" || countdown === null) return;
