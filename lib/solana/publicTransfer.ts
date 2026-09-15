@@ -5,7 +5,7 @@ import {
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { Connection, PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 const USDC_DECIMALS = 6;
 
@@ -51,6 +51,8 @@ export async function buildPublicUsdcTransfer({
   }
 
   instructions.push(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }),
     createTransferCheckedInstruction(
       senderTokenAccount,
       mintKey,

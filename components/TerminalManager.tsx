@@ -232,6 +232,7 @@ export default function TerminalManager({
   const fleetChannelRef = useRef<any | null>(null);
   const pairingRequestRef = useRef(false);
   const previousTerminalCountRef = useRef<number | null>(null);
+  const checkoutInFlightRef = useRef(false);
 
   const { publicKey, signTransaction, connected } = useWallet();
   const { connection } = useConnection();

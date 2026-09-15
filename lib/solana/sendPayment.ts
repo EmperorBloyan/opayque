@@ -27,6 +27,11 @@ function isWalletRejection(error: unknown): boolean {
   return /rejected|denied|declined|user cancel|user denied/i.test(message);
 }
 
+function isFeeEstimationFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to estimate.*fee|fee.*estimate|estimate.*fee|insufficient.*(?:lamports|sol)|not enough.*(?:lamports|sol)|rent exemption|account.*rent/i.test(message);
+}
+
 async function waitForSignature(
   connection: Connection,
   signature: string,
@@ -85,7 +90,12 @@ export async function sendPayment(
       );
       if (simulation.value.err) {
         const details = simulation.value.logs?.slice(-3).join("; ") || JSON.stringify(simulation.value.err);
-        if (/insufficient|lamports|funds|balance/i.test(details)) throw new PaymentRpcError(`Insufficient funds: ${details}`);
+        if (/insufficient|lamports|funds|balance/i.test(details)) {
+          throw new PaymentRpcError(`Insufficient funds: ${details}`);
+        }
+        if (isFeeEstimationFailure(details)) {
+          throw new PaymentRpcError("Failed to estimate network fees. Add SOL to this wallet and try again.");
+        }
         throw new PaymentRpcError(`Simulation failed: ${details}`);
       }
       signature = await withTimeout(connection.sendRawTransaction(signed.serialize(), {
@@ -97,6 +107,9 @@ export async function sendPayment(
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
+      if (isFeeEstimationFailure(error)) {
+        throw new PaymentRpcError("Failed to estimate network fees. Add SOL to this wallet and try again.");
+      }
       if (/blockhash|expired|last valid block/i.test(message)) {
         if (attempt < maxAttempts - 1) continue;
         throw new BlockhashExpiredError();
@@ -203,7 +216,11 @@ export async function sendLegacyPayment(
         "Transaction simulation",
       );
       if (simulation.value.err) {
-        throw new PaymentRpcError(simulation.value.logs?.slice(-3).join("; ") || JSON.stringify(simulation.value.err));
+        const details = simulation.value.logs?.slice(-3).join("; ") || JSON.stringify(simulation.value.err);
+        if (isFeeEstimationFailure(details)) {
+          throw new PaymentRpcError("Failed to estimate network fees. Add SOL to this wallet and try again.");
+        }
+        throw new PaymentRpcError(details);
       }
       onStage?.("submitting");
       const signature = await withTimeout(connection.sendRawTransaction(signed.serialize(), {
