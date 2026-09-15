@@ -205,7 +205,7 @@ export default function TerminalPage() {
       setAmount("");
       setStep("POS");
       window.localStorage.removeItem("opayque_pending_tx_id");
-    }, 5000);
+    }, 10000);
 
     return () => window.clearTimeout(timer);
   }, [isPaid]);
@@ -736,6 +736,39 @@ export default function TerminalPage() {
       if (channel) void supabase.removeChannel(channel);
     };
   }, [activeSession?.walletAddress, asset, persistLocalActivity, readLocalActivity, transactionId]);
+
+  useEffect(() => {
+    if (!transactionId || isPaid) return;
+
+    const supabase = createSupabaseBrowserClient();
+    let cancelled = false;
+
+    const checkPaymentStatus = async () => {
+      const { data, error } = await supabase
+        .from("payment_ledger")
+        .select("id, status, signature, tx_hash")
+        .eq("id", transactionId)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+
+      const status = String(data.status || "").toLowerCase();
+      if (status !== "confirmed" && status !== "settled") return;
+
+      setPaymentStatus("SETTLED");
+      setLatestTxHash(data.tx_hash ?? data.signature ?? null);
+      setIsPaid(true);
+      setToast("Payment Successful");
+      window.setTimeout(() => setToast(null), 3200);
+      requestAnimationFrame(() => successRef.current?.focus());
+    };
+
+    void checkPaymentStatus();
+    const interval = window.setInterval(() => void checkPaymentStatus(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isPaid, transactionId]);
 
   if (!mounted) return null;
 
