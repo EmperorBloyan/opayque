@@ -24,7 +24,7 @@ import {
   getStoredMerchantId,
 } from "@/lib/crypto/session";
 import { ASSET_MINTS, getAssetMintAddress } from "@/lib/solana/constants";
-import { sendLegacyPayment, sendPayment } from "@/lib/solana/sendPayment";
+import { sendLegacyPayment, sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
 import type { Terminal } from "@/lib/types";
 import type { TransferMode } from "@/lib/payments/transferMode";
 import PairingModal from "./PairingModal";
@@ -687,7 +687,7 @@ export default function TerminalManager({
       recentBlockhash: blockhash.blockhash,
       instructions: tx.instructions,
     }).compileToV0Message());
-    return sendPayment(connection, versioned, signTransaction!);
+    return sendStandardPayment(connection, versioned, signTransaction!);
   }, [amount, connection, expectedUsdcBaseUnits, merchantWallet, publicKey, sendPayment, sessionId, signTransaction, transferMode, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {
