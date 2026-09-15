@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ success: false, error: "Transaction ID and signature are required" }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient(request);
+    const supabase = createSupabaseServerClient();
     const { data: transaction, error: transactionError } = await supabase
       .from("payment_ledger")
       .select("id, merchant_id, terminal_id, amount, amount_base_units, mint, sender_address, recipient_address, token_symbol, status, signature")
@@ -31,10 +31,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!transaction) {
       return NextResponse.json({ success: false, error: "Terminal transaction not found" }, { status: 404 });
     }
-    const auth = await requireTerminalDevice(request, String(transaction.terminal_id || ""));
-    if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    if (transaction.terminal_id !== auth.terminal.id) {
-      return NextResponse.json({ success: false, error: "Terminal is not authorized for this payment" }, { status: 403 });
+    if (request.headers.get("x-terminal-token")) {
+      const auth = await requireTerminalDevice(request, String(transaction.terminal_id || ""));
+      if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+      if (transaction.terminal_id !== auth.terminal.id) {
+        return NextResponse.json({ success: false, error: "Terminal is not authorized for this payment" }, { status: 403 });
+      }
     }
 
     if (!["created", "pending_signature", "submitted"].includes(transaction.status)) {

@@ -225,10 +225,15 @@ export async function verifySolanaTransaction({
 }: VerifyTxParams): Promise<VerifyTxResult> {
   try {
     const connection = new Connection(rpcUrl || await selectHealthyRpcUrl(), 'finalized');
-    const tx = await connection.getParsedTransaction(signature, {
-      maxSupportedTransactionVersion: 0,
-      commitment: 'finalized',
-    });
+    let tx: Awaited<ReturnType<Connection['getParsedTransaction']>> = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      tx = await connection.getParsedTransaction(signature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: 'finalized',
+      });
+      if (tx) break;
+      if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
 
     if (!tx || !tx.meta || tx.meta.err) {
       return { verified: false, status: 'failed', reason: 'Transaction failed or not found on-chain' };
