@@ -748,8 +748,8 @@ export default function TerminalManager({
           >
             <div className="absolute inset-8 -z-10 rounded-full bg-purple-600/15 blur-3xl animate-pulse" />
             <div className="absolute inset-0 -z-10 bg-emerald-500/5" />
-            <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-500/10 text-emerald-300 shadow-[0_0_35px_rgba(16,185,129,0.3)] animate-pulse">
-              <LucideCheckCircle2 size={52} strokeWidth={1.8} />
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
+              <LucideCheckCircle2 className="text-emerald-400" size={32} />
             </div>
             <p className="mt-8 text-2xl font-black uppercase tracking-[0.18em] text-emerald-300">
               Payment Successful
@@ -1024,7 +1024,7 @@ export default function TerminalManager({
 
     const timer = window.setTimeout(() => {
       void refreshAuthCode(label);
-    }, 500);
+    }, 250);
 
     return () => window.clearTimeout(timer);
   }, [isPairingOpen, newTerminalLabel, pairingState, refreshAuthCode]);
@@ -1043,14 +1043,16 @@ export default function TerminalManager({
       return;
     }
 
-    setNewTerminalLabel("");
+    const defaultTerminalLabel = "Fleet Terminal";
+    setNewTerminalLabel(defaultTerminalLabel);
     setAuthCode("");
     setPairingState("waiting");
     setPairingExpiresAt(null);
     setTimeLeft("GENERATING...");
     setIsPairingOpen(true);
-    setToast("Enter a terminal name to generate its pairing code");
+    setToast("Generating pairing code...");
     window.setTimeout(() => setToast(null), 3000);
+    void refreshAuthCode(defaultTerminalLabel);
   };
 
   const disconnectTerminal = async (id: string) => {

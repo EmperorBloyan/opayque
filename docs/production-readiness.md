@@ -42,7 +42,7 @@ Solana is the settlement network. MagicBlock is the configured private transacti
 
 ### HIGH
 
-- Live Supabase RLS isolation, Solana settlement verification, and private-provider behavior remain unverified outside this repository.
+- Solana settlement verification and private-provider behavior remain unverified outside this repository.
 - Dependency audit findings and deployment-level secret/recovery validation remain unresolved release gates.
 
 ### MEDIUM
@@ -80,18 +80,24 @@ Solana is the settlement network. MagicBlock is the configured private transacti
 - Required private transfer construction to use an existing payment ledger intent and match its immutable recipient and mint.
 - Added explicit terminal settlement recipient binding and merchant ownership checks for offramp status.
 - Added middleware security-header regression coverage to the configured unit-test suite.
+- Verified authenticated cross-tenant Supabase RLS behavior against staging with two merchant accounts. Account A (`merchant-a`, merchant `01bbed2e-432d-465d-8317-23463aafa0b8`) and Account B (`merchant-b`, merchant `7d150262-abe5-4cb3-9d13-081536faf9c8`) authenticated successfully; Account B's terminal `f82694a9-54a3-40bd-9cc2-499215676b73` and confirmed sandbox payment `0dacaebf-9e27-4172-a6ee-b707dc89c613` were used for the cross-tenant verification. This evidence is staging-only and does not replace automated regression coverage.
+- Added CI provisioning for Playwright Chromium system dependencies with `yarn playwright install --with-deps chromium`.
+- Standardized the repository on Yarn by removing the duplicate npm lockfile and retaining `yarn.lock`.
+- Added a migration that disables legacy webhook rows without decryptable secret ciphertext so hashed-only secrets cannot be used for delivery.
 
 Items in this section are only considered complete when the corresponding migration/code and validation command are present in the repository.
 
 ## 6. Remaining Production Blockers
 
-- A real Supabase environment must apply every migration and execute authenticated-client cross-tenant RLS tests. This repository cannot prove remote RLS behavior without configured database credentials.
-- Playwright tests are discoverable but require the container's Chromium system dependency `libatk-1.0.so.0`; browser execution is blocked until the image installs Playwright Linux dependencies.
 - The dependency audit still reports high/critical transitive findings, including packages that require a Next.js major upgrade or have no upstream patch. These require an isolated dependency-upgrade project and compatibility testing.
-- Webhook secret migration requires rotating existing webhook configurations because old rows contain hashes but not decryptable secret ciphertext.
+- Existing legacy webhook configurations still require deliberate secret rotation after the migration disables hash-only rows.
 - Solana confirmation and reconciliation require an integration environment with known transactions for the configured network. Unit tests cannot prove RPC/provider behavior.
 - MagicBlock privacy guarantees remain provider-dependent. The exact provider contract, operator visibility, and production failure behavior must be validated with the production account and documented evidence.
 - Anchor deployment authority, upgrade policy, devnet/mainnet addresses, and malicious-input tests require an Anchor/Rust toolchain and a configured validator.
 - Production secrets, rate-limit namespace isolation, webhook delivery retries, alerting, backups, and recovery drills require deployment-level verification.
+
+## 7. Deferred Configuration
+
+- MagicBlock is intentionally not configured for the current devnet staging work. The public devnet builder can be used for testing without `MAGICBLOCK_API_KEY`; configure the provider endpoint, server-only key, and production privacy evidence before enabling mainnet private payments.
 
 **Current readiness conclusion: NOT PRODUCTION READY until these blockers are evidenced.**

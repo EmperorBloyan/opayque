@@ -145,3 +145,32 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const transactionId = params.id?.trim();
+    if (!transactionId) {
+      return NextResponse.json({ success: false, error: "Transaction ID is required" }, { status: 400 });
+    }
+
+    const adminSupabase = createSupabaseServerClient();
+    const { data: transaction, error } = await adminSupabase
+      .from("payment_ledger")
+      .select("id, terminal_id, status, signature, amount, token_symbol, transfer_mode, created_at, updated_at")
+      .eq("id", transactionId)
+      .maybeSingle();
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (!transaction) return NextResponse.json({ success: false, error: "Terminal transaction not found" }, { status: 404 });
+
+    const auth = await requireTerminalDevice(request, String(transaction.terminal_id || ""));
+    if ("error" in auth) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    if (transaction.terminal_id !== auth.terminal.id) {
+      return NextResponse.json({ success: false, error: "Terminal is not authorized for this payment" }, { status: 403 });
+    }
+
+    return NextResponse.json({ success: true, transaction });
+  } catch (error) {
+    console.error("Terminal payment status failed", error instanceof Error ? error.name : "UnknownError");
+    return NextResponse.json({ success: false, error: "Unable to load terminal payment status" }, { status: 500 });
+  }
+}

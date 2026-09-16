@@ -21,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Install Playwright browser dependencies
+        run: yarn playwright install --with-deps chromium
+
       - name: Type Check
         run: yarn tsc --noEmit
 

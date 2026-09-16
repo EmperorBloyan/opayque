@@ -381,25 +381,15 @@ export default function VaultDashboard() {
   } as const;
   const displayedVolume = getVolume(volumeView);
   const privateBalance = getVolume("private");
+  const cycleVolumeView = () => {
+    setVolumeView((current) => current === "private" ? "standard" : current === "standard" ? "total" : "private");
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-8 animate-in fade-in duration-700">
       {/* Vault Balance Banner */}
       <div
-        role="button"
-        tabIndex={0}
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest("button, select")) return;
-          setVolumeView((current) => current === "private" ? "standard" : current === "standard" ? "total" : "private");
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setVolumeView((current) => current === "private" ? "standard" : current === "standard" ? "total" : "private");
-          }
-        }}
-        aria-label={`Show ${volumeView === "private" ? "standard payment" : volumeView === "standard" ? "total" : "private shielded"} volume`}
-        className="block w-full p-10 rounded-[3rem] bg-zinc-900 border border-white/10 relative overflow-hidden text-left transition-colors hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+        className="block w-full p-10 rounded-[3rem] bg-zinc-900 border border-white/10 relative overflow-hidden text-left"
       >
          {publicKey && (
            <div className="absolute top-6 right-10 text-[9px] font-mono text-zinc-600 uppercase tracking-widest">
@@ -409,7 +399,14 @@ export default function VaultDashboard() {
 
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-6">
           <div>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">{volumeLabels[volumeView]}</p>
+            <button
+              type="button"
+              onClick={cycleVolumeView}
+              aria-label={`Show ${volumeView === "private" ? "standard payment" : volumeView === "standard" ? "total" : "private shielded"} volume`}
+              className="mb-2 block rounded-md text-left text-[10px] font-bold uppercase tracking-widest text-zinc-500 transition-colors hover:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+            >
+              {volumeLabels[volumeView]}
+            </button>
             <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(displayedVolume).formatted}</h2>
           </div>
           <div>

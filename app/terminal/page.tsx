@@ -740,22 +740,23 @@ export default function TerminalPage() {
   useEffect(() => {
     if (!transactionId || isPaid) return;
 
-    const supabase = createSupabaseBrowserClient();
     let cancelled = false;
 
     const checkPaymentStatus = async () => {
-      const { data, error } = await supabase
-        .from("payment_ledger")
-        .select("id, status, signature, tx_hash")
-        .eq("id", transactionId)
-        .maybeSingle();
-      if (cancelled || error || !data) return;
+      if (!terminalToken) return;
+      const response = await fetch(`/api/terminal/payments/${encodeURIComponent(transactionId)}/settle`, {
+        headers: { "x-terminal-token": terminalToken },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      const data = payload?.transaction;
+      if (cancelled || !response.ok || !data) return;
 
       const status = String(data.status || "").toLowerCase();
       if (status !== "confirmed" && status !== "settled") return;
 
       setPaymentStatus("SETTLED");
-      setLatestTxHash(data.tx_hash ?? data.signature ?? null);
+      setLatestTxHash(data.signature ?? null);
       setIsPaid(true);
       setToast("Payment Successful");
       window.setTimeout(() => setToast(null), 3200);
@@ -768,7 +769,7 @@ export default function TerminalPage() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [isPaid, transactionId]);
+  }, [isPaid, terminalToken, transactionId]);
 
   if (!mounted) return null;
 

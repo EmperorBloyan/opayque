@@ -105,12 +105,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: error?.message || "Failed to create pending transaction" }, { status: 500 });
     }
 
-    void dispatchWebhookEvent({
+    void Promise.resolve(dispatchWebhookEvent({
       merchantId: terminal.merchant_id,
       environment,
       eventType: "payment.created",
       payload: data,
-    }).catch((webhookError) => {
+    })).catch((webhookError) => {
       console.error("Terminal payment webhook dispatch failed", webhookError instanceof Error ? webhookError.name : "UnknownError");
     });
 

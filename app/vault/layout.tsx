@@ -400,91 +400,88 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         </header>
 
         {isEditingProfile && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overscroll-contain bg-black/60 px-4 py-8 backdrop-blur-sm md:items-center md:py-6">
-            <div className="my-auto max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-[2.5rem] border border-white/10 bg-zinc-950/95 p-8 shadow-[0_0_25px_rgba(168,85,247,0.45)] ring-1 ring-white/10">
-              <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overscroll-contain bg-black/70 px-3 py-4 backdrop-blur-sm sm:px-6 sm:py-6 md:items-center">
+            <div className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-zinc-950/95 p-5 shadow-2xl shadow-purple-950/30 ring-1 ring-white/5 sm:max-h-[calc(100vh-3rem)] sm:p-6">
+              <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">
                     Edit Merchant Profile
                   </p>
-                  <h2 className="text-3xl font-black tracking-tight text-white">
-                    Profile settings
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                    Merchant details
                   </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                    Manage the identity, contact details, wallets, and transfer defaults used across your vault.
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsEditingProfile(false)}
-                  className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:bg-white/10"
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="space-y-6">
-                <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
-                  <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">
-                    Avatar
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <div className="h-16 w-16 rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] overflow-hidden flex items-center justify-center text-2xl font-black text-white">
-                      {draftLogo ? (
-                        <img
-                          src={draftLogo}
-                          alt="Avatar preview"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <LucideCamera size={18} />
-                      )}
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      className="w-full rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white file:mr-4 file:rounded-full file:border-0 file:bg-violet-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-violet-500"
-                    />
+              <div className="space-y-5">
+                <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5">
+                  <div className="mb-4">
+                    <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Merchant profile</p>
+                    <p className="mt-1 text-sm text-zinc-500">The identity customers see during checkout.</p>
                   </div>
-                </div>
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:items-center">
+                    <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-violet-700 to-fuchsia-500 shadow-[0_0_18px_rgba(168,85,247,0.35)] flex items-center justify-center text-2xl font-black text-white">
+                        {draftLogo ? <img src={draftLogo} alt="Avatar preview" className="h-full w-full object-cover" /> : <LucideCamera size={18} />}
+                      </div>
+                      <label className="min-w-0 flex-1">
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Brand image</span>
+                        <input type="file" accept="image/*" onChange={handleLogoUpload} className="mt-2 w-full min-w-0 text-xs text-zinc-400 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:tracking-[0.12em] file:text-white hover:file:bg-violet-500" />
+                      </label>
+                    </div>
+                    <label className="block rounded-xl border border-white/10 bg-black/20 p-4">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Merchant name</span>
+                      <input type="text" value={draftName} onChange={(e) => setDraftName(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/60 px-3 py-3 text-sm font-bold text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" />
+                    </label>
+                  </div>
+                </section>
 
-                <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
-                  <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">
-                    Merchant name
-                  </label>
-                  <input
-                    type="text"
-                    value={draftName}
-                    onChange={(e) => setDraftName(e.target.value)}
-                    className="w-full rounded-[1.8rem] border border-white/10 bg-zinc-900/70 px-5 py-4 text-lg font-bold text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
-                  />
-                </div>
-
-                {[
+                <section className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5">
+                  <div className="mb-4">
+                    <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">Contact and integrations</p>
+                    <p className="mt-1 text-sm text-zinc-500">Keep operational and webhook details current.</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                  {[
                   { label: "Email", value: draftEmail, setter: setDraftEmail, type: "email" },
                   { label: "Secondary email", value: draftSecondaryEmail, setter: setDraftSecondaryEmail, type: "email" },
                   { label: "Website URL", value: draftWebsiteUrl, setter: setDraftWebsiteUrl, type: "url" },
                   { label: "Webhook URL", value: draftWebhookUrl, setter: setDraftWebhookUrl, type: "url" },
                 ].map(({ label, value, setter, type }) => (
-                  <div key={label} className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
-                    <label className="text-sm uppercase tracking-[0.35em] text-zinc-500">{label}</label>
+                  <label key={label} className="block rounded-xl border border-white/10 bg-black/20 p-4">
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{label}</span>
                     <input
                       type={type}
                       value={value}
                       onChange={(event) => setter(event.target.value)}
-                      className="w-full rounded-[1.8rem] border border-white/10 bg-zinc-900/70 px-5 py-3 text-sm text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/60 px-3 py-3 text-sm text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
                     />
-                  </div>
+                  </label>
                 ))}
+                  </div>
+                </section>
 
                 <button
                   type="button"
                   onClick={() => void handleSaveProfile()}
-                  className="inline-flex w-full justify-center rounded-[1.8rem] bg-purple-600 px-6 py-4 text-sm font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.45)] transition hover:bg-purple-500 hover:brightness-110"
+                  className="inline-flex w-full justify-center rounded-xl bg-purple-600 px-6 py-3.5 text-xs font-black uppercase tracking-[0.25em] text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition hover:bg-purple-500 hover:brightness-110"
                 >
                   Save Profile
                 </button>
 
-                <fieldset className="space-y-3">
-                  <legend className="text-sm uppercase tracking-[0.35em] text-zinc-500">Wallet addresses</legend>
+                <fieldset className="space-y-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5">
+                  <legend className="px-1 text-xs uppercase tracking-[0.24em] text-zinc-400">Wallet addresses</legend>
+                  <p className="-mt-1 text-sm text-zinc-500">Control where settlements and refunds are signed from.</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="cursor-pointer rounded-2xl border border-white/10 bg-zinc-900/70 p-4 transition hover:border-white/20">
                       <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Settlement address</p>
@@ -506,8 +503,9 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                   </div>
                 </fieldset>
 
-                <fieldset className="space-y-3">
-                  <legend className="text-sm uppercase tracking-[0.35em] text-zinc-500">Default transfer mode</legend>
+                <fieldset className="space-y-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5">
+                  <legend className="px-1 text-xs uppercase tracking-[0.24em] text-zinc-400">Default transfer mode</legend>
+                  <p className="-mt-1 text-sm text-zinc-500">Choose the default privacy behavior for new transfers.</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {(["private", "public"] as const).map((mode) => (
                       <label key={mode} className={`cursor-pointer rounded-2xl border p-4 transition ${defaultTransferMode === mode ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 bg-zinc-900/70 hover:border-white/20"}`}>
