@@ -317,6 +317,7 @@ export default function TerminalManager({
           lastSeen: new Date(when).getTime(),
           accessCode: row.access_code || createAccessCode(),
           isActive: row.status === "online" || Boolean(row.is_active),
+          isPending: String(row.status || "").toLowerCase() === "pending" || (!row.last_active && !row.is_active),
           lastLoginAt: row.last_active ? new Date(row.last_active).getTime() : null,
         };
       }).filter((terminal, index) => {
@@ -1039,7 +1040,8 @@ export default function TerminalManager({
     setPairingExpiresAt(null);
     setTimeLeft("GENERATING...");
     setIsPairingOpen(true);
-    await refreshAuthCode();
+    setToast("Enter a terminal name to generate its pairing code");
+    window.setTimeout(() => setToast(null), 3000);
   };
 
   const disconnectTerminal = async (id: string) => {
@@ -1145,13 +1147,6 @@ export default function TerminalManager({
           >
             <LucidePlus size={14} /> {isRefreshingCode ? "Generating..." : "Pair New"}
           </button>
-          <button
-            onClick={() => void loadFromSupabase()}
-            disabled={isLoadingTerminals}
-            className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-300 transition-all hover:bg-zinc-800 disabled:opacity-60"
-          >
-            <LucideRefreshCw size={14} className={isLoadingTerminals ? "animate-spin" : ""} /> Refresh
-          </button>
         </div>
       </div>
 
@@ -1174,7 +1169,7 @@ export default function TerminalManager({
                   <div>
                     <p className="text-sm font-medium text-white">{terminal.label}</p>
                     <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">
-                      {terminal.isPending ? "Standby • Awaiting staff login" : terminal.isActive ? "Active • Staff logged in" : "Ready • Awaiting staff login"}
+                      {terminal.isPending ? "PENDING; AWAITING LOG IN" : terminal.isActive ? "ACTIVE; STAFF LOGGED IN" : "PENDING; AWAITING LOG IN"}
                     </p>
                   </div>
                 </div>

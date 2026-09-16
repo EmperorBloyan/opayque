@@ -181,7 +181,7 @@ export default function PairingModal({
 
           {pairingState === "waiting" ? (
             <div className="mt-4 rounded-md bg-yellow-900/30 px-3 py-2 text-center text-yellow-300 text-sm font-bold">
-              Awaiting login...
+              PENDING; AWAITING LOG IN
             </div>
           ) : pairingState === "used" ? (
             <div className="mt-4 rounded-md bg-green-900/30 px-3 py-2 text-center text-green-300 text-sm font-bold">

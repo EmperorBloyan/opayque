@@ -210,11 +210,51 @@ export default function ShieldedCheckout({
       const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
       const rpcUrls = getSolanaRpcUrls();
-      const { connection, rpcUrl: selectedRpc, solLamports, tokenAccounts } = await loadWalletBalances(
-        rpcUrls,
-        publicKey,
-        mint,
-      );
+      const buildPromise = transferMode === "private"
+        ? withTimeout(
+            buildShieldedTransfer(
+              publicKey.toBase58(),
+              safeMerchantPubkey,
+              safeAmount,
+              transactionId || checkoutSessionId || ""
+            ),
+            25000,
+            "Shielded transfer build"
+          )
+        : withTimeout(
+            fetch("/api/transfer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: publicKey.toBase58(),
+                recipient: safeMerchantPubkey,
+                amount: safeAmount,
+                mint: mint.toBase58(),
+                intent_id: intentId,
+                mode: "public",
+              }),
+            }).then(async (response) => {
+              const payload = await response.json().catch(() => ({}));
+              if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
+                throw new Error(payload?.error || "Public payment transaction could not be built");
+              }
+              const bytes = Uint8Array.from(atob(payload.transaction), (character) => character.charCodeAt(0));
+              let transaction: VersionedTransaction | Transaction;
+              try {
+                transaction = VersionedTransaction.deserialize(bytes);
+              } catch {
+                transaction = Transaction.from(bytes);
+              }
+              return { ...payload, transaction, mode: "public" as const };
+            }),
+            25000,
+            "Public transfer build"
+          );
+      const [balanceResult, built] = await Promise.all([
+        loadWalletBalances(rpcUrls, publicKey, mint),
+        buildPromise,
+      ]);
+      const { connection, rpcUrl: selectedRpc, solLamports, tokenAccounts } = balanceResult;
       const usdcBaseUnits = tokenAccounts.value.reduce(
         (total, account) => total + BigInt(account.account.data.parsed?.info?.tokenAmount?.amount ?? "0"),
         0n
@@ -234,47 +274,6 @@ export default function ShieldedCheckout({
         throw new Error(`Insufficient USDC on ${isDevnet ? "Devnet" : "Mainnet"}. Add funds to this wallet before paying.`);
       }
 
-      const built = transferMode === "private"
-        ? await withTimeout(
-            buildShieldedTransfer(
-              publicKey.toBase58(),
-              safeMerchantPubkey,
-              safeAmount,
-              transactionId || checkoutSessionId || ""
-            ),
-            25000,
-            "Shielded transfer build"
-          )
-        : await withTimeout(
-            fetch("/api/transfer", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sender: publicKey.toBase58(),
-                recipient: safeMerchantPubkey,
-                amount: safeAmount,
-                mint: mint.toBase58(),
-                intent_id: intentId,
-                mode: "public",
-              }),
-            }).then(async (response) => {
-              const payload = await response.json().catch(() => ({}));
-              if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
-                throw new Error(payload?.error || "Public payment transaction could not be built");
-              }
-              let transaction: VersionedTransaction | Transaction;
-              const bytes = Uint8Array.from(atob(payload.transaction), (character) => character.charCodeAt(0));
-              try {
-                transaction = VersionedTransaction.deserialize(bytes);
-              } catch {
-                transaction = Transaction.from(bytes);
-              }
-              return { ...payload, transaction, mode: "public" as const };
-            }),
-            25000,
-            "Public transfer build"
-          );
-
       let signature: string | null = null;
 
       paymentConnection = new Connection(built.rpcUrl || selectedRpc, "confirmed");
@@ -284,18 +283,6 @@ export default function ShieldedCheckout({
       }
 
       if (built.transaction instanceof VersionedTransaction && signTransaction) {
-        const feeMessage = built.transaction.message;
-        const feeEstimate = await withTimeout(
-          paymentConnection.getFeeForMessage(feeMessage, "confirmed"),
-          10_000,
-          "Network fee estimate"
-        );
-        if (feeEstimate.value === null) {
-          throw new Error("The network could not estimate fees for this transaction. Please retry with a funded wallet.");
-        }
-        if (solLamports < feeEstimate.value) {
-          throw new Error(`Insufficient SOL for network fees. Add at least ${(feeEstimate.value / 1_000_000_000).toFixed(4)} SOL to this wallet.`);
-        }
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
         signature = transferMode === "public"

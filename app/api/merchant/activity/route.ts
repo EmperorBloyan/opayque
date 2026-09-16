@@ -22,5 +22,23 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({ error: "Unable to load payment activity" }, { status: 500 });
 
   const rows = data ?? [];
-  return NextResponse.json({ data: rows.slice(0, pageSize), page, pageSize, hasMore: rows.length > pageSize });
+  const terminalIds = [...new Set(rows.map((row) => row.terminal_id).filter(Boolean))];
+  const terminalNames = new Map<string, string>();
+  if (terminalIds.length > 0) {
+    const { data: terminals } = await supabase
+      .from("terminals")
+      .select("id, terminal_label, label")
+      .in("id", terminalIds);
+    for (const terminal of terminals ?? []) {
+      const label = String(terminal.terminal_label || terminal.label || "").trim();
+      if (label) terminalNames.set(String(terminal.id), label);
+    }
+  }
+
+  const enrichedRows = rows.map((row) => ({
+    ...row,
+    source_name: row.terminal_id ? terminalNames.get(String(row.terminal_id)) || "Merchant Terminal" : "System",
+    source_category: row.terminal_id ? "Terminal" : "Registry",
+  }));
+  return NextResponse.json({ data: enrichedRows.slice(0, pageSize), page, pageSize, hasMore: rows.length > pageSize });
 }

@@ -161,9 +161,9 @@ export async function sendStandardPayment(
     try {
       signature = await withTimeout(
         connection.sendRawTransaction(signed.serialize(), {
-          skipPreflight: false,
+          skipPreflight: true,
           preflightCommitment: "confirmed",
-          maxRetries: 3,
+          maxRetries: 2,
         }),
         30_000,
         "Transaction submission",
