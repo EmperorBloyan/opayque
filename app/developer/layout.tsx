@@ -100,9 +100,9 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div className="min-h-screen bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:px-6 sm:py-6">
+    <div className="flex min-h-screen flex-col bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:px-6 sm:py-6">
       <div className="fixed inset-0 pointer-events-none bg-purple-500/5" />
-      <div className="relative mx-auto max-w-6xl">
+      <div className="relative mx-auto flex w-full max-w-6xl flex-1 flex-col">
         {!isHiddenPage && (
           <>
             {/* HEADER */}
@@ -185,7 +185,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
           </>
         )}
 
-        <main>{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
 
         {!isHiddenPage && (
           <footer className="mt-20 flex items-center justify-between border-t border-white/5 pt-8 opacity-30">

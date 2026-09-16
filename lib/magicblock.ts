@@ -1,5 +1,5 @@
 import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
-import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
+import { assertProductionConfig, getAssetMintAddress, getSolanaNetwork, getSolanaRpcUrls, isDevnetNetwork, isMainnetNetwork } from "@/lib/solana/constants";
 import { getPriorityFeeConfig } from "@/lib/solana/priorityFee";
 import { selectHealthyRpcUrl } from "@/lib/solana/rpc";
 import { logLifecycle } from "@/lib/observability";
@@ -78,7 +78,9 @@ export async function requestPrivateSplTransfer({
   amountBaseUnits: number;
   memo?: string;
 }): Promise<{ transaction: string; blockhash?: string; lastValidBlockHeight?: number; rpcUrl?: string }> {
-  assertProductionConfig();
+  // MagicBlock currently exposes an unauthenticated devnet builder for testing.
+  // Mainnet still requires the authenticated, explicitly private path.
+  assertProductionConfig({ requireMagicBlock: isMainnetNetwork() });
   if (Date.now() < magicBlockUnavailableUntil) {
     throw new Error("Private transfer service is temporarily unavailable; please retry shortly.");
   }
@@ -124,7 +126,9 @@ export async function requestPrivateSplTransfer({
   }
 
   const payload = await response.json().catch(() => ({}));
-  if (payload?.visibility !== "private" || payload?.mode === "public") {
+  const hasExplicitPrivateProof = payload?.visibility === "private" && payload?.mode !== "public";
+  const isUnauthenticatedDevnetResponse = isDevnetNetwork() && payload?.visibility == null && payload?.mode !== "public";
+  if (!hasExplicitPrivateProof && !isUnauthenticatedDevnetResponse) {
     recordMagicBlockFailure(new Error("MagicBlockPrivateModeNotProven"));
     throw new Error("Private transfer provider did not prove private visibility");
   }

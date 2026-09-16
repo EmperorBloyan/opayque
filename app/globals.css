@@ -53,11 +53,17 @@ body {
   color: var(--fg);
 }
 
-/* Small accessible focus ring helper */
-:focus {
+/* Show the focus ring for keyboard navigation without leaving it on mouse clicks. */
+:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 0.375rem;
+}
+
+/* Tailwind focus:ring utilities must also stay quiet after pointer clicks. */
+:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Toast and modal base styles to ensure consistent look */

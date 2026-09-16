@@ -136,32 +136,6 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
         setLogo(localLogo);
         setDraftLogo(localLogo);
       }
-      const localSettlementWallet = window.localStorage.getItem("settlement_wallet_address");
-      if (localSettlementWallet) setSettlementWallet(localSettlementWallet);
-      void hydrateMerchantProfile();
-    };
-
-    window.addEventListener("storage", handleProfileUpdate);
-    window.addEventListener("merchant_profile_updated", handleProfileUpdate);
-    return () => {
-      window.removeEventListener("storage", handleProfileUpdate);
-      window.removeEventListener("merchant_profile_updated", handleProfileUpdate);
-    };
-  }, []);
-
-  // Listen for local storage updates and custom events to sync profile state globally
-  useEffect(() => {
-    const handleProfileUpdate = () => {
-      const localName = window.localStorage.getItem("merchant_name");
-      const localLogo = window.localStorage.getItem("merchant_logo");
-      if (localName) {
-        setMerchantName(localName);
-        setDraftName(localName);
-      }
-      if (localLogo) {
-        setLogo(localLogo);
-        setDraftLogo(localLogo);
-      }
     };
 
     window.addEventListener("storage", handleProfileUpdate);
@@ -334,13 +308,13 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:p-6">
+    <div className="flex min-h-screen flex-col bg-black px-4 py-4 text-white selection:bg-purple-500/30 sm:p-6">
       <div
         id="vault-glow"
         className="fixed inset-0 bg-purple-500/5 pointer-events-none transition-all duration-500"
       />
 
-      <div className="max-w-6xl mx-auto">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-white/5 pb-8 gap-6">
           <div className="flex items-center gap-5">
             <div className="relative group cursor-pointer">
@@ -602,7 +576,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
           </div>
         )}
 
-        <main className="relative">{children}</main>
+        <main className="relative flex min-h-0 flex-1 flex-col">{children}</main>
 
         <footer className="mt-20 pt-8 border-t border-white/5 flex justify-between items-center opacity-30">
           <p className="text-[8px] font-mono uppercase tracking-widest text-zinc-500">

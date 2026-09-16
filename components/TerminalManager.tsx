@@ -232,6 +232,7 @@ export default function TerminalManager({
   const fleetChannelRef = useRef<any | null>(null);
   const pairingRequestRef = useRef(false);
   const previousTerminalCountRef = useRef<number | null>(null);
+  const previousTerminalSnapshotRef = useRef<Map<string, boolean>>(new Map());
   const checkoutInFlightRef = useRef(false);
 
   const { publicKey, signTransaction, connected } = useWallet();
@@ -1002,8 +1003,13 @@ export default function TerminalManager({
   useEffect(() => {
     if (!isPairingOpen || pairingState !== "waiting") return;
 
+    const previousSnapshot = previousTerminalSnapshotRef.current;
+    const newlyActiveTerminal = safeTerminals.some((terminal) => {
+      const wasActive = previousSnapshot.get(terminal.id);
+      return wasActive === undefined || (!wasActive && terminal.isActive);
+    });
     const previousCount = previousTerminalCountRef.current ?? safeTerminals.length;
-    if (safeTerminals.length > previousCount) {
+    if (safeTerminals.length > previousCount || newlyActiveTerminal) {
       setPendingTerminal(null);
       setPairingState("used");
       setToast("Pairing successful");
@@ -1027,6 +1033,9 @@ export default function TerminalManager({
     if (pairingRequestRef.current || isRefreshingCode) return;
 
     previousTerminalCountRef.current = safeTerminals.length;
+    previousTerminalSnapshotRef.current = new Map(
+      safeTerminals.map((terminal) => [terminal.id, Boolean(terminal.isActive)])
+    );
 
     if (!resolvedMerchantId) {
       setToast("Merchant session loading, please wait...");

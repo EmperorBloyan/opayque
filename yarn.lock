@@ -522,6 +522,11 @@
   resolved "https://registry.npmjs.org/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-14.2.33.tgz"
   integrity sha512-FnFn+ZBgsVMbGDsTqo8zsnRzydvsGV8vfiWwUo1LD8FTmPTdV+otGSWKc4LJec0oSexFnCYVO4hX8P8qQKaSlg==
 
+"@next/swc-linux-x64-musl@14.2.33":
+  version "14.2.33"
+  resolved "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-14.2.33.tgz"
+  integrity sha512-345tsIWMzoXaQndUTDv1qypDRiebFxGYx9pYkhwY4hBRaOLt8UGfiWKr9FSSHs25dFIf8ZqIFaPdy5MljdoawA==
+
 "@ngraveio/bc-ur@^1.0.0", "@ngraveio/bc-ur@^1.1.5":
   version "1.1.13"
   resolved "https://registry.npmjs.org/@ngraveio/bc-ur/-/bc-ur-1.1.13.tgz"
@@ -566,7 +571,7 @@
   dependencies:
     "@noble/hashes" "1.7.1"
 
-"@noble/curves@^1.8.0":
+"@noble/curves@^1.8.2":
   version "1.9.7"
   resolved "https://registry.npmjs.org/@noble/curves/-/curves-1.9.7.tgz"
   integrity sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==
@@ -593,6 +598,13 @@
   integrity sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==
   dependencies:
     "@noble/hashes" "2.2.0"
+
+"@noble/curves@^2.2.0":
+  version "2.4.0"
+  resolved "https://registry.npmjs.org/@noble/curves/-/curves-2.4.0.tgz"
+  integrity sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==
+  dependencies:
+    "@noble/hashes" "2.4.0"
 
 "@noble/curves@~1.4.0":
   version "1.4.2"
@@ -636,6 +648,11 @@
   version "2.2.0"
   resolved "https://registry.npmjs.org/@noble/hashes/-/hashes-2.2.0.tgz"
   integrity sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==
+
+"@noble/hashes@^2.2.0", "@noble/hashes@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.npmjs.org/@noble/hashes/-/hashes-2.4.0.tgz"
+  integrity sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==
 
 "@noble/hashes@~1.4.0", "@noble/hashes@1.4.0":
   version "1.4.0"
@@ -1246,6 +1263,11 @@
   resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.63.3.tgz"
   integrity sha512-SXagRwnI2Wlwlitllu59UK/nGVbD1CKPcNqDplHwIC4BqJcpXFjD32d1R/RbuISa95HdQrZM3/7v4bKiowFaLA==
 
+"@rollup/rollup-linux-x64-musl@4.63.3":
+  version "4.63.3"
+  resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.63.3.tgz"
+  integrity sha512-2IPozoEALRCziGqE8O9KMK60PMu5TS1huv4fwoeCexj+WjmcwFtX9CTOVbfXCUqcELAubEwRFPYlzb/WvwY2HQ==
+
 "@rtsao/scc@^1.1.0":
   version "1.1.0"
   resolved "https://registry.npmjs.org/@rtsao/scc/-/scc-1.1.0.tgz"
@@ -1528,16 +1550,17 @@
     bs58 "^6.0.0"
     js-base64 "^3.7.5"
 
-"@solana-mobile/mobile-wallet-adapter-protocol@^2.2.8":
-  version "2.2.8"
-  resolved "https://registry.npmjs.org/@solana-mobile/mobile-wallet-adapter-protocol/-/mobile-wallet-adapter-protocol-2.2.8.tgz"
-  integrity sha512-c3FQsrM7nV62DqVaHGKtr2osE2w5gS3/wjy8ILF0zczS/s1mERX+JTmf+UHd8xgESmEj/IM7q+U2Qhrmac1PdA==
+"@solana-mobile/mobile-wallet-adapter-protocol@^2.2.8", "@solana-mobile/mobile-wallet-adapter-protocol@^2.2.9", "@solana-mobile/mobile-wallet-adapter-protocol@^2.3.0":
+  version "2.3.0"
+  resolved "https://registry.npmjs.org/@solana-mobile/mobile-wallet-adapter-protocol/-/mobile-wallet-adapter-protocol-2.3.0.tgz"
+  integrity sha512-NqAinVV9t+S65nvdUo41Z1npg4W1JjSp/K02w6xWFv2ywCdahPHpbbHYS177nDenQR2kf/8vshLOXiyV/J6HRw==
   dependencies:
-    "@solana/codecs-strings" "^6.0.0"
+    "@noble/curves" "^2.2.0"
+    "@noble/hashes" "^2.2.0"
+    "@solana/kit" "^7.0.0"
     "@solana/wallet-standard-features" "^1.3.0"
     "@solana/wallet-standard-util" "^1.1.2"
     "@wallet-standard/core" "^1.1.1"
-    js-base64 "^3.7.5"
 
 "@solana-mobile/wallet-adapter-mobile@^2.2.0":
   version "2.2.8"
@@ -1557,18 +1580,32 @@
     "@react-native-async-storage/async-storage" "^1.17.7"
 
 "@solana-mobile/wallet-standard-mobile@^0.5.2":
-  version "0.5.2"
-  resolved "https://registry.npmjs.org/@solana-mobile/wallet-standard-mobile/-/wallet-standard-mobile-0.5.2.tgz"
-  integrity sha512-orEGv4N/Ttd0umwfWUzGcEnVc9eJDTgRSEcDitvFWpIf2D968h6128L0rq9/y7sUw88Gvu/lU0euoC2ASEijqQ==
+  version "0.5.3"
+  resolved "https://registry.npmjs.org/@solana-mobile/wallet-standard-mobile/-/wallet-standard-mobile-0.5.3.tgz"
+  integrity sha512-/Ea/CNIWHExpXsA6syVy7fUUhONtYob+VMsmF8flm8GEAZQyzX6UtKSy4NQMMTGBTAGlmmmbBVrZF+Tp5/fDxQ==
   dependencies:
-    "@solana-mobile/mobile-wallet-adapter-protocol" "^2.2.8"
+    "@solana-mobile/mobile-wallet-adapter-protocol" "^2.2.9"
     "@solana/wallet-standard-chains" "^1.1.1"
     "@solana/wallet-standard-features" "^1.3.0"
     "@wallet-standard/base" "^1.0.1"
     "@wallet-standard/features" "^1.0.3"
     "@wallet-standard/wallet" "^1.1.0"
-    bs58 "^6.0.0"
-    js-base64 "^3.7.5"
+    qrcode "^1.5.4"
+    tslib "^2.8.1"
+  optionalDependencies:
+    "@react-native-async-storage/async-storage" "^1.17.7"
+
+"@solana-mobile/wallet-standard-mobile@^0.6.0":
+  version "0.6.0"
+  resolved "https://registry.npmjs.org/@solana-mobile/wallet-standard-mobile/-/wallet-standard-mobile-0.6.0.tgz"
+  integrity sha512-abytKDEpjo2kRm4y5IChDrhqDUpPznvQJEw4IgK0GjLjC39R0XPUGC5Q0qLWM2pmw/DAQP+63neRiJFG5r7NsQ==
+  dependencies:
+    "@solana-mobile/mobile-wallet-adapter-protocol" "^2.3.0"
+    "@solana/wallet-standard-chains" "^1.1.1"
+    "@solana/wallet-standard-features" "^1.3.0"
+    "@wallet-standard/base" "^1.0.1"
+    "@wallet-standard/features" "^1.0.3"
+    "@wallet-standard/wallet" "^1.1.0"
     qrcode "^1.5.4"
     tslib "^2.8.1"
   optionalDependencies:
@@ -1645,6 +1682,18 @@
     "@solana/rpc-spec" "6.10.0"
     "@solana/rpc-types" "6.10.0"
 
+"@solana/accounts@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/accounts/-/accounts-7.1.1.tgz"
+  integrity sha512-7sy9VIFMdmu/7+2kVBRMU6mEvYx/DDjfam8DsBXbh+JszaTNZH3V8FutQYHRxrca3jxiumVfsy5USwKfVg8ElQ==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/rpc-spec" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+
 "@solana/addresses@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/addresses/-/addresses-2.3.0.tgz"
@@ -1667,6 +1716,17 @@
     "@solana/errors" "6.10.0"
     "@solana/nominal-types" "6.10.0"
 
+"@solana/addresses@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/addresses/-/addresses-7.1.1.tgz"
+  integrity sha512-/Tk2aTOT7UEcaJrdEcB3+SK09v5cZ/92NWqHBzEobxusTPNoeOFxa3MwV74Q1MgPecWdLz7TPreEhAKpcvV/vw==
+  dependencies:
+    "@solana/assertions" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+
 "@solana/assertions@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/assertions/-/assertions-2.3.0.tgz"
@@ -1680,6 +1740,13 @@
   integrity sha512-lKSAdVo+P/6Lp4vs6shstXmFOpvxrABwn4o1462tb7sKkNapk6o9pPFVPGw4DUgPS3WqWRs1j2tmpuVjhQRntg==
   dependencies:
     "@solana/errors" "6.10.0"
+
+"@solana/assertions@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/assertions/-/assertions-7.1.1.tgz"
+  integrity sha512-tD07UKuw5i9Tw5xloVH+TUMrLzbHKixaB4DlGXumMEQU+JbYRPtFNqtMlrpVLuVM45nkbPfFp2Da0sXNRIqFHA==
+  dependencies:
+    "@solana/errors" "7.1.1"
 
 "@solana/buffer-layout-utils@^0.3.0":
   version "0.3.0"
@@ -1719,6 +1786,13 @@
   dependencies:
     "@solana/errors" "6.10.0"
 
+"@solana/codecs-core@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-core/-/codecs-core-7.1.1.tgz"
+  integrity sha512-C1UOAQ7LH8RuCTfaij6hthTZeBlpp8GuD2g9Nag/xgiNKJGvAfVrcorb+kO/sufdYI8Lu+BiVvPeKOjQDQiKqg==
+  dependencies:
+    "@solana/errors" "7.1.1"
+
 "@solana/codecs-data-structures@2.0.0-rc.1":
   version "2.0.0-rc.1"
   resolved "https://registry.npmjs.org/@solana/codecs-data-structures/-/codecs-data-structures-2.0.0-rc.1.tgz"
@@ -1745,6 +1819,15 @@
     "@solana/codecs-core" "6.10.0"
     "@solana/codecs-numbers" "6.10.0"
     "@solana/errors" "6.10.0"
+
+"@solana/codecs-data-structures@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-data-structures/-/codecs-data-structures-7.1.1.tgz"
+  integrity sha512-MO+wMAuaatAQ96N3HhTsd7Uno+79rJw88P+OiU2n+pHK/rZuyu1yB2j12veqK4jUNWPR0aOyCuZ4rB2idrDjpg==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/errors" "7.1.1"
 
 "@solana/codecs-numbers@^2.1.0":
   version "2.3.0"
@@ -1778,14 +1861,13 @@
     "@solana/codecs-core" "6.10.0"
     "@solana/errors" "6.10.0"
 
-"@solana/codecs-strings@^6.0.0", "@solana/codecs-strings@6.10.0":
-  version "6.10.0"
-  resolved "https://registry.npmjs.org/@solana/codecs-strings/-/codecs-strings-6.10.0.tgz"
-  integrity sha512-zlaqkg7K6F6IN4V/Ec8TWkTn054gxv7ZLagvGkuEyAdPQ6BzzsehOm2TqCuyXgJJTCGPLY1bEk6yH9NxANe0kA==
+"@solana/codecs-numbers@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-numbers/-/codecs-numbers-7.1.1.tgz"
+  integrity sha512-TWWrQq6Wp5Yf5bSc6RbxDDYCRUBBmRtRgjvUMHGp0P9K+4uFwxllRjSZFzBPHgXj3UTeZmFJdcoD271QhAgibg==
   dependencies:
-    "@solana/codecs-core" "6.10.0"
-    "@solana/codecs-numbers" "6.10.0"
-    "@solana/errors" "6.10.0"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/errors" "7.1.1"
 
 "@solana/codecs-strings@2.0.0-rc.1":
   version "2.0.0-rc.1"
@@ -1804,6 +1886,24 @@
     "@solana/codecs-core" "2.3.0"
     "@solana/codecs-numbers" "2.3.0"
     "@solana/errors" "2.3.0"
+
+"@solana/codecs-strings@6.10.0":
+  version "6.10.0"
+  resolved "https://registry.npmjs.org/@solana/codecs-strings/-/codecs-strings-6.10.0.tgz"
+  integrity sha512-zlaqkg7K6F6IN4V/Ec8TWkTn054gxv7ZLagvGkuEyAdPQ6BzzsehOm2TqCuyXgJJTCGPLY1bEk6yH9NxANe0kA==
+  dependencies:
+    "@solana/codecs-core" "6.10.0"
+    "@solana/codecs-numbers" "6.10.0"
+    "@solana/errors" "6.10.0"
+
+"@solana/codecs-strings@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-strings/-/codecs-strings-7.1.1.tgz"
+  integrity sha512-6qWl+atG60D2LmP47GyGapQFhVsG1sVhVrEaM3lV09vwrGOMeOZARZ4ObaQ5m6uQmM04G+f8dY9d17nCMbGHGg==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/errors" "7.1.1"
 
 "@solana/codecs@2.0.0-rc.1":
   version "2.0.0-rc.1"
@@ -1839,6 +1939,18 @@
     "@solana/fixed-points" "6.10.0"
     "@solana/options" "6.10.0"
 
+"@solana/codecs@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/codecs/-/codecs-7.1.1.tgz"
+  integrity sha512-1ZErMXzbbz7+jusem58dMO1haVWNlvFYKftc2dPhFu9MqlmZRfPS06GiZDjlLnD/6PHHBy7OKFMASoYw+fBAKg==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/fixed-points" "7.1.1"
+    "@solana/options" "7.1.1"
+
 "@solana/errors@2.0.0-rc.1":
   version "2.0.0-rc.1"
   resolved "https://registry.npmjs.org/@solana/errors/-/errors-2.0.0-rc.1.tgz"
@@ -1863,6 +1975,14 @@
     chalk "5.6.2"
     commander "15.0.0"
 
+"@solana/errors@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/errors/-/errors-7.1.1.tgz"
+  integrity sha512-q35qck8rBnNvJlPU00mnHEQm7gWvghzYz8khqVoLhjgodTzGp46VqnIOyI1LXOAF6XDal58bMNDO980MQgq8yw==
+  dependencies:
+    chalk "5.6.2"
+    commander "15.0.0"
+
 "@solana/fast-stable-stringify@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/fast-stable-stringify/-/fast-stable-stringify-2.3.0.tgz"
@@ -1873,6 +1993,11 @@
   resolved "https://registry.npmjs.org/@solana/fast-stable-stringify/-/fast-stable-stringify-6.10.0.tgz"
   integrity sha512-iCNed27wk6PKSS3QUtHovRfMWF/jbVWogs2vB4tukKUCsqG4rDfDInIwZ6ur/nY6XTrgi2gMMdZq9GAUlWsbfw==
 
+"@solana/fast-stable-stringify@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/fast-stable-stringify/-/fast-stable-stringify-7.1.1.tgz"
+  integrity sha512-eVxOeAXYVBIWOIRfGwvuGQ6gPetQiiiOqSCK0xjwQo/yjXNVlSbpF6wLtQRnd3lbYkWsKdeV99FYe9cVY/g7/Q==
+
 "@solana/fixed-points@6.10.0":
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/fixed-points/-/fixed-points-6.10.0.tgz"
@@ -1880,6 +2005,14 @@
   dependencies:
     "@solana/codecs-core" "6.10.0"
     "@solana/errors" "6.10.0"
+
+"@solana/fixed-points@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/fixed-points/-/fixed-points-7.1.1.tgz"
+  integrity sha512-qPj/V7kcFG/P0kuEa1U529+5L6mbkMwRIwvYBTDgBqPOt6wOdk9/c7Qn2VUQgSV0HgCXWxdHUdwaxBrYqO2ibg==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/errors" "7.1.1"
 
 "@solana/functional@2.3.0":
   version "2.3.0"
@@ -1890,6 +2023,11 @@
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/functional/-/functional-6.10.0.tgz"
   integrity sha512-P8cevu4mAqHTXC37h1TVoOh8zhWB2tlOI/R9vWjYPpcLwcyWf8p2qq4LEGHl5kY+1C+4PNX39HsmCocXOPCDkQ==
+
+"@solana/functional@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/functional/-/functional-7.1.1.tgz"
+  integrity sha512-AnFohvUHGrqAu3kTxxC0rZyU4JddA08hOUZ1/DT9XogCZWetBpNJktX9uNuXQe+sN4FKTX2MfL//iBFBAsxtDA==
 
 "@solana/instruction-plans@6.10.0":
   version "6.10.0"
@@ -1902,6 +2040,18 @@
     "@solana/promises" "6.10.0"
     "@solana/transaction-messages" "6.10.0"
     "@solana/transactions" "6.10.0"
+
+"@solana/instruction-plans@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/instruction-plans/-/instruction-plans-7.1.1.tgz"
+  integrity sha512-KQGpsjeDflMcbKCdcF4KZVHcotYMS94DveRs0ZiBOsxb45dgkYrFmQ6ExJ/2exUOVF/rlp73knAP5ACrPMIAzA==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/promises" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
 
 "@solana/instructions@2.3.0":
   version "2.3.0"
@@ -1918,6 +2068,14 @@
   dependencies:
     "@solana/codecs-core" "6.10.0"
     "@solana/errors" "6.10.0"
+
+"@solana/instructions@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/instructions/-/instructions-7.1.1.tgz"
+  integrity sha512-VxMpJI++RTwaqSBLIP1GTjOPLtlYOqxOJ93ug6DlSdu9jku8M/or77DiXDUi62VmEh3bbsECR646vTJXUaPArw==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/errors" "7.1.1"
 
 "@solana/keys@^6.10.0", "@solana/keys@6.10.0":
   version "6.10.0"
@@ -1941,6 +2099,18 @@
     "@solana/codecs-strings" "2.3.0"
     "@solana/errors" "2.3.0"
     "@solana/nominal-types" "2.3.0"
+
+"@solana/keys@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/keys/-/keys-7.1.1.tgz"
+  integrity sha512-Rx+vzWAXUa/Ko7W6wG1HOG9B3nQFZ5dALz113WoAmBZf7iQvaLG7U4ECDM/ydR+Nbdy6wYww7zQKRIye+1d+Nw==
+  dependencies:
+    "@solana/assertions" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+    "@solana/promises" "7.1.1"
 
 "@solana/kit-plugin-instruction-plan@^0.10.0", "@solana/kit-plugin-instruction-plan@0.10.0":
   version "0.10.0"
@@ -2014,6 +2184,39 @@
     "@solana/transaction-messages" "6.10.0"
     "@solana/transactions" "6.10.0"
 
+"@solana/kit@^7.0.0":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/kit/-/kit-7.1.1.tgz"
+  integrity sha512-By3kv5d8fIMr2SPmvI41hBXUwn0XuDu2MC8B7anaLHtY8MENTKhjg8sSfybf/RTH3387ErxhxmrAijTiHqTy/g==
+  dependencies:
+    "@solana/accounts" "7.1.1"
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/instruction-plans" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/offchain-messages" "7.1.1"
+    "@solana/plugin-core" "7.1.1"
+    "@solana/plugin-interfaces" "7.1.1"
+    "@solana/program-client-core" "7.1.1"
+    "@solana/programs" "7.1.1"
+    "@solana/promises" "7.1.1"
+    "@solana/rpc" "7.1.1"
+    "@solana/rpc-api" "7.1.1"
+    "@solana/rpc-parsed-types" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/rpc-subscriptions" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/signers" "7.1.1"
+    "@solana/subscribable" "7.1.1"
+    "@solana/sysvars" "7.1.1"
+    "@solana/transaction-confirmation" "7.1.1"
+    "@solana/transaction-introspection" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
+
 "@solana/nominal-types@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/nominal-types/-/nominal-types-2.3.0.tgz"
@@ -2023,6 +2226,11 @@
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/nominal-types/-/nominal-types-6.10.0.tgz"
   integrity sha512-9ykyBBvnkInH7fCacjJi7zu2PJyd+OCt+VTjIISv070fHzKIMFqZqJJ/dJ0SRH2aHwfB3n86iVsmtBtuxi4KKA==
+
+"@solana/nominal-types@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/nominal-types/-/nominal-types-7.1.1.tgz"
+  integrity sha512-do4rmmOlSplVYN92zV6nROJxkiRn0c7juoH1lka2Pmq+cAC3QhQXKYAwWffTFYDJJDO9qCOh00uv2hhSZi6RDw==
 
 "@solana/offchain-messages@6.10.0":
   version "6.10.0"
@@ -2037,6 +2245,20 @@
     "@solana/errors" "6.10.0"
     "@solana/keys" "6.10.0"
     "@solana/nominal-types" "6.10.0"
+
+"@solana/offchain-messages@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/offchain-messages/-/offchain-messages-7.1.1.tgz"
+  integrity sha512-Py0/8HaIF0y+KSXHAWdQYDdZlGNoaqOZonTFuGKyDsrkgvod3wRc0cpZ5I/D/Rei4tVpvjNUfCXLpyoiJAZ7kg==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
 
 "@solana/options@2.0.0-rc.1":
   version "2.0.0-rc.1"
@@ -2071,6 +2293,17 @@
     "@solana/codecs-strings" "6.10.0"
     "@solana/errors" "6.10.0"
 
+"@solana/options@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/options/-/options-7.1.1.tgz"
+  integrity sha512-iuPpfMbnRFjC4IoAIpKNA9UpizomxjW0E3F1LxUYQHXm1vCoF78kThp4qqgx2V3DmDFbhXGtXGSJPwmDdpLoBg==
+  dependencies:
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+
 "@solana/pay@^1.0.26":
   version "1.0.26"
   resolved "https://registry.npmjs.org/@solana/pay/-/pay-1.0.26.tgz"
@@ -2084,6 +2317,11 @@
   resolved "https://registry.npmjs.org/@solana/plugin-core/-/plugin-core-6.10.0.tgz"
   integrity sha512-JE70YTQOfFACVFGvoJon4Scc/eHUWjMu8Ovo35CcV2kHTAHYMCd4UkBd2gmlhK0vRMMomsQi1ZLPlAlTq0OoUQ==
 
+"@solana/plugin-core@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/plugin-core/-/plugin-core-7.1.1.tgz"
+  integrity sha512-35h7+QssfnT9Rwq5spUvdGc41WtTVWzJUCbiwvnUHtVwm3z96xSPwj765UtX/enfrcRHJRTDvej2ZjsvO1aeuQ==
+
 "@solana/plugin-interfaces@^6.9.0", "@solana/plugin-interfaces@6.10.0":
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/plugin-interfaces/-/plugin-interfaces-6.10.0.tgz"
@@ -2096,6 +2334,20 @@
     "@solana/rpc-subscriptions-spec" "6.10.0"
     "@solana/rpc-types" "6.10.0"
     "@solana/signers" "6.10.0"
+
+"@solana/plugin-interfaces@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/plugin-interfaces/-/plugin-interfaces-7.1.1.tgz"
+  integrity sha512-2SHkGiftGmxg5xA5esxbwiY5wf+BOUsJG5rxD64/SHadUMaN3L0SDUSJfAXETJq5dCmVWxWGGPf2yVox4RIfdA==
+  dependencies:
+    "@solana/accounts" "7.1.1"
+    "@solana/addresses" "7.1.1"
+    "@solana/instruction-plans" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/rpc-spec" "7.1.1"
+    "@solana/rpc-subscriptions-spec" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/signers" "7.1.1"
 
 "@solana/program-client-core@6.10.0":
   version "6.10.0"
@@ -2111,6 +2363,21 @@
     "@solana/plugin-interfaces" "6.10.0"
     "@solana/rpc-api" "6.10.0"
     "@solana/signers" "6.10.0"
+
+"@solana/program-client-core@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/program-client-core/-/program-client-core-7.1.1.tgz"
+  integrity sha512-zoMq8Qg6psj6tFYpA35xKhSrF/LpdiVflV6nKohxZg3ocwtRqRhQfbY8/mjCA9EfH8vqvsn5il5CnxALRqmJJA==
+  dependencies:
+    "@solana/accounts" "7.1.1"
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/instruction-plans" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/plugin-interfaces" "7.1.1"
+    "@solana/rpc-api" "7.1.1"
+    "@solana/signers" "7.1.1"
 
 "@solana/programs@2.3.0":
   version "2.3.0"
@@ -2128,6 +2395,14 @@
     "@solana/addresses" "6.10.0"
     "@solana/errors" "6.10.0"
 
+"@solana/programs@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/programs/-/programs-7.1.1.tgz"
+  integrity sha512-nWpJKDBxj+cRpzH+lzdp+ztEm6MAothts56s7PIPFIKJe3zGRUpske0G3jIVHOGvtzCgQtmZUMCS1uBRiDRKDQ==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/errors" "7.1.1"
+
 "@solana/promises@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/promises/-/promises-2.3.0.tgz"
@@ -2137,6 +2412,11 @@
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/promises/-/promises-6.10.0.tgz"
   integrity sha512-oJSIn+VBBMWDo8oqw7RV3tI6Jih+Ieup6FcQLYLDUriaeo7+8l1Zdezl8zh7SIfeU4lOfAbRg6mR0huaS/Lltg==
+
+"@solana/promises@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/promises/-/promises-7.1.1.tgz"
+  integrity sha512-d3lhCfiFwiVyTRR6zhy1lcjDIh+l0a5gp1WPe64Vfa2gP0myC8P5C1Tknfjrp4d97DF3uBPqKAb5vV8hahNcNA==
 
 "@solana/qr-code-styling@^1.6.0":
   version "1.6.0"
@@ -2179,6 +2459,23 @@
     "@solana/transaction-messages" "6.10.0"
     "@solana/transactions" "6.10.0"
 
+"@solana/rpc-api@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-api/-/rpc-api-7.1.1.tgz"
+  integrity sha512-ELGIqNbz8apeAxCLdD1PEPAnu6KtgHmWvUbH4VqqNg2jgWquyUOfTI5rblvdflx2Hcb7GK05w8/iiUaknOQKnw==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/rpc-parsed-types" "7.1.1"
+    "@solana/rpc-spec" "7.1.1"
+    "@solana/rpc-transformers" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
+
 "@solana/rpc-parsed-types@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/rpc-parsed-types/-/rpc-parsed-types-2.3.0.tgz"
@@ -2189,6 +2486,11 @@
   resolved "https://registry.npmjs.org/@solana/rpc-parsed-types/-/rpc-parsed-types-6.10.0.tgz"
   integrity sha512-5275mvSV1mxhwvrMVa+K7BU/nAetpHfcb+8Ql9rtA8RRf6DyiimFQFZUukE4Ez6XJihEpCHNy98yhkgai9wytQ==
 
+"@solana/rpc-parsed-types@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-parsed-types/-/rpc-parsed-types-7.1.1.tgz"
+  integrity sha512-DiQSj2rNnhOKOTs6YDjQ2y4KuOkv8lh6moLFiQnY0+TvanJrGrQjxLSrHdCUQxymQcUxzrraZL9k6vxNzId4gw==
+
 "@solana/rpc-spec-types@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/rpc-spec-types/-/rpc-spec-types-2.3.0.tgz"
@@ -2198,6 +2500,13 @@
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/rpc-spec-types/-/rpc-spec-types-6.10.0.tgz"
   integrity sha512-NDZrKyZrJk4HaMFhTE/lAiMB824cWAodKqDHyKi0UteHU9pyRmil3BN1jt7e+j08mwMWwfklSgyrTaq52g6DIQ==
+
+"@solana/rpc-spec-types@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-spec-types/-/rpc-spec-types-7.1.1.tgz"
+  integrity sha512-FDDgXfAPfq28sQNnGhZr/+2kp5QTTcNZ5m/Q9y9Jrlux6brdPsbf9Sh1Q/lgz7i76arzNW/rzRY125RzqGWANg==
+  dependencies:
+    "@solana/errors" "7.1.1"
 
 "@solana/rpc-spec@2.3.0":
   version "2.3.0"
@@ -2215,6 +2524,15 @@
     "@solana/errors" "6.10.0"
     "@solana/rpc-spec-types" "6.10.0"
     "@solana/subscribable" "6.10.0"
+
+"@solana/rpc-spec@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-spec/-/rpc-spec-7.1.1.tgz"
+  integrity sha512-1FwhgL18qasRYlWffdBNIUoxQyGLzdh3YMQW3y33M61vk/q1ldEGJRypV9B/SrXmxwqDiUbQ+m+zgainCTp1ZA==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/subscribable" "7.1.1"
 
 "@solana/rpc-subscriptions-api@^6.10.0", "@solana/rpc-subscriptions-api@6.10.0":
   version "6.10.0"
@@ -2242,6 +2560,19 @@
     "@solana/transaction-messages" "2.3.0"
     "@solana/transactions" "2.3.0"
 
+"@solana/rpc-subscriptions-api@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-subscriptions-api/-/rpc-subscriptions-api-7.1.1.tgz"
+  integrity sha512-QTiQHmw2I/+fzeYsqII1guASiZskS7KZwPCI+6Arfk6Hxo9hBH8APuIu6uS8beSlVfnBCoOMybVDsnPF88fAoQ==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/rpc-subscriptions-spec" "7.1.1"
+    "@solana/rpc-transformers" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
+
 "@solana/rpc-subscriptions-channel-websocket@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/rpc-subscriptions-channel-websocket/-/rpc-subscriptions-channel-websocket-2.3.0.tgz"
@@ -2263,6 +2594,17 @@
     "@solana/subscribable" "6.10.0"
     ws "^8.21.0"
 
+"@solana/rpc-subscriptions-channel-websocket@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-subscriptions-channel-websocket/-/rpc-subscriptions-channel-websocket-7.1.1.tgz"
+  integrity sha512-DRakQwjJsvbLDMDafMC9hM82YotUwSnrzqUDsrm6+e4YpKvzjXCyWlQ9kDJtrYeAA15sNVRpfs4L9Y7SoiWgrw==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/rpc-subscriptions-spec" "7.1.1"
+    "@solana/subscribable" "7.1.1"
+    ws "^8.21.0"
+
 "@solana/rpc-subscriptions-spec@^6.10.0", "@solana/rpc-subscriptions-spec@6.10.0":
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/rpc-subscriptions-spec/-/rpc-subscriptions-spec-6.10.0.tgz"
@@ -2282,6 +2624,16 @@
     "@solana/promises" "2.3.0"
     "@solana/rpc-spec-types" "2.3.0"
     "@solana/subscribable" "2.3.0"
+
+"@solana/rpc-subscriptions-spec@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-subscriptions-spec/-/rpc-subscriptions-spec-7.1.1.tgz"
+  integrity sha512-yrqd+fV2Ae4hkzXX42aKRmTrz3FwvzKqO4h0ahs88dzSvXpy8l6Svu1k+uRgMlZ64g2P83jfQW+3Pj5fBoxmdw==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/promises" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/subscribable" "7.1.1"
 
 "@solana/rpc-subscriptions@2.3.0":
   version "2.3.0"
@@ -2317,6 +2669,23 @@
     "@solana/rpc-types" "6.10.0"
     "@solana/subscribable" "6.10.0"
 
+"@solana/rpc-subscriptions@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-subscriptions/-/rpc-subscriptions-7.1.1.tgz"
+  integrity sha512-5BaCgzPnf9WSEXBdASnM7iuPWtdrXKtG16qVTfm+9icLHDAkv2y62XF6XMSQQllH2k1RvLH1yOryZazAbaIyHA==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/fast-stable-stringify" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/promises" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/rpc-subscriptions-api" "7.1.1"
+    "@solana/rpc-subscriptions-channel-websocket" "7.1.1"
+    "@solana/rpc-subscriptions-spec" "7.1.1"
+    "@solana/rpc-transformers" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/subscribable" "7.1.1"
+
 "@solana/rpc-transformers@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/rpc-transformers/-/rpc-transformers-2.3.0.tgz"
@@ -2339,6 +2708,17 @@
     "@solana/rpc-spec-types" "6.10.0"
     "@solana/rpc-types" "6.10.0"
 
+"@solana/rpc-transformers@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-transformers/-/rpc-transformers-7.1.1.tgz"
+  integrity sha512-k8a/JZFso/nvPBgurOGJ/ZC6sXCtYE3lCvTj95i29pl45C4SgjdetJrAH/pWEEhQXcxaJs7OLBGmCh2enazlJw==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+
 "@solana/rpc-transport-http@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/rpc-transport-http/-/rpc-transport-http-2.3.0.tgz"
@@ -2358,6 +2738,16 @@
     "@solana/rpc-spec" "6.10.0"
     "@solana/rpc-spec-types" "6.10.0"
     undici-types "^8.4.1"
+
+"@solana/rpc-transport-http@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-transport-http/-/rpc-transport-http-7.1.1.tgz"
+  integrity sha512-Tljuh/sSkKMHrTqdYNaguUOkZ0T+Oj4+yHsUjKAzRsyffNLa67jx9gd5CtGfz3tpBpxDLVdNvdIaZgkhFwXk9g==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/rpc-spec" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    undici-types "^8.10.0"
 
 "@solana/rpc-types@^2.3.0", "@solana/rpc-types@2.3.0":
   version "2.3.0"
@@ -2383,6 +2773,19 @@
     "@solana/errors" "6.10.0"
     "@solana/fixed-points" "6.10.0"
     "@solana/nominal-types" "6.10.0"
+
+"@solana/rpc-types@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc-types/-/rpc-types-7.1.1.tgz"
+  integrity sha512-yHlSUWgynaaqevuqipGhhcZnmFVNs+F6KIlbUZ0kQY6NMVtaSzx5AQrtQjbtAQzNRsRTDYkKuQg8nOruiDoseQ==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/fixed-points" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
 
 "@solana/rpc@2.3.0":
   version "2.3.0"
@@ -2414,6 +2817,21 @@
     "@solana/rpc-transport-http" "6.10.0"
     "@solana/rpc-types" "6.10.0"
 
+"@solana/rpc@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/rpc/-/rpc-7.1.1.tgz"
+  integrity sha512-yXEzCrLrWb1m5QqAJEGodJ9cqu5QiwfirSZTUWiMg1JtUl4uXOm1sqWQVLrwBz/+ctvtZTvG8+bQQAemVQiqPA==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/fast-stable-stringify" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/rpc-api" "7.1.1"
+    "@solana/rpc-spec" "7.1.1"
+    "@solana/rpc-spec-types" "7.1.1"
+    "@solana/rpc-transformers" "7.1.1"
+    "@solana/rpc-transport-http" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+
 "@solana/signers@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/signers/-/signers-2.3.0.tgz"
@@ -2442,6 +2860,21 @@
     "@solana/offchain-messages" "6.10.0"
     "@solana/transaction-messages" "6.10.0"
     "@solana/transactions" "6.10.0"
+
+"@solana/signers@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/signers/-/signers-7.1.1.tgz"
+  integrity sha512-UfWYnAglm21q5hS3Op1bU5mYiWfx0VesovZcIur0uYPc3EJlfBVikl8pf745x+bB77xG6lIzNbb+99t48SQbkg==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+    "@solana/offchain-messages" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
 
 "@solana/spl-token-group@^0.0.7":
   version "0.0.7"
@@ -2483,6 +2916,14 @@
     "@solana/errors" "6.10.0"
     "@solana/promises" "6.10.0"
 
+"@solana/subscribable@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/subscribable/-/subscribable-7.1.1.tgz"
+  integrity sha512-l4Wzc2L+7WQPeC/kaCiia1aaUY/SJJdrNHnLibKchS2pb7YbF7J2OygsweHXliWCVpG0jZwcvIVpusgygbZQLw==
+  dependencies:
+    "@solana/errors" "7.1.1"
+    "@solana/promises" "7.1.1"
+
 "@solana/sysvars@^6.10.0", "@solana/sysvars@6.10.0":
   version "6.10.0"
   resolved "https://registry.npmjs.org/@solana/sysvars/-/sysvars-6.10.0.tgz"
@@ -2504,6 +2945,18 @@
     "@solana/codecs" "2.3.0"
     "@solana/errors" "2.3.0"
     "@solana/rpc-types" "2.3.0"
+
+"@solana/sysvars@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/sysvars/-/sysvars-7.1.1.tgz"
+  integrity sha512-EscE/HKbBRKedG6AtQ0t9LOX87bw409viferac5YSuvuDxtZvbMpCCJs89uEQPVpgvHtjMJhfsjEwMK97uG9pA==
+  dependencies:
+    "@solana/accounts" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
 
 "@solana/transaction-confirmation@2.3.0":
   version "2.3.0"
@@ -2537,6 +2990,36 @@
     "@solana/transaction-messages" "6.10.0"
     "@solana/transactions" "6.10.0"
 
+"@solana/transaction-confirmation@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/transaction-confirmation/-/transaction-confirmation-7.1.1.tgz"
+  integrity sha512-Kb3V5smmMbvdft/Z/Iu9MlsF+i44f3GLK8c8TVu0+yHo41rF7OeTnOvlQ+uw1NpCfOto4GgPMFDXklIiKdauuA==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/promises" "7.1.1"
+    "@solana/rpc" "7.1.1"
+    "@solana/rpc-subscriptions" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
+
+"@solana/transaction-introspection@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/transaction-introspection/-/transaction-introspection-7.1.1.tgz"
+  integrity sha512-o0f/wbwmgqRSqzr+RtCG8xZ5zTMVxnYv8LBmcDDCYvTeDPEF0EfHN8Oe28c7grQsXCIeaE+zXZ2p40lkTGZy4g==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+    "@solana/transactions" "7.1.1"
+
 "@solana/transaction-messages@2.3.0":
   version "2.3.0"
   resolved "https://registry.npmjs.org/@solana/transaction-messages/-/transaction-messages-2.3.0.tgz"
@@ -2566,6 +3049,21 @@
     "@solana/instructions" "6.10.0"
     "@solana/nominal-types" "6.10.0"
     "@solana/rpc-types" "6.10.0"
+
+"@solana/transaction-messages@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/transaction-messages/-/transaction-messages-7.1.1.tgz"
+  integrity sha512-UBgd/TU0c8blrYDC9sD9P+wgmOOEK4OdODxD8CxB7oumN4ZAENv20u0AdZuvu1n4OwWwc1ikhtKjwg18e4wTIg==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
 
 "@solana/transactions@2.3.0":
   version "2.3.0"
@@ -2603,6 +3101,24 @@
     "@solana/rpc-types" "6.10.0"
     "@solana/transaction-messages" "6.10.0"
 
+"@solana/transactions@7.1.1":
+  version "7.1.1"
+  resolved "https://registry.npmjs.org/@solana/transactions/-/transactions-7.1.1.tgz"
+  integrity sha512-jop8y4+xiDJlocRLxqN++33Z5PDTe72HwmtgGrcIuGB4zq7U/lUX0uZM1JVcs9d3lJ3wBy2CcLTCyoYb78Swhg==
+  dependencies:
+    "@solana/addresses" "7.1.1"
+    "@solana/codecs-core" "7.1.1"
+    "@solana/codecs-data-structures" "7.1.1"
+    "@solana/codecs-numbers" "7.1.1"
+    "@solana/codecs-strings" "7.1.1"
+    "@solana/errors" "7.1.1"
+    "@solana/functional" "7.1.1"
+    "@solana/instructions" "7.1.1"
+    "@solana/keys" "7.1.1"
+    "@solana/nominal-types" "7.1.1"
+    "@solana/rpc-types" "7.1.1"
+    "@solana/transaction-messages" "7.1.1"
+
 "@solana/wallet-adapter-alpha@^0.1.14":
   version "0.1.14"
   resolved "https://registry.npmjs.org/@solana/wallet-adapter-alpha/-/wallet-adapter-alpha-0.1.14.tgz"
@@ -2624,7 +3140,7 @@
   dependencies:
     "@solana/wallet-adapter-react" "^0.15.39"
 
-"@solana/wallet-adapter-base@^0.9.17", "@solana/wallet-adapter-base@^0.9.23", "@solana/wallet-adapter-base@^0.9.27":
+"@solana/wallet-adapter-base@^0.9.17", "@solana/wallet-adapter-base@^0.9.24", "@solana/wallet-adapter-base@^0.9.27":
   version "0.9.27"
   resolved "https://registry.npmjs.org/@solana/wallet-adapter-base/-/wallet-adapter-base-0.9.27.tgz"
   integrity sha512-kXjeNfNFVs/NE9GPmysBRKQ/nf+foSaq3kfVSeMcO/iVgigyRmB551OjU3WyAolLG/1jeEfKLqF9fKwMCRkUqg==
@@ -2955,50 +3471,50 @@
   dependencies:
     "@solana/wallet-adapter-base" "^0.9.27"
 
-"@solana/wallet-standard-chains@^1.1.1":
-  version "1.1.1"
-  resolved "https://registry.npmjs.org/@solana/wallet-standard-chains/-/wallet-standard-chains-1.1.1.tgz"
-  integrity sha512-Us3TgL4eMVoVWhuC4UrePlYnpWN+lwteCBlhZDUhFZBJ5UMGh94mYPXno3Ho7+iHPYRtuCi/ePvPcYBqCGuBOw==
+"@solana/wallet-standard-chains@^1.1.1", "@solana/wallet-standard-chains@^1.1.2":
+  version "1.1.2"
+  resolved "https://registry.npmjs.org/@solana/wallet-standard-chains/-/wallet-standard-chains-1.1.2.tgz"
+  integrity sha512-EZobEGclDBAFplpJC5F3d/s8Xnlqc5isNKuPrd5o9ZPZ7tWN84O0e68yIZ8MAOj9V7ieRadNiHtql7uIXCTyXg==
   dependencies:
     "@wallet-standard/base" "^1.1.0"
 
-"@solana/wallet-standard-features@^1.3.0":
-  version "1.3.0"
-  resolved "https://registry.npmjs.org/@solana/wallet-standard-features/-/wallet-standard-features-1.3.0.tgz"
-  integrity sha512-ZhpZtD+4VArf6RPitsVExvgkF+nGghd1rzPjd97GmBximpnt1rsUxMOEyoIEuH3XBxPyNB6Us7ha7RHWQR+abg==
+"@solana/wallet-standard-features@^1.3.0", "@solana/wallet-standard-features@^1.5.0":
+  version "1.5.0"
+  resolved "https://registry.npmjs.org/@solana/wallet-standard-features/-/wallet-standard-features-1.5.0.tgz"
+  integrity sha512-gxlLaEfPAqbhd3LNkK0Ks2pbVvDm1SDGqBK/ynDQy13Gu+qiURLpRCfSPjbtrw5bmqQsZ6rS2YJHL31bY/Koag==
   dependencies:
     "@wallet-standard/base" "^1.1.0"
     "@wallet-standard/features" "^1.1.0"
 
-"@solana/wallet-standard-util@^1.1.2":
-  version "1.1.2"
-  resolved "https://registry.npmjs.org/@solana/wallet-standard-util/-/wallet-standard-util-1.1.2.tgz"
-  integrity sha512-rUXFNP4OY81Ddq7qOjQV4Kmkozx4wjYAxljvyrqPx8Ycz0FYChG/hQVWqvgpK3sPsEaO/7ABG1NOACsyAKWNOA==
-  dependencies:
-    "@noble/curves" "^1.8.0"
-    "@solana/wallet-standard-chains" "^1.1.1"
-    "@solana/wallet-standard-features" "^1.3.0"
-
-"@solana/wallet-standard-wallet-adapter-base@^1.1.4":
+"@solana/wallet-standard-util@^1.1.2", "@solana/wallet-standard-util@^1.1.4":
   version "1.1.4"
-  resolved "https://registry.npmjs.org/@solana/wallet-standard-wallet-adapter-base/-/wallet-standard-wallet-adapter-base-1.1.4.tgz"
-  integrity sha512-Q2Rie9YaidyFA4UxcUIxUsvynW+/gE2noj/Wmk+IOwDwlVrJUAXCvFaCNsPDSyKoiYEKxkSnlG13OA1v08G4iw==
+  resolved "https://registry.npmjs.org/@solana/wallet-standard-util/-/wallet-standard-util-1.1.4.tgz"
+  integrity sha512-vkXUXmpYAFYK3xlaAM3dYbCOtsZLeJxq4Ygxl3rfh3z0cUsxpkONkmwCNop05HdES9+IOzofZlMXF40J00LNRg==
   dependencies:
-    "@solana/wallet-adapter-base" "^0.9.23"
-    "@solana/wallet-standard-chains" "^1.1.1"
-    "@solana/wallet-standard-features" "^1.3.0"
-    "@solana/wallet-standard-util" "^1.1.2"
+    "@noble/curves" "^1.8.2"
+    "@solana/wallet-standard-chains" "^1.1.2"
+    "@solana/wallet-standard-features" "^1.5.0"
+
+"@solana/wallet-standard-wallet-adapter-base@^1.1.6":
+  version "1.1.6"
+  resolved "https://registry.npmjs.org/@solana/wallet-standard-wallet-adapter-base/-/wallet-standard-wallet-adapter-base-1.1.6.tgz"
+  integrity sha512-SSgi5xHzuzM0a7KfDCAuFLZYqFWI8gqkff11fncaONuzX9/6b7OgLoxOkrLjycWx6+pqCQszQC/eZPBWY61SBg==
+  dependencies:
+    "@solana/wallet-adapter-base" "^0.9.24"
+    "@solana/wallet-standard-chains" "^1.1.2"
+    "@solana/wallet-standard-features" "^1.5.0"
+    "@solana/wallet-standard-util" "^1.1.4"
     "@wallet-standard/app" "^1.1.0"
     "@wallet-standard/base" "^1.1.0"
     "@wallet-standard/features" "^1.1.0"
     "@wallet-standard/wallet" "^1.1.0"
 
-"@solana/wallet-standard-wallet-adapter-react@^1.1.4":
-  version "1.1.4"
-  resolved "https://registry.npmjs.org/@solana/wallet-standard-wallet-adapter-react/-/wallet-standard-wallet-adapter-react-1.1.4.tgz"
-  integrity sha512-xa4KVmPgB7bTiWo4U7lg0N6dVUtt2I2WhEnKlIv0jdihNvtyhOjCKMjucWet6KAVhir6I/mSWrJk1U9SvVvhCg==
+"@solana/wallet-standard-wallet-adapter-react@^1.1.4", "@solana/wallet-standard-wallet-adapter-react@^1.1.7":
+  version "1.1.7"
+  resolved "https://registry.npmjs.org/@solana/wallet-standard-wallet-adapter-react/-/wallet-standard-wallet-adapter-react-1.1.7.tgz"
+  integrity sha512-xxOjSLJbvupgxmpclcY415WFDKMqwZZgEqrfxCuxE6NQSDXaJc2XvSIVl692nteWyi1Ln5RDMk9G7HZaD+pj/Q==
   dependencies:
-    "@solana/wallet-standard-wallet-adapter-base" "^1.1.4"
+    "@solana/wallet-standard-wallet-adapter-base" "^1.1.6"
     "@wallet-standard/app" "^1.1.0"
     "@wallet-standard/base" "^1.1.0"
 
@@ -3669,6 +4185,11 @@
   version "1.11.1"
   resolved "https://registry.npmjs.org/@unrs/resolver-binding-linux-x64-gnu/-/resolver-binding-linux-x64-gnu-1.11.1.tgz"
   integrity sha512-C3ZAHugKgovV5YvAMsxhq0gtXuwESUKc5MhEtjBpLoHPLYM+iuwSj3lflFwK3DPm68660rZ7G8BMcwSro7hD5w==
+
+"@unrs/resolver-binding-linux-x64-musl@1.11.1":
+  version "1.11.1"
+  resolved "https://registry.npmjs.org/@unrs/resolver-binding-linux-x64-musl/-/resolver-binding-linux-x64-musl-1.11.1.tgz"
+  integrity sha512-rV0YSoyhK2nZ4vEswT/QwqzqQXw5I6CjoaYMOX0TqBlWhojUf8P94mvI7nuJTeaCkkds3QE4+zS8Ko+GdXuZtA==
 
 "@upstash/core-analytics@^0.0.10":
   version "v0.0.10"
@@ -9402,6 +9923,11 @@ undici-types@^7.11.0:
   version "7.29.0"
   resolved "https://registry.npmjs.org/undici-types/-/undici-types-7.29.0.tgz"
   integrity sha512-vamA8dGlzMwhpyYpQp9d8vka3o4D/yn5I7ez7Or+msDA4bZ8Uh+Zy91WvWf3I73gDAkFha9JcYRqm2li0Npfgg==
+
+undici-types@^8.10.0:
+  version "8.10.2"
+  resolved "https://registry.npmjs.org/undici-types/-/undici-types-8.10.2.tgz"
+  integrity sha512-7/+aSjzkUoLc92hV22bTW4aGanXf800zbwguhcICs0OAoCF9wDOE4wkopQ+SqfhXZm8mCK8gHpdTs7pZUWzK3w==
 
 undici-types@^8.4.1:
   version "8.9.0"

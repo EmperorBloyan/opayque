@@ -178,7 +178,8 @@ export async function POST(request: Request) {
       `&name=${encodeURIComponent(merchantName)}` +
       `&session=${encodeURIComponent(sessionId)}` +
       `&order=${encodeURIComponent(orderId)}` +
-      `&token=${encodeURIComponent(settlementToken)}`;
+      `&token=${encodeURIComponent(settlementToken)}` +
+      `&mode=${encodeURIComponent(transferMode)}`;
 
     // Keep session record for tracking (optional but useful)
     const { error: insertError } = await supabase.from("checkout_sessions").insert([

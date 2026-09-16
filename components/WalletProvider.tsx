@@ -4,6 +4,7 @@ import React, { useMemo, useCallback, useState, useEffect } from "react";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletAdapterNetwork, WalletError } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { useStandardWalletAdapters } from "@solana/wallet-standard-wallet-adapter-react";
 import { clusterApiUrl } from "@solana/web3.js";
 import {
   PhantomWalletAdapter,
@@ -78,6 +79,7 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
     ],
     [network]
   );
+  const walletAdapters = useStandardWalletAdapters(wallets);
 
   const onError = useCallback((error: WalletError) => {
     if (/rejected/i.test(error?.message || "") || error.name === "WalletConnectionError") {
@@ -96,7 +98,7 @@ export default function WalletProviderWrapper({ children }: { children: React.Re
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect onError={onError}>
+      <WalletProvider wallets={walletAdapters} autoConnect onError={onError}>
         <WalletModalProvider>
           <EnvironmentProvider>
             <CurrencyProvider>

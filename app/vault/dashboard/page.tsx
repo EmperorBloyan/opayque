@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 import { useCurrency } from '@/lib/context/CurrencyContext';
-import { Search, RotateCcw, Copy, Check, AlertTriangle, X, ChevronDown, Coins } from 'lucide-react';
+import { Search, RotateCcw, Copy, Check, AlertTriangle, X, ChevronDown } from 'lucide-react';
 
 const formatUSDC = (val: number) => 
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -383,7 +383,7 @@ export default function VaultDashboard() {
   const privateBalance = getVolume("private");
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="flex min-h-0 flex-1 flex-col gap-8 animate-in fade-in duration-700">
       {/* Vault Balance Banner */}
       <div
         role="button"
@@ -412,30 +412,23 @@ export default function VaultDashboard() {
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">{volumeLabels[volumeView]}</p>
             <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(displayedVolume).formatted}</h2>
           </div>
-          <div className="min-w-44">
-            <label htmlFor="vault-display-currency" className="mb-2 block text-[9px] font-bold uppercase tracking-[0.22em] text-zinc-500">Display currency</label>
-            <div className="relative">
-              <Coins size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-purple-300" />
-              <select
-                id="vault-display-currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                onClick={(event) => event.stopPropagation()}
-                className="w-full appearance-none rounded-2xl border border-white/10 bg-black/30 py-3 pl-10 pr-9 text-xs font-black uppercase tracking-[0.16em] text-zinc-200 outline-none transition hover:border-purple-400/40 focus:border-purple-400/70 focus:bg-black/50"
-              >
-                {Object.keys(rates).length > 0 ? (
-                  Object.keys(rates).map((curr) => (
-                    <option key={curr} value={curr}>
-                      {curr === "USD" ? "USD · Dollars" : curr}
-                    </option>
-                  ))
-                ) : (
-                  <option value="USD">USD · Dollars</option>
-                )}
-              </select>
-              <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            </div>
-            <p className="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-600">USDC payments · {currency} display</p>
+          <div>
+            <label className="block text-[9px] text-zinc-400 mb-2 font-medium uppercase tracking-widest">Display Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:border-purple-500"
+            >
+              {Object.keys(rates).length > 0 ? (
+                Object.keys(rates).map((curr) => (
+                  <option key={curr} value={curr}>
+                    {curr}
+                  </option>
+                ))
+              ) : (
+                <option value="USD">USD</option>
+              )}
+            </select>
           </div>
         </div>
         
@@ -455,7 +448,7 @@ export default function VaultDashboard() {
       </div>
 
       {/* Activity Table Card */}
-      <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-900/40 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 px-2">
           <div className="relative" ref={statusMenuRef}>
             <button
@@ -517,7 +510,7 @@ export default function VaultDashboard() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl">
+        <div className="min-h-0 flex-1 overflow-auto rounded-2xl">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-white/5 text-zinc-600 uppercase text-[9px]">

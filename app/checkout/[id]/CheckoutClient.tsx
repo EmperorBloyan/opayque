@@ -147,9 +147,6 @@ export default function CheckoutClient({ id, amount, amount_fiat, amount_token, 
             </div>
             <h3 className="text-2xl font-extrabold text-emerald-300">Payment Successful</h3>
             <p className="text-sm text-zinc-400">Thank you — your transaction was confirmed.</p>
-            {transactionSignature && (
-              <p className="mt-2 text-xs text-zinc-300">Reference: <span className="font-mono text-white">{transactionSignature}</span></p>
-            )}
           </div>
         )}
 

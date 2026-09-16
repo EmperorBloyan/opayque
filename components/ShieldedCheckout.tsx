@@ -177,7 +177,7 @@ export default function ShieldedCheckout({
   useEffect(() => {
     if (!checkoutSessionId) return;
     let cancelled = false;
-    fetch(`/api/v1/checkout/${encodeURIComponent(checkoutSessionId)}/status`)
+    fetch(`/api/v1/checkout/${encodeURIComponent(checkoutSessionId)}/status`, { cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => {
         if (!cancelled) setTransferMode(payload?.transferMode === "public" ? "public" : "private");
@@ -213,21 +213,33 @@ export default function ShieldedCheckout({
     setMessage("Building transaction...");
     setSuccessSignature(null);
     const intentId = transactionId || checkoutSessionId || "";
-    writePendingPayment({
-      intentId,
-      sender: publicKey.toBase58(),
-      recipient: safeMerchantPubkey,
-      amount: safeAmount,
-      phase: "building",
-      startedAt: Date.now(),
-    });
-
+    let paymentTransferMode = transferMode;
     let paymentConnection: Connection | null = null;
     try {
+      if (checkoutSessionId) {
+        const statusResponse = await fetch(
+          `/api/v1/checkout/${encodeURIComponent(checkoutSessionId)}/status`,
+          { cache: "no-store" }
+        );
+        const statusPayload = await statusResponse.json().catch(() => ({}));
+        if (statusResponse.ok) {
+          paymentTransferMode = statusPayload?.transferMode === "public" ? "public" : "private";
+          setTransferMode(paymentTransferMode);
+        }
+      }
+      writePendingPayment({
+        intentId,
+        sender: publicKey.toBase58(),
+        recipient: safeMerchantPubkey,
+        amount: safeAmount,
+        phase: "building",
+        startedAt: Date.now(),
+      });
+
       const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
       const rpcUrls = getSolanaRpcUrls();
-      const buildPromise = transferMode === "private"
+      const buildPromise = paymentTransferMode === "private"
         ? withTimeout(
             buildShieldedTransfer(
               publicKey.toBase58(),
@@ -295,14 +307,14 @@ export default function ShieldedCheckout({
 
       paymentConnection = new Connection(built.rpcUrl || selectedRpc, "confirmed");
 
-      if (built.mode !== transferMode) {
-        throw new Error(`${transferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
+      if (built.mode !== paymentTransferMode) {
+        throw new Error(`${paymentTransferMode === "private" ? "Private" : "Public"} payment transaction was not returned.`);
       }
 
       if (built.transaction instanceof VersionedTransaction && signTransaction) {
         setMessage("Approve in your wallet...");
         writePendingPayment({ intentId, sender: publicKey.toBase58(), recipient: safeMerchantPubkey, amount: safeAmount, phase: "awaiting_wallet", startedAt: Date.now() });
-        signature = transferMode === "public"
+        signature = paymentTransferMode === "public"
           ? await sendStandardPayment(paymentConnection, built.transaction, signTransaction)
           : await sendPayment(paymentConnection, built.transaction, signTransaction);
         setMessage("Payment confirmed on Solana.");
@@ -385,6 +397,19 @@ export default function ShieldedCheckout({
     }
   };
 
+  if (status === "success") {
+    return (
+      <div className="flex min-h-[260px] w-full max-w-md flex-col items-center justify-center rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-8 text-center shadow-2xl">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
+          <LucideCheckCircle2 className="text-emerald-400" size={32} />
+        </div>
+        <p className="mt-5 text-xl font-black uppercase tracking-tight text-emerald-300">
+          Payment Successful
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full max-w-md p-8 bg-white dark:bg-zinc-950 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-300">
       <div className="flex flex-col gap-6 text-center">
@@ -423,7 +448,7 @@ export default function ShieldedCheckout({
             ≈ {safeAmount.toFixed(2)} {settlementToken || "USDC"}
           </p>
 
-          {allowCustomAmount && status !== "success" && (
+          {allowCustomAmount && (
             <div className="mt-4 text-left">
               <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 Custom amount ({settlementToken || "USDC"})
@@ -516,34 +541,7 @@ export default function ShieldedCheckout({
           </div>
         )}
 
-        {status === "success" ? (
-          <div
-            className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6"
-            onClick={(e) => e.preventDefault()}
-          >
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
-              <LucideCheckCircle2 className="text-emerald-400" size={28} />
-            </div>
-            <p className="text-emerald-300 text-xl font-black uppercase">
-              Payment Successful
-            </p>
-            <p className="mt-2 text-sm text-zinc-400">
-              {transferMode === "private" ? "Private transfer of" : "Payment of"}{" "}
-              <span className="text-white font-semibold">
-                {safeAmount.toFixed(2)} {settlementToken || "USDC"}
-              </span>{" "}
-              finalized.
-            </p>
-            {successSignature && (
-              <p className="mt-3 text-[10px] font-mono text-zinc-500 break-all">
-                Ref: {successSignature}
-              </p>
-            )}
-            <p className="mt-5 text-xs uppercase tracking-[0.25em] text-zinc-500">
-              Returning in {countdown ?? 5}s
-            </p>
-          </div>
-        ) : (
+        {
           <>
             {!connected ? (
               <div className="flex justify-center">
@@ -579,7 +577,7 @@ export default function ShieldedCheckout({
               </p>
             )}
           </>
-        )}
+        }
       </div>
     </div>
   );

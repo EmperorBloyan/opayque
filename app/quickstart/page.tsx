@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isValidPublishableKey } from "@/lib/auth/merchantAccess";
 import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
+import { readSandboxApiKey, writeSandboxApiKey } from "@/lib/client/sandboxApiKey";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import {
   ArrowLeft, Sparkles, Code2, CheckCircle2,
@@ -67,11 +68,7 @@ export default function QuickstartPage() {
     setError(null);
 
     try {
-      let apiKey: string | null = null;
-
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('opayque_api_keys');
-      }
+      let apiKey: string | null = typeof window !== "undefined" ? readSandboxApiKey() : null;
 
       if (!apiKey) {
         try {
@@ -85,6 +82,7 @@ export default function QuickstartPage() {
           if (createRes.ok) {
             const data = await createRes.json();
             apiKey = data?.rawSecretKey || null;
+            writeSandboxApiKey(apiKey);
           }
         } catch {
           apiKey = null;
