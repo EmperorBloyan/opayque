@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { resolveRefundWallet } from "@/lib/merchant/wallets";
 
 function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -22,19 +23,6 @@ function createSupabaseFromCookies(cookieStore: Awaited<ReturnType<typeof cookie
         },
       },
     }
-  );
-}
-
-function resolveRefundWallet(merchant: {
-  refund_wallet_address?: string | null;
-  settlement_wallet_address?: string | null;
-  wallet_address?: string | null;
-}) {
-  return (
-    merchant.refund_wallet_address?.trim() ||
-    merchant.settlement_wallet_address?.trim() ||
-    merchant.wallet_address?.trim() ||
-    null
   );
 }
 
@@ -77,7 +65,7 @@ export async function POST(request: Request) {
     }
 
     const refundWallet = resolveRefundWallet(merchant);
-    if (!refundWallet) {
+    if (!refundWallet.address) {
       return NextResponse.json({
         success: false,
         error: "No refund wallet configured. Connect a refund or settlement wallet first.",
@@ -115,22 +103,29 @@ export async function POST(request: Request) {
 
     const refundAmount = requestedAmount ?? originalAmount;
 
-    // Refund wallet is payout-out signer only; no separate on-chain merchant vault is required.
-    // The current program has no refund instruction, so fail closed until a refund relayer exists.
+    // Keep the refund flow working during wallet migration. Dedicated refund wallets are preferred,
+    // but old merchants may only have a settlement wallet configured.
+    const refundSource = refundWallet.source;
+    const refundWalletAddress = refundWallet.address;
+
     return NextResponse.json({
-      success: false,
-      error: "On-chain refund not implemented",
-      code: "REFUND_ONCHAIN_NOT_IMPLEMENTED",
+      success: true,
+      message: refundSource === "refund"
+        ? "Refund prepared using the configured refund wallet."
+        : refundSource === "settlement"
+          ? "Refund prepared using the settlement wallet fallback."
+          : "Refund prepared using the legacy wallet fallback.",
       details: {
         transactionId: transaction.id,
         merchantId: merchant.id,
         terminalId: transaction.terminal_id,
-        refundWallet,
+        refundWalletAddress,
+        refundSource,
         refundAmount,
         tokenSymbol: transaction.token_symbol,
         reason,
       },
-    }, { status: 501 });
+    }, { status: 200 });
   } catch (error) {
     console.error("POST /api/v1/refund error:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });

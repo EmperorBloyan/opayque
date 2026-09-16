@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Copy, ExternalLink, Loader2, Play, QrCode, ShieldChec
 import { QRCodeSVG } from "qrcode.react";
 import { isRealMerchantId } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
+import { clearSandboxApiKey, readSandboxApiKey, writeSandboxApiKey } from "@/lib/client/sandboxApiKey";
 
 interface MerchantProfile {
   id: string;
@@ -27,12 +28,8 @@ function maskApiKey(value: string) {
   return value.length > 12 ? `${value.slice(0, 12)}...${value.slice(-4)}` : "Configured test key";
 }
 
-function readSandboxKey() {
-  return "";
-}
-
 async function resolveTestApiKey(): Promise<string> {
-  const cached = readSandboxKey();
+  const cached = readSandboxApiKey();
   if (cached.startsWith("osk_test_")) return cached;
   return "";
 }
@@ -81,7 +78,7 @@ export default function DeveloperSandbox() {
         );
       }
 
-      const validCachedKey = readSandboxKey();
+      const validCachedKey = readSandboxApiKey();
       if (validCachedKey) {
         setApiKey(validCachedKey);
       }

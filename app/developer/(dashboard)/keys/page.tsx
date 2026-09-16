@@ -9,6 +9,7 @@ import { resolveMerchantAccessStatus } from "@/lib/auth/merchantAccess";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
 import { reauthenticateForSensitiveAction } from "@/lib/client/reauthenticate";
+import { writeSandboxApiKey } from "@/lib/client/sandboxApiKey";
 import type { TransferMode } from "@/lib/payments/transferMode";
 import SettlementWalletSection from "@/components/wallet/SettlementWalletSection";
 import {
@@ -322,6 +323,9 @@ export default function ApiKeysPage() {
       });
 
       setVisibleSecretId(newKey.id);
+      if (targetEnv === 'devnet' && newKey.secret) {
+        writeSandboxApiKey(newKey.secret);
+      }
       setProfileMessage(
         'New API key created. Copy the secret now — it will not be shown again.'
       );

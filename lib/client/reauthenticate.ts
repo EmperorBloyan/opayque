@@ -1,8 +1,20 @@
 import { createClient } from "@/lib/supabase/client";
 
+export interface SensitivePasswordRequest {
+  resolve: (password: string) => void;
+  reject: (error: Error) => void;
+}
+
+function requestPassword(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    window.dispatchEvent(new CustomEvent<SensitivePasswordRequest>("opayque:reauth-request", {
+      detail: { resolve, reject },
+    }));
+  });
+}
+
 export async function reauthenticateForSensitiveAction() {
-  const password = window.prompt("Enter your password to confirm this sensitive change.");
-  if (!password) throw new Error("Password confirmation is required.");
+  const password = await requestPassword();
 
   const response = await fetch("/api/auth/reauth", {
     method: "POST",

@@ -2,6 +2,7 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import React from "react";
 import WalletProviderWrapper from "../components/WalletProvider";
+import SensitiveActionDialog from "../components/SensitiveActionDialog";
 
 export const metadata = {
   title: "Opayque | Shielded Merchant Infrastructure",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <WalletProviderWrapper>
           {children}
         </WalletProviderWrapper>
+        <SensitiveActionDialog />
       </body>
     </html>
   );

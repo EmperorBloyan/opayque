@@ -1,11 +1,11 @@
 "use client";
 
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { getAuthenticatedMerchantId } from '@/lib/auth/authenticatedMerchant';
 import { useCurrency } from '@/lib/context/CurrencyContext';
-import { Search, RotateCcw, Copy, Check, AlertTriangle, X } from 'lucide-react';
+import { Search, RotateCcw, Copy, Check, AlertTriangle, X, ChevronDown, Coins } from 'lucide-react';
 
 const formatUSDC = (val: number) => 
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -13,13 +13,17 @@ const formatUSDC = (val: number) =>
 export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
   const { currency, setCurrency, rates, convert } = useCurrency();
-  const [privateBalance, setPrivateBalance] = useState<number>(0);
+  const [volumeView, setVolumeView] = useState<"private" | "standard" | "total">("private");
   const [transactions, setTransactions] = useState<any[]>([]);
   const [flushLoading, setFlushLoading] = useState(false);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
+  const [flushError, setFlushError] = useState<string | null>(null);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Refund Modal State
   const [selectedTxForRefund, setSelectedTxForRefund] = useState<any | null>(null);
@@ -39,22 +43,22 @@ export default function VaultDashboard() {
     });
   };
 
-  // Load from local storage and listen for cross-tab or component updates
-  useEffect(() => {
-    const resolvedBalance = transactions.reduce((sum, tx) => {
+  const isSuccessfulPayment = (status: unknown) =>
+    ["SETTLED", "SHIELDED", "SHIELDED_CONFIRMED", "CONFIRMED", "SUCCESS"].includes(
+      String(status ?? "").toUpperCase()
+    );
+
+  const getVolume = (mode: "private" | "standard" | "total") =>
+    transactions.reduce((sum, tx) => {
       const amount = Number(tx.amount ?? 0);
-      const status = String(tx.status ?? '').toUpperCase();
-      if (!Number.isFinite(amount)) {
-        return sum;
-      }
-      if (
-        ["SETTLED", "SHIELDED", "SHIELDED_CONFIRMED", "CONFIRMED", "SUCCESS"].includes(status)
-      ) {
-        return sum + amount;
-      }
-      return sum;
+      if (!Number.isFinite(amount) || amount <= 0 || !isSuccessfulPayment(tx.status)) return sum;
+      const transferMode = tx.transferMode === "public" ? "standard" : "private";
+      return mode === "total" || transferMode === mode ? sum + amount : sum;
     }, 0);
-    setPrivateBalance(resolvedBalance);
+
+  // Keep the settlement action tied to the private shielded balance.
+  useEffect(() => {
+    const resolvedBalance = getVolume("private");
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('opayque_balance', String(resolvedBalance));
@@ -68,9 +72,18 @@ export default function VaultDashboard() {
     const supabase = createSupabaseBrowserClient();
     try {
       const seedTransactions = async (merchantId: string) => {
-        const response = await fetch('/api/merchant/activity?page=1&pageSize=20', { credentials: 'include', cache: 'no-store' });
-        const payload = await response.json().catch(() => ({}));
-        const data = response.ok ? payload.data : null;
+        const allRows: any[] = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const response = await fetch(`/api/merchant/activity?page=${page}&pageSize=100`, { credentials: 'include', cache: 'no-store' });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !Array.isArray(payload.data)) break;
+          allRows.push(...payload.data);
+          hasMore = payload.hasMore === true;
+          page += 1;
+        }
+        const data = allRows;
 
         if (Array.isArray(data)) {
           const mapped = data.map((row: any) => ({
@@ -81,11 +94,12 @@ export default function VaultDashboard() {
             status: String(row.status ?? 'Pending'),
             time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
             terminalId: row.terminal_id ?? null,
+            transferMode: row.transfer_mode === "public" ? "public" : "private",
           }));
 
           persistTransactions((current) => {
             const merged = [...mapped, ...current.filter((tx) => !mapped.some((next) => next.id === tx.id))];
-            return merged.slice(0, 20);
+            return merged;
           });
         }
       };
@@ -131,8 +145,9 @@ export default function VaultDashboard() {
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
               terminalId: row.terminal_id ?? null,
+              transferMode: row.transfer_mode === "public" ? "public" : "private",
             };
-            persistTransactions((current) => [nextRow, ...current].slice(0, 20));
+            persistTransactions((current) => [nextRow, ...current]);
           }
         )
         .on(
@@ -149,15 +164,16 @@ export default function VaultDashboard() {
               status: String(row.status ?? 'Pending'),
               time: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
               terminalId: row.terminal_id ?? null,
+              transferMode: row.transfer_mode === "public" ? "public" : "private",
             };
             persistTransactions((current) => {
               const existingIndex = current.findIndex((tx: any) => tx.id === nextRow.id);
               if (existingIndex >= 0) {
                 const updated = [...current];
                 updated[existingIndex] = nextRow;
-                return updated.slice(0, 20);
+                return updated;
               }
-              return [nextRow, ...current].slice(0, 20);
+              return [nextRow, ...current];
             });
           }
         )
@@ -173,44 +189,46 @@ export default function VaultDashboard() {
   }, []);
 
   const handleSettlement = async () => {
+    const privateBalance = getVolume("private");
     if (privateBalance <= 0) return;
     setFlushLoading(true);
+    setFlushMessage(null);
+    setFlushError(null);
 
     try {
       const merchantId = await getAuthenticatedMerchantId();
       if (!merchantId) throw new Error("Authenticated merchant not found");
 
       const supabase = createSupabaseBrowserClient();
-      const settleTx = {
+      const settlement = {
         merchant_id: merchantId,
-        terminal_id: null,
-        signature: null,
-        token_symbol: "USDC",
-        amount: -privateBalance,
-        status: "settled",
-        payload_hash: `demo-l1-settlement-${Date.now()}`,
+        amount: privateBalance,
+        currency: "USDC",
+        status: "completed",
+        payout_id: `demo-l1-settlement-${Date.now()}`,
       };
 
       const { data, error } = await supabase
-        .from("payment_ledger")
-        .insert(settleTx)
+        .from("settlements")
+        .insert(settlement)
         .select()
         .single();
 
-      if (error || !data) throw new Error(error?.message || "Failed to persist demo settlement");
+      if (error || !data) throw new Error(error?.message || "Failed to record demo settlement");
 
       persistTransactions((current) => [{
         id: String(data.id),
         staff: "System (DEMO L1 Settlement)",
         category: "Settlement",
-        amount: Number(data.amount),
+        amount: -Number(data.amount),
         status: String(data.status),
         time: data.created_at,
         terminalId: null,
-      }, ...current].slice(0, 20));
-      setPrivateBalance(0);
+      }, ...current]);
+      setFlushMessage("Demo L1 settlement recorded successfully.");
     } catch (error) {
       console.error("Demo L1 settlement failed", error);
+      setFlushError(error instanceof Error ? error.message : "Demo L1 settlement failed");
     } finally {
       setFlushLoading(false);
     }
@@ -336,10 +354,53 @@ export default function VaultDashboard() {
     return Array.from(statuses).sort();
   }, [transactions]);
 
+  useEffect(() => {
+    if (!showStatusMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!statusMenuRef.current?.contains(event.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowStatusMenu(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showStatusMenu]);
+
+  const volumeLabels = {
+    private: "Private Shielded Volume",
+    standard: "Standard Payment Volume",
+    total: "Total Volume",
+  } as const;
+  const displayedVolume = getVolume(volumeView);
+  const privateBalance = getVolume("private");
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       {/* Vault Balance Banner */}
-      <div className="p-10 rounded-[3rem] bg-zinc-900 border border-white/10 relative overflow-hidden">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button, select")) return;
+          setVolumeView((current) => current === "private" ? "standard" : current === "standard" ? "total" : "private");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setVolumeView((current) => current === "private" ? "standard" : current === "standard" ? "total" : "private");
+          }
+        }}
+        aria-label={`Show ${volumeView === "private" ? "standard payment" : volumeView === "standard" ? "total" : "private shielded"} volume`}
+        className="block w-full p-10 rounded-[3rem] bg-zinc-900 border border-white/10 relative overflow-hidden text-left transition-colors hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+      >
          {publicKey && (
            <div className="absolute top-6 right-10 text-[9px] font-mono text-zinc-600 uppercase tracking-widest">
              Vault ID: {publicKey.toBase58().slice(0, 6)}...{publicKey.toBase58().slice(-4)}
@@ -348,67 +409,110 @@ export default function VaultDashboard() {
 
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-6">
           <div>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Private Shielded Volume</p>
-            <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(privateBalance).formatted}</h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">{volumeLabels[volumeView]}</p>
+            <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(displayedVolume).formatted}</h2>
           </div>
-          <div>
-            <label className="block text-[9px] text-zinc-400 mb-2 font-medium uppercase tracking-widest">Display Currency</label>
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:border-purple-500"
-            >
-              {Object.keys(rates).length > 0 ? (
-                Object.keys(rates).map((curr) => (
-                  <option key={curr} value={curr}>
-                    {curr}
-                  </option>
-                ))
-              ) : (
-                <option value="USD">USD</option>
-              )}
-            </select>
+          <div className="min-w-44">
+            <label htmlFor="vault-display-currency" className="mb-2 block text-[9px] font-bold uppercase tracking-[0.22em] text-zinc-500">Display currency</label>
+            <div className="relative">
+              <Coins size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-purple-300" />
+              <select
+                id="vault-display-currency"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                onClick={(event) => event.stopPropagation()}
+                className="w-full appearance-none rounded-2xl border border-white/10 bg-black/30 py-3 pl-10 pr-9 text-xs font-black uppercase tracking-[0.16em] text-zinc-200 outline-none transition hover:border-purple-400/40 focus:border-purple-400/70 focus:bg-black/50"
+              >
+                {Object.keys(rates).length > 0 ? (
+                  Object.keys(rates).map((curr) => (
+                    <option key={curr} value={curr}>
+                      {curr === "USD" ? "USD · Dollars" : curr}
+                    </option>
+                  ))
+                ) : (
+                  <option value="USD">USD · Dollars</option>
+                )}
+              </select>
+              <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            </div>
+            <p className="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-600">USDC payments · {currency} display</p>
           </div>
         </div>
         
-        <button 
-          onClick={handleSettlement}
-          disabled={privateBalance <= 0 || flushLoading || !merchantReady}
-          className="px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
-        >
-          {flushLoading ? "Saving Demo Settlement..." : "Execute Demo L1 Settlement"}
-        </button>
+        {volumeView === "private" && (
+          <>
+            <button
+              onClick={handleSettlement}
+              disabled={privateBalance <= 0 || flushLoading || !merchantReady}
+              className="px-8 py-4 bg-purple-600 disabled:opacity-20 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-500/20"
+            >
+              {flushLoading ? "Saving Demo Settlement..." : "Execute Demo L1 Settlement"}
+            </button>
+            {flushMessage && <p className="mt-3 text-xs font-bold text-emerald-300">{flushMessage}</p>}
+            {flushError && <p className="mt-3 text-xs font-bold text-red-300">{flushError}</p>}
+          </>
+        )}
       </div>
 
       {/* Activity Table Card */}
       <div className="p-8 bg-zinc-900/40 border border-white/5 rounded-[3rem]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 px-2">
-          <div className="flex items-center gap-3">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent Activity</h3>
-            <select
-              aria-label="Filter activity by status"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-full border border-white/10 bg-zinc-950/80 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-300 outline-none transition focus:border-purple-500/50"
+          <div className="relative" ref={statusMenuRef}>
+            <button
+              type="button"
+              aria-expanded={showStatusMenu}
+              aria-haspopup="menu"
+              onClick={() => setShowStatusMenu((current) => !current)}
+              className="group flex items-center gap-3 rounded-2xl px-2 py-1 text-left transition-colors hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-purple-500/40"
             >
-              <option value="ALL">All</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              <span>
+                <span className="block text-xs font-bold uppercase tracking-widest text-zinc-300">Recent Activity</span>
+                <span className="mt-1 block text-[9px] font-bold uppercase tracking-[0.18em] text-purple-400/80">
+                  {statusFilter === "ALL" ? "All statuses" : statusFilter.replaceAll("_", " ")}
+                </span>
+              </span>
+              <ChevronDown size={15} className={`text-zinc-500 transition-transform ${showStatusMenu ? "rotate-180 text-purple-400" : "group-hover:text-zinc-300"}`} />
+            </button>
+
+            {showStatusMenu && (
+              <div
+                role="menu"
+                aria-label="Filter recent activity by status"
+                className="absolute left-0 top-full z-20 mt-3 min-w-52 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
+              >
+                {["ALL", ...statusOptions].map((status) => {
+                  const selected = statusFilter === status;
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        setStatusFilter(status);
+                        setShowStatusMenu(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${selected ? "bg-purple-500/15 text-purple-300" : "text-zinc-400 hover:bg-white/[0.06] hover:text-white"}`}
+                    >
+                      <span>{status === "ALL" ? "All statuses" : status.replaceAll("_", " ")}</span>
+                      <span className={`h-1.5 w-1.5 rounded-full ${selected ? "bg-purple-400 shadow-[0_0_10px_rgba(192,132,252,0.9)]" : "bg-zinc-700"}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           
           {/* TX ID Search Bar */}
-          <div className="relative w-full sm:w-72">
-            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <div className="relative w-full sm:w-80">
+            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-300" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Tx ID, endpoint..."
-              className="w-full rounded-full border border-white/10 bg-zinc-950/80 pl-10 pr-4 py-2 text-xs text-white placeholder-zinc-500 outline-none transition focus:border-purple-500/50"
+              placeholder="Search activity, transaction, endpoint..."
+              aria-label="Search recent activity"
+              className="w-full rounded-2xl border border-white/10 bg-black/25 py-3 pl-11 pr-4 text-xs text-white placeholder-zinc-600 outline-none transition hover:border-white/20 focus:border-purple-400/60 focus:bg-black/45"
             />
           </div>
         </div>

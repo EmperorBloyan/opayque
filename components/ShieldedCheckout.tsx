@@ -5,7 +5,8 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Connection, PublicKey, SendTransactionError, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { LucideCheckCircle2, LucideLoader2, LucideShieldCheck } from "lucide-react";
+import { Copy, LucideCheckCircle2, LucideLoader2, LucideShieldCheck, X } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
@@ -91,6 +92,8 @@ export default function ShieldedCheckout({
   const [successSignature, setSuccessSignature] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [transferMode, setTransferMode] = useState<TransferMode>(initialTransferMode);
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [handoffCopied, setHandoffCopied] = useState(false);
 
   const [draftAmount, setDraftAmount] = useState(() =>
     Number.isFinite(amount) && amount > 0 ? amount : 10
@@ -117,6 +120,20 @@ export default function ShieldedCheckout({
       : safeAmount;
 
   const isLocked = status === "success" || status === "processing";
+  const handoffUrl = typeof window !== "undefined" ? window.location.href : "";
+
+  useEffect(() => {
+    if (!showHandoffModal) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowHandoffModal(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showHandoffModal]);
 
   // Success countdown → close back toward wallet/native context
   useEffect(() => {
@@ -422,7 +439,82 @@ export default function ShieldedCheckout({
               />
             </div>
           )}
+
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowHandoffModal(true)}
+              className="text-sm font-semibold text-purple-600 transition hover:text-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-offset-2 dark:text-purple-400 dark:hover:text-purple-300"
+            >
+              Open on another device
+            </button>
+          </div>
         </div>
+
+        {showHandoffModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            role="presentation"
+            onClick={() => setShowHandoffModal(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="handoff-modal-title"
+              className="w-full max-w-md rounded-[2rem] border border-zinc-800 bg-zinc-950 p-5 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <h4 id="handoff-modal-title" className="text-lg font-black text-white">
+                  Continue on another device
+                </h4>
+                <button
+                  type="button"
+                  aria-label="Close continue on another device modal"
+                  onClick={() => setShowHandoffModal(false)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p className="mt-4 text-sm text-zinc-300">
+                Scan to open this same payment where your wallet is.
+              </p>
+
+              <div className="mt-5 flex justify-center rounded-2xl bg-white p-4">
+                <QRCodeCanvas value={handoffUrl || ""} size={220} fgColor="#7c3aed" />
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!handoffUrl) return;
+                  try {
+                    await navigator.clipboard.writeText(handoffUrl);
+                    setHandoffCopied(true);
+                    window.setTimeout(() => setHandoffCopied(false), 1500);
+                  } catch {
+                    setHandoffCopied(false);
+                  }
+                }}
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-purple-500/40 bg-purple-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-[0.3em] text-purple-200 transition hover:bg-purple-500/20"
+              >
+                {handoffCopied ? (
+                  <>
+                    <Copy size={14} />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} />
+                    Copy link
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {status === "success" ? (
           <div

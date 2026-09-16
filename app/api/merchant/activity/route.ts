@@ -15,27 +15,27 @@ export async function GET(request: Request) {
   const to = from + pageSize - 1;
   const { data, error } = await supabase
     .from("payment_ledger")
-    .select("id, merchant_id, terminal_id, checkout_session_id, amount, amount_base_units, mint, token_symbol, sender_address, recipient_address, signature, status, memo, environment, failed_reason, confirmed_at, reconciliation_status, created_at, updated_at")
+    .select("id, merchant_id, terminal_id, checkout_session_id, amount, amount_base_units, mint, token_symbol, sender_address, recipient_address, signature, status, memo, environment, transfer_mode, failed_reason, confirmed_at, reconciliation_status, created_at, updated_at")
     .eq("merchant_id", merchant.id)
     .order("created_at", { ascending: false })
     .range(from, to);
   if (error) return NextResponse.json({ error: "Unable to load payment activity" }, { status: 500 });
 
   const rows = data ?? [];
-  const terminalIds = [...new Set(rows.map((row) => row.terminal_id).filter(Boolean))];
+  const terminalIds = [...new Set(rows.map((row: { terminal_id: string | null }) => row.terminal_id).filter(Boolean))];
   const terminalNames = new Map<string, string>();
   if (terminalIds.length > 0) {
     const { data: terminals } = await supabase
       .from("terminals")
       .select("id, terminal_label, label")
       .in("id", terminalIds);
-    for (const terminal of terminals ?? []) {
+    for (const terminal of (terminals ?? []) as Array<{ id: string; terminal_label?: string | null; label?: string | null }>) {
       const label = String(terminal.terminal_label || terminal.label || "").trim();
       if (label) terminalNames.set(String(terminal.id), label);
     }
   }
 
-  const enrichedRows = rows.map((row) => ({
+  const enrichedRows = rows.map((row: Record<string, any>) => ({
     ...row,
     source_name: row.terminal_id ? terminalNames.get(String(row.terminal_id)) || "Merchant Terminal" : "System",
     source_category: row.terminal_id ? "Terminal" : "Registry",

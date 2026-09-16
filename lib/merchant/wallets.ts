@@ -22,5 +22,11 @@ export function resolveRefundWallet(merchant: MerchantWalletFields | null | unde
   const refundWallet = normalizeWallet(merchant?.refund_wallet_address);
   if (refundWallet) return { address: refundWallet, source: "refund" as const };
 
-  return resolveSettlementWallet(merchant);
+  const settlementWallet = normalizeWallet(merchant?.settlement_wallet_address);
+  if (settlementWallet) return { address: settlementWallet, source: "settlement" as const };
+
+  const legacyWallet = normalizeWallet(merchant?.wallet_address);
+  if (legacyWallet) return { address: legacyWallet, source: "legacy" as const };
+
+  return { address: "", source: "missing" as const };
 }
