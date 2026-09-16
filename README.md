@@ -207,15 +207,16 @@ Distributed rate limiting (required in production for transfer, relayer, and pai
 UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
 
-MagicBlock / payments (if used in your deployment)
+MagicBlock / payments
 NEXT_PUBLIC_MAGICBLOCK_API=https://payments.magicblock.app
+# Optional for the currently public devnet builder; required for authenticated/private production access
 MAGICBLOCK_API_KEY=your_server_only_magicblock_key
 
 Operations
 CRON_SECRET=your_server_only_cron_secret
 
 Use a reliable RPC in production. Public free endpoints will rate-limit real checkout flows.
-Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
+The MagicBlock payments endpoint currently supports unauthenticated devnet transaction building for testing, so a devnet `MAGICBLOCK_API_KEY` is not required. The server still sends the key when configured, and production/private access must use a server-only key provided by MagicBlock; never expose it with a `NEXT_PUBLIC_` prefix or commit it. Set `NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, a mainnet primary and fallback RPC, the mainnet USDC mint, and the production MagicBlock endpoint/key for mainnet deployments. `/api/health` reports the active cluster and probes every configured RPC without returning credentials.
 Production mainnet server paths fail configuration validation when the dedicated RPC, MagicBlock endpoint/key, relayer key, or Supabase server configuration is missing. The priority-fee variables are optional production tuning knobs; invalid values use bounded safe defaults.
 Payment-critical server routes probe configured RPCs, prefer the lowest-latency healthy endpoint, and temporarily cool down failed endpoints before trying them again. `/api/health` reports cluster and RPC readiness using endpoint hosts only, never credential-bearing query strings.
 
