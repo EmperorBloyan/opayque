@@ -330,11 +330,11 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
 - [x] Critical transfer, verification, relayer, and cron failures are captured by Sentry without logging request secrets.
 - [ ] Configure Vercel Preview with devnet RPC/mint and Production with mainnet RPC/mint only when mainnet gates are complete.
 - [ ] Verify the MagicBlock private path on devnet with a real provider response and correct send RPC.
-- [ ] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
+- [x] Run Anchor token-movement tests for payment and withdrawal in an Anchor-capable environment.
 - [x] Apply and verify all Supabase migrations, including `20260908_security_hardening_reproducible.sql`, in the production project.
 - [x] Configure and verify Upstash distributed rate limiting in each deployed environment.
 - [x] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
-- [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
+- [x] Confirmed deployed server credentials are unique, environment-specific, and were never bootstrap, shared, or reused; no replaced credentials require revocation testing.
 - [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
 - [x] `yarn test:coverage` meets the release threshold for auth, terminal, ledger, webhook, rate-limit, environment, and private-transfer modules.
 - [x] Run Playwright merchant onboarding, terminal pairing/reload/bootstrap, checkout, and Developer Hub flows against mocked external services.

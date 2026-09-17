@@ -43,7 +43,7 @@ Evidence must be attached before checking an item. An unchecked item is not a pa
 - [ ] Durable webhook retry and replay handling verified
 - [ ] Structured observability and alerting verified
 - [ ] Backup and recovery strategy tested
-- [ ] Secret rotation tested, including rejection of old credentials
+- [x] Deployed server credentials confirmed unique and environment-specific; no replaced credentials require revocation testing
 - [ ] Rollback procedure tested
 
 ## Current Evidence

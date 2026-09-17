@@ -1,6 +1,6 @@
 # Opayque Anchor Program
 
-Program ID: `9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL`
+Program ID: `B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS`
 
 ## Protocol accounts
 

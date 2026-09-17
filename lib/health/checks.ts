@@ -102,7 +102,7 @@ async function checkRelayer(rpcUrl: string | null): Promise<DependencyCheck & { 
 }
 
 async function checkAnchorProgram(rpcUrl: string | null): Promise<DependencyCheck & { programId?: string }> {
-  const programId = process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID?.trim() || "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL";
+  const programId = process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID?.trim() || "B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS";
   if (!rpcUrl) return { status: "degraded", latencyMs: null, programId, detail: "No healthy RPC available" };
   const startedAt = Date.now();
   try {

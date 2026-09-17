@@ -1,4 +1,5 @@
 [toolchain]
+anchor_version = "0.30.1"
 package_manager = "yarn"
 
 [features]
@@ -6,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-opayque = "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
+opayque = "B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS"
 
 [programs.devnet]
-opayque = "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
+opayque = "B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS"
 
 [registry]
 url = "https://api.apr.dev"

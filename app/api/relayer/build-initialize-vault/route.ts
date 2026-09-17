@@ -11,7 +11,7 @@ import { getComputeBudgetInstructions } from "@/lib/solana/priorityFee";
 
 const RELAYER_SECRET = process.env.RELAYER_PRIVATE_KEY;
 const PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID || "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL"
+  process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID || "B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS"
 );
 
 export async function POST(req: Request) {

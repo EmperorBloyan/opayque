@@ -7,7 +7,7 @@ pub use instructions::admin::{initialize_protocol, InitializeProtocol, toggle_ci
 pub use instructions::merchant::{initialize_merchant_vault, InitializeMerchantVault};
 pub use instructions::payment::{process_payment, register_terminal_nonce, withdraw_vault_funds, ProcessPayment, RegisterTerminalNonce, WithdrawVaultFunds};
 
-declare_id!("9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL");
+declare_id!("B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS");
 
 #[program]
 pub mod opayque {
