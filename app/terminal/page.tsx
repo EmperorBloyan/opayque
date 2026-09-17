@@ -3,13 +3,27 @@
 import { Component, useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent, type FormEvent, type ErrorInfo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
-import { Bell, LucideEdit3, X } from "lucide-react";
+import { Bell, ChevronDown, LucideEdit3, X } from "lucide-react";
 import { clearTerminalDeviceCredential, createSessionChallenge, createTerminalSession, getActiveMerchantId, getActiveSession, loadTerminalDeviceCredential, saveTerminalDeviceCredential, setActiveSession } from "@/lib/crypto/session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { assertTerminalReady, isRealMerchantId, resolveTerminalContext } from "@/lib/terminal/guards";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import type { TransactionRecord } from "@/types/database";
 import type { TransferMode } from "@/lib/payments/transferMode";
+
+const currencySymbols: Record<string, string> = {
+  USD: "$",
+  USDC: "$",
+  EUR: "€",
+  GBP: "£",
+  NGN: "₦",
+  GHS: "₵",
+  KES: "KSh",
+  ZAR: "R",
+  INR: "₹",
+  CAD: "C$",
+  AUD: "A$",
+};
 
 interface TerminalPaymentErrorBoundaryProps {
   children: ReactNode;
@@ -862,17 +876,22 @@ export default function TerminalPage() {
           <div className="text-center">
             <div className="mb-4 flex items-center justify-between rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3 text-left">
               <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-500">Currency</span>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-white outline-none"
-              >
-                {Object.keys(rates || {}).length > 0 ? (
-                  Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>)
-                ) : (
-                  <option value="USD">USD</option>
-                )}
-              </select>
+              <span className="relative inline-flex items-center gap-1 text-sm font-semibold text-white">
+                <span aria-hidden="true">{currencySymbols[currency] ?? currency}</span>
+                <ChevronDown size={13} aria-hidden="true" className="text-zinc-500" />
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  aria-label="Select currency"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                >
+                  {Object.keys(rates || {}).length > 0 ? (
+                    Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>)
+                  ) : (
+                    <option value="USD">USD</option>
+                  )}
+                </select>
+              </span>
             </div>
             <div className="mb-4 flex items-center justify-center gap-2 text-zinc-400">
               <span className="text-sm uppercase tracking-[0.3em]">Amount</span>

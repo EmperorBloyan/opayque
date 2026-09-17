@@ -2,7 +2,22 @@
 
 import React, { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { useCurrency } from "@/lib/context/CurrencyContext";
+
+const currencySymbols: Record<string, string> = {
+  USD: "$",
+  USDC: "$",
+  EUR: "€",
+  GBP: "£",
+  NGN: "₦",
+  GHS: "₵",
+  KES: "KSh",
+  ZAR: "R",
+  INR: "₹",
+  CAD: "C$",
+  AUD: "A$",
+};
 
 function DirectCheckoutContent() {
   const searchParams = useSearchParams();
@@ -69,25 +84,28 @@ function DirectCheckoutContent() {
         </div>
 
         {/* Currency Selector Dropdown */}
-        <div className="mb-6">
-          <label className="block text-xs text-slate-400 mb-1 font-medium">
-            Select Display Currency
+        <div className="mb-6 flex justify-end">
+          <label className="relative inline-flex items-center gap-1 text-sm font-semibold text-slate-200">
+            <span aria-hidden="true">{currencySymbols[currency] ?? currency}</span>
+            <ChevronDown size={14} aria-hidden="true" className="text-slate-500" />
+            <span className="sr-only">Select display currency</span>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              aria-label="Select display currency"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            >
+              {Object.keys(rates).length > 0 ? (
+                Object.keys(rates).map((curr) => (
+                  <option key={curr} value={curr}>
+                    {curr}
+                  </option>
+                ))
+              ) : (
+                <option value="USD">USD</option>
+              )}
+            </select>
           </label>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
-          >
-            {Object.keys(rates).length > 0 ? (
-              Object.keys(rates).map((curr) => (
-                <option key={curr} value={curr}>
-                  {curr}
-                </option>
-              ))
-            ) : (
-              <option value="USD">USD</option>
-            )}
-          </select>
         </div>
 
         {/* Payment Action */}
