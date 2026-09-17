@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from "react"
 import { useRouter } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { 
   LucideBell, 
@@ -675,21 +675,35 @@ export default function TerminalManager({
       return sendLegacyPayment(connection, transaction, signTransaction as any, 90_000);
     }
 
-    const usdcMint = new PublicKey(usdcMintAddress);
-    const payerTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKey, false);
-    const destinationTokenAccount = await resolveUsdcDestinationAccount(connection, merchantWallet, usdcMint);
-    const transferIx = createTransferInstruction(payerTokenAccount, destinationTokenAccount, publicKey, expectedUsdcBaseUnits);
-
-    const tx = new Transaction().add(transferIx);
-    const blockhash = await connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash.blockhash;
-    tx.feePayer = publicKey;
-    const versioned = new VersionedTransaction(new TransactionMessage({
-      payerKey: publicKey,
-      recentBlockhash: blockhash.blockhash,
-      instructions: tx.instructions,
-    }).compileToV0Message());
-    return sendStandardPayment(connection, versioned, signTransaction!);
+    if (!sessionId) throw new Error("Standard terminal payments require a payment intent");
+    const response = await fetch("/api/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: publicKey.toBase58(),
+        recipient: merchantWallet,
+        amount: Number(amount ?? 0),
+        mint: usdcMintAddress,
+        intent_id: sessionId,
+        mode: "public",
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
+      throw new Error(payload?.error || "Standard terminal payment could not be built");
+    }
+    const transactionBytes = fromBase64(payload.transaction);
+    let transaction: VersionedTransaction | Transaction;
+    try {
+      transaction = VersionedTransaction.deserialize(transactionBytes);
+    } catch {
+      transaction = Transaction.from(transactionBytes);
+    }
+    const paymentConnection = new Connection(payload.rpcUrl || connection.rpcEndpoint, "confirmed");
+    if (transaction instanceof VersionedTransaction) {
+      return sendStandardPayment(paymentConnection, transaction, signTransaction);
+    }
+    return sendLegacyPayment(paymentConnection, transaction, signTransaction as any, 90_000);
   }, [amount, connection, expectedUsdcBaseUnits, merchantWallet, publicKey, sendPayment, sessionId, signTransaction, transferMode, usdcMintAddress]);
 
   const handleCheckout = useCallback(async () => {

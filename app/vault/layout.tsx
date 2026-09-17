@@ -47,6 +47,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [walletUpdateError, setWalletUpdateError] = useState<string | null>(null);
   const [walletUpdateLoading, setWalletUpdateLoading] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
   const [isHydratingMerchant, setIsHydratingMerchant] = useState(true);
 
@@ -161,19 +162,7 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const handleSaveProfile = async () => {
     const nextName = draftName.trim() || "Opayque";
     const nextLogo = draftLogo ?? logo;
-
-    setMerchantName(nextName);
-    setLogo(nextLogo);
-    localStorage.setItem("merchant_name", nextName);
-
-    if (nextLogo) {
-      localStorage.setItem("merchant_logo", nextLogo);
-    }
-    localStorage.setItem("merchant_email", draftEmail.trim());
-    localStorage.setItem("secondary_email", draftSecondaryEmail.trim());
-    localStorage.setItem("website_url", draftWebsiteUrl.trim());
-    localStorage.setItem("webhook_url", draftWebhookUrl.trim());
-    localStorage.setItem("default_transfer_mode", defaultTransferMode);
+    setProfileSaveError(null);
 
     try {
       const authenticatedUser = (await createClient().auth.getUser()).data.user;
@@ -196,15 +185,28 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
           defaultTransferMode,
         }),
       });
-      if (!response.ok) throw new Error("Unable to save merchant profile");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Unable to save merchant profile");
+
+      setMerchantName(nextName);
+      setLogo(nextLogo);
+      localStorage.setItem("merchant_name", nextName);
+      if (nextLogo) localStorage.setItem("merchant_logo", nextLogo);
+      else localStorage.removeItem("merchant_logo");
+      localStorage.setItem("merchant_email", draftEmail.trim());
+      localStorage.setItem("secondary_email", draftSecondaryEmail.trim());
+      localStorage.setItem("website_url", draftWebsiteUrl.trim());
+      localStorage.setItem("webhook_url", draftWebhookUrl.trim());
+      localStorage.setItem("default_transfer_mode", defaultTransferMode);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("merchant_profile_updated"));
       }
+      setIsEditingProfile(false);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save merchant profile";
+      setProfileSaveError(message);
       console.warn("Unable to sync merchant profile", error);
     }
-
-    setIsEditingProfile(false);
   };
 
   const copyWallet = async (wallet: string) => {
@@ -478,6 +480,11 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
                 >
                   Save Profile
                 </button>
+                {profileSaveError ? (
+                  <p role="alert" className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+                    {profileSaveError}
+                  </p>
+                ) : null}
 
                 <fieldset className="space-y-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5">
                   <legend className="px-1 text-xs uppercase tracking-[0.24em] text-zinc-400">Wallet addresses</legend>

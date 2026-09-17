@@ -70,6 +70,7 @@ function CheckoutContent() {
         transactionId={transactionId}
         checkoutSessionId={sessionId}
         transferMode={transferMode}
+        allowDeviceHandoff={!transactionId}
       />
     </main>
   );

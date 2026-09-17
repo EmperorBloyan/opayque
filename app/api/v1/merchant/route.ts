@@ -153,9 +153,10 @@ export async function PATCH(request: Request) {
       updates.settlement_wallet_address = settlementWalletAddress;
     }
 
-    if (email !== undefined && email?.trim() !== (user.email ?? "").trim() && !hasRecentAuthentication(user.last_sign_in_at)) {
+    if (typeof email === "string" && email.trim() !== (user.email ?? "").trim() && !hasRecentAuthentication(user.last_sign_in_at)) {
       return NextResponse.json({ error: "Recent password confirmation required before changing email" }, { status: 428 });
     }
+    if (typeof email === "string") updates.email = email;
     if (refundWalletAddress !== undefined) {
       updates.refund_wallet_address = refundWalletAddress;
     }

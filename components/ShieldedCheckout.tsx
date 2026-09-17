@@ -29,6 +29,7 @@ interface ShieldedCheckoutProps {
   transactionId?: string | null;
   checkoutSessionId?: string | null;
   transferMode?: TransferMode;
+  allowDeviceHandoff?: boolean;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -84,6 +85,7 @@ export default function ShieldedCheckout({
   transactionId,
   checkoutSessionId,
   transferMode: initialTransferMode = "private",
+  allowDeviceHandoff = true,
 }: ShieldedCheckoutProps) {
   const { publicKey, connected, signTransaction } = useWallet();
 
@@ -465,18 +467,20 @@ export default function ShieldedCheckout({
             </div>
           )}
 
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowHandoffModal(true)}
-              className="text-sm font-semibold text-purple-600 transition hover:text-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-offset-2 dark:text-purple-400 dark:hover:text-purple-300"
-            >
-              Open on another device
-            </button>
-          </div>
+          {allowDeviceHandoff ? (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHandoffModal(true)}
+                className="text-sm font-semibold text-purple-600 transition hover:text-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-offset-2 dark:text-purple-400 dark:hover:text-purple-300"
+              >
+                Open on another device
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        {showHandoffModal && (
+        {allowDeviceHandoff && showHandoffModal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
             role="presentation"
