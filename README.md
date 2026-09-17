@@ -336,7 +336,7 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
 - [x] Schedule `POST /api/cron/expire-transactions` and `POST /api/cron/reconcile-payments` with `Authorization: Bearer $CRON_SECRET`.
 - [ ] Rotate all deployment secrets from their bootstrap values and confirm old credentials fail.
 - [x] Compliance is documented as demo-only until a real provider is configured; fiat off-ramp is disabled unless configured.
-- [ ] `yarn test:coverage` meets the release threshold for auth, terminal, ledger, webhook, rate-limit, environment, and private-transfer modules.
+- [x] `yarn test:coverage` meets the release threshold for auth, terminal, ledger, webhook, rate-limit, environment, and private-transfer modules.
 - [ ] Run Playwright merchant onboarding, terminal pairing/reload/bootstrap, checkout, and Developer Hub flows against mocked external services.
 - [x] Verify terminal pairing creates `terminals.device_token_hash`; pairing integration tests cover fresh redemption, and terminal QR generation sends the matching `x-terminal-token`.
 - [ ] Verify signed Sumsub/Bridge webhook fixtures update only provider status and never store government IDs or bank-account details.

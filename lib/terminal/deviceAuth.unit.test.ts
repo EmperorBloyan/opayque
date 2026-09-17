@@ -43,6 +43,7 @@ describe("terminal device authentication", () => {
     const request = new Request("http://localhost", { headers: { "x-terminal-token": "secret" } });
     await expect(requireTerminalDevice(request, "terminal-1")).resolves.toEqual({
       error: "Terminal authentication failed",
+      code: "TERMINAL_REVOKED",
       status: 401,
     });
   });
