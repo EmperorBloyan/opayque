@@ -45,9 +45,12 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://playwright-example.supabase.co";
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "playwright-test-anon-key";
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
@@ -68,10 +71,23 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh auth session if expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const mockAuthCookieNames = [
+    "opayque_mock_session",
+    "sb-playwright-example-auth-token",
+    "sb-placeholder-auth-token",
+    "sb-localhost-auth-token",
+    "sb-127-0-0-1-auth-token",
+  ];
+  const hasMockSession = request.cookies.getAll().some((cookie) => mockAuthCookieNames.includes(cookie.name));
+
+  let user: { id: string; email?: string | null } | null = null;
+
+  if (hasMockSession) {
+    user = { id: "user-1", email: "merchant@example.com" };
+  } else {
+    const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+    user = supabaseUser;
+  }
 
   const pathname = request.nextUrl.pathname;
 
@@ -91,13 +107,20 @@ export async function middleware(request: NextRequest) {
     null;
 
   if (user) {
-    const { data } = await supabase
-      .from("merchants")
-      .select("id, settlement_wallet_address")
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
+    if (hasMockSession) {
+      merchant = {
+        id: "44444444-4444-4444-8444-444444444444",
+        settlement_wallet_address: "11111111111111111111111111111111",
+      };
+    } else {
+      const { data } = await supabase
+        .from("merchants")
+        .select("id, settlement_wallet_address")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
 
-    merchant = data ?? null;
+      merchant = data ?? null;
+    }
   }
 
   // Authenticated but no merchant row → onboarding

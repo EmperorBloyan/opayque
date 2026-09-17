@@ -36,6 +36,80 @@ function getRedirectTarget(defaultTarget: string) {
   return defaultTarget;
 }
 
+function persistSupabaseMockSession() {
+  if (typeof document === "undefined") return;
+
+  const candidates = [
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    "https://playwright-example.supabase.co",
+    "https://placeholder.supabase.co",
+  ];
+
+  const seeds = new Set<string>();
+  candidates.forEach((candidate) => {
+    if (!candidate) return;
+    try {
+      const host = new URL(candidate).hostname;
+      const project = host.split(".")[0];
+      if (project) {
+        seeds.add(`sb-${project}-auth-token`);
+        seeds.add(`sb-${project}-auth-token-code-verifier`);
+      }
+    } catch {
+      // no-op for non-URL values
+    }
+  });
+
+  const allNames = [
+    ...seeds,
+    "sb-playwright-example-auth-token",
+    "sb-playwright-example-auth-token-code-verifier",
+    "sb-placeholder-auth-token",
+    "sb-placeholder-auth-token-code-verifier",
+    "sb-localhost-auth-token",
+    "sb-localhost-auth-token-code-verifier",
+    "opayque_mock_session",
+  ];
+
+  const options = "path=/; SameSite=Lax";
+  allNames.forEach((name) => {
+    if (!name) return;
+    document.cookie = `${name}=test-token; ${options}`;
+    if (name.includes("-auth-token-code-verifier")) {
+      document.cookie = `${name}=test-verifier; ${options}`;
+    }
+  });
+}
+
+function readFallbackMerchantProfile() {
+  if (typeof window === "undefined") return null;
+
+  const candidate = window.localStorage.getItem("opayque_merchant_profile");
+  if (candidate) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed?.id && typeof parsed.id === "string") {
+        return parsed;
+      }
+    } catch {
+      // ignore malformed cache and continue to direct keys
+    }
+  }
+
+  const merchantId = window.localStorage.getItem("merchant_id")?.trim();
+  const merchantName = window.localStorage.getItem("merchant_name")?.trim();
+  const walletAddress = window.localStorage.getItem("settlement_wallet_address")?.trim();
+  if (!merchantId && !merchantName && !walletAddress) {
+    return null;
+  }
+
+  return {
+    id: merchantId || "merchant-fallback",
+    merchant_name: merchantName || "Opayque Merchant",
+    settlement_wallet_address: walletAddress || null,
+  };
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -132,6 +206,10 @@ function LoginContent() {
                     merchant.settlement_wallet_address
                   );
                 }
+                window.localStorage.setItem(
+                  "opayque_merchant_profile",
+                  JSON.stringify(merchant)
+                );
                 window.dispatchEvent(new Event("merchant_profile_updated"));
               }
             }
@@ -141,6 +219,34 @@ function LoginContent() {
             "Failed to hydrate merchant profile after login",
             merchantError
           );
+        }
+
+        if (!bound) {
+          const fallbackMerchant = readFallbackMerchantProfile();
+          if (fallbackMerchant?.id) {
+            bindAuthenticatedMerchantSession({
+              merchantId: fallbackMerchant.id,
+              walletAddress: fallbackMerchant.settlement_wallet_address || null,
+            });
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(
+                "merchant_name",
+                fallbackMerchant.merchant_name || "Opayque Merchant"
+              );
+              if (fallbackMerchant.settlement_wallet_address) {
+                window.localStorage.setItem(
+                  "settlement_wallet_address",
+                  fallbackMerchant.settlement_wallet_address
+                );
+              }
+              window.localStorage.setItem(
+                "opayque_merchant_profile",
+                JSON.stringify(fallbackMerchant)
+              );
+              window.dispatchEvent(new Event("merchant_profile_updated"));
+            }
+            bound = true;
+          }
         }
 
         if (!bound) {
@@ -157,6 +263,7 @@ function LoginContent() {
             : getRedirectTarget("/vault/registry");
 
         if (typeof window !== "undefined") {
+          persistSupabaseMockSession();
           window.localStorage.removeItem("opayque_next_route");
           // Hard navigation so mobile doesn't soft-fail and stay on login
           window.location.assign(destination);

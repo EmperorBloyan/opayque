@@ -2,20 +2,44 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 
 function createChainableFallbackClient(error: Error) {
-  const buildQuery = () => ({
-    select: () => buildQuery(),
-    eq: () => buildQuery(),
-    single: async () => ({ data: null, error }),
-    insert: async () => ({ data: null, error }),
-    update: async () => ({ data: null, error }),
-    upsert: async () => ({ data: null, error }),
-    delete: async () => ({ data: null, error }),
-  });
+  const buildQuery = () => {
+    const query = {
+      select: () => query,
+      eq: () => query,
+      neq: () => query,
+      gt: () => query,
+      gte: () => query,
+      lt: () => query,
+      lte: () => query,
+      in: () => query,
+      contains: () => query,
+      filter: () => query,
+      ilike: () => query,
+      like: () => query,
+      is: () => query,
+      not: () => query,
+      order: () => query,
+      limit: () => query,
+      range: () => query,
+      overrideTypes: () => query,
+      maybeSingle: async () => ({ data: null, error }),
+      single: async () => ({ data: null, error }),
+      insert: async () => ({ data: null, error }),
+      update: async () => ({ data: null, error }),
+      upsert: async () => ({ data: null, error }),
+      delete: async () => ({ data: null, error }),
+      then: undefined,
+    } as any;
+
+    return query;
+  };
 
   return {
     from: () => buildQuery(),
     auth: {
-      getUser: async () => ({ data: null, error }),
+      getUser: async () => ({ data: { user: null }, error }),
+      signOut: async () => ({ error }),
+      signInWithPassword: async () => ({ data: { user: null }, error }),
     },
   } as any;
 }
