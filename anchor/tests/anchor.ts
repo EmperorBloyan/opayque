@@ -10,6 +10,6 @@ describe("opayque anchor smoke test", () => {
 
   it("loads the opayque program", async () => {
     const idl = await (program as any).account.protocolConfig.all();
-    expect(idl).toBeDefined();
+    expect(idl).to.not.equal(undefined);
   });
 });

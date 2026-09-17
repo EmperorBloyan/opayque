@@ -1,6 +1,14 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN, type Idl } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  createAccount,
+  createMint,
+  getAccount,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import { expect } from "chai";
 
 describe("opayque program", () => {
@@ -18,6 +26,11 @@ describe("opayque program", () => {
   let treasuryPda: PublicKey;
   let noncePda: PublicKey;
   let receiptPda: PublicKey;
+  let mint: PublicKey;
+  let payerTokenAccount: PublicKey;
+  let merchantTokenAccount: PublicKey;
+  let treasuryTokenAccount: PublicKey;
+  let merchantDestinationTokenAccount: PublicKey;
 
   const fundKeypair = async (keypair: Keypair) => {
     const airdropSignature = await provider.connection.requestAirdrop(keypair.publicKey, 2 * LAMPORTS_PER_SOL);
@@ -29,6 +42,53 @@ describe("opayque program", () => {
     await fundKeypair(admin);
     await fundKeypair(merchant);
     await fundKeypair(terminal);
+
+    mint = await createMint(
+      provider.connection,
+      provider.wallet.payer,
+      provider.wallet.publicKey,
+      null,
+      6,
+    );
+    payerTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        mint,
+        terminal.publicKey,
+      )
+    ).address;
+    merchantTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        mint,
+        merchant.publicKey,
+      )
+    ).address;
+    treasuryTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        mint,
+        admin.publicKey,
+      )
+    ).address;
+    merchantDestinationTokenAccount = await createAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mint,
+      merchant.publicKey,
+      Keypair.generate(),
+    );
+    await mintTo(
+      provider.connection,
+      provider.wallet.payer,
+      mint,
+      payerTokenAccount,
+      provider.wallet.payer,
+      10_000_000,
+    );
 
     [protocolConfigPda] = PublicKey.findProgramAddressSync([Buffer.from("protocol_config")], program.programId);
     [merchantVaultPda] = PublicKey.findProgramAddressSync([Buffer.from("merchant_vault"), merchant.publicKey.toBuffer()], program.programId);
@@ -86,13 +146,18 @@ describe("opayque program", () => {
       .processPayment(new BN(10_000_000), nonce, "checkout-001")
       .accounts({
         payer: terminal.publicKey,
+        payerTokenAccount,
+        mint,
+        merchantTokenAccount,
+        treasuryTokenAccount,
         merchantVault: merchantVaultPda,
         opayqueTreasury: treasuryPda,
         protocolConfig: protocolConfigPda,
         terminalNonce: noncePda,
         paymentReceipt: receiptPda,
         systemProgram: SystemProgram.programId,
-        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .signers([terminal])
       .rpc();
@@ -107,42 +172,89 @@ describe("opayque program", () => {
     expect(receipt.fee.toNumber()).to.equal(25_000);
     expect(receipt.merchantAmount.toNumber()).to.equal(9_975_000);
     expect(receipt.nonce.toNumber()).to.equal(7);
+
+    await program.methods
+      .withdrawVaultFunds(new BN(1_000_000))
+      .accounts({
+        authority: merchant.publicKey,
+        merchantVault: merchantVaultPda,
+        merchantTokenAccount,
+        destinationTokenAccount: merchantDestinationTokenAccount,
+        mint,
+        protocolConfig: protocolConfigPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([merchant])
+      .rpc();
+
+    expect(Number((await getAccount(provider.connection, merchantTokenAccount)).amount)).to.equal(8_975_000);
+    expect(Number((await getAccount(provider.connection, merchantDestinationTokenAccount)).amount)).to.equal(1_000_000);
   });
 
   it("rejects replaying the same nonce", async () => {
-    await expect(
+    await expectRejected(
       program.methods
         .processPayment(new BN(5_000_000), new BN(7), "checkout-002")
         .accounts({
           payer: terminal.publicKey,
+          payerTokenAccount,
+          mint,
+          merchantTokenAccount,
+          treasuryTokenAccount,
           merchantVault: merchantVaultPda,
           opayqueTreasury: treasuryPda,
           protocolConfig: protocolConfigPda,
           terminalNonce: noncePda,
           paymentReceipt: receiptPda,
           systemProgram: SystemProgram.programId,
-          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([terminal])
-        .rpc()
-    ).to.be.rejectedWith(/nonce|expired|used/i);
+        .rpc(),
+      /nonce|expired|used|already in use/i,
+    );
   });
 
   it("rejects unauthorized withdrawals", async () => {
     const rogue = Keypair.generate();
     await fundKeypair(rogue);
+    const rogueTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
+        mint,
+        rogue.publicKey,
+      )
+    ).address;
 
-    await expect(
+    await expectRejected(
       program.methods
         .withdrawVaultFunds(new BN(1_000_000))
         .accounts({
           authority: rogue.publicKey,
           merchantVault: merchantVaultPda,
+          merchantTokenAccount,
+          destinationTokenAccount: rogueTokenAccount,
+          mint,
           protocolConfig: protocolConfigPda,
+          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .signers([rogue])
-        .rpc()
-    ).to.be.rejectedWith(/authority|constraint/i);
+        .rpc(),
+      /authority|constraint/i,
+    );
   });
 });
+
+async function expectRejected(action: Promise<unknown>, pattern: RegExp) {
+  try {
+    await action;
+    expect.fail("Expected the transaction to be rejected");
+  } catch (error) {
+    if (error instanceof Error && pattern.test(error.message)) return;
+    throw error;
+  }
+}
