@@ -7,6 +7,8 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  Eye,
+  EyeOff,
   Lock,
   LogIn,
   Mail,
@@ -47,6 +49,7 @@ export default function OnboardingPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningWallet, setIsSigningWallet] = useState(false);
   const [isInitVault, setIsInitVault] = useState(false);
@@ -662,14 +665,23 @@ export default function OnboardingPage() {
                   <div className="flex items-center gap-3 text-zinc-400">
                     <Lock className="h-4 w-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="••••••••••••"
-                      className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-600"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-600"
                       required
                       minLength={6}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="shrink-0 text-zinc-500 transition hover:text-white"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
               </label>

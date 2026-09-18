@@ -317,7 +317,7 @@ Point NEXT_PUBLIC_APP_URL at the production domain
 
 Production checklist
 
-Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled devnet use; not approved for mainnet yet.** The application builds successfully, the application controls and database hardening are present in the repository, but live Supabase, Vercel, provider, and operational checks below must be completed before a production launch.
+Readiness assessment (2026-09-18): **Core product implementation is complete. Opayque is currently in productionization and mainnet-preparation mode.** The application, payment ledger, auth, terminal flow, and security controls have cleared the repository and deployment-validation checks completed to date. The remaining work is primarily external: production MagicBlock access for the private-payment path, the funding and provisioning of the production infrastructure, and the remaining live deployment, Supabase, and operational evidence gates.
 
 - [x] Repository security migration is committed in `supabase/migrations/20260908_security_hardening_reproducible.sql`.
 - [x] Legacy `pairing_codes` cleanup, `anon` revocation, owner-policy replacement, function search paths, and foreign-key indexing are represented in the migration.
@@ -344,21 +344,27 @@ Readiness assessment (2026-09-08): **86/100 — ready for staging and controlled
   
 Launch decision: **NO-GO for mainnet until every unchecked item above and every unchecked post-deploy check below is completed.** A passing local build or unit suite cannot verify production secrets, Supabase advisories, provider authentication, rate-limit configuration, cron delivery, backups, or rollback.
 
+Evidence captured to date: the repo and deployment validation record currently includes successful local and deployment validation for repository hardening, terminal pairing, payment ledger invariants, runtime health checks, cron execution, Upstash rate limiting, Supabase migration verification, Anchor token movement tests, Playwright coverage, staging cross-tenant RLS verification, and the production credential rotation test demonstrating that the old deployment secret is rejected after rotation while the new secret remains valid.
+
 Preview and Production environments
 
 Use separate Vercel environment values. Preview should use `NEXT_PUBLIC_SOLANA_NETWORK=devnet`, a devnet RPC, devnet USDC, and non-production relayer/provider credentials. Production should remain disabled for mainnet merchants until every unchecked gate above is verified; when enabled, use `mainnet-beta`, a mainnet RPC, mainnet USDC, and separate rotated secrets. Never reuse Preview secrets in Production.
 
 Post-deploy checks
-- [ ] Login binds merchant session
-- [ ] Registry loads without infinite “verifying”
-- [ ] Terminal pairing updates fleet
-- [ ] Terminal `Return Home` preserves pairing and `Open Terminal` restores access
-- [ ] Vault `Unpair` permanently removes the terminal from Hardware Fleet
-- [ ] Checkout does not hang on SHIELDING (error or success within timeout)
+- [x] Login binds merchant session
+- [x] Registry loads without infinite “verifying”
+- [x] Terminal pairing updates fleet
+- [x] Terminal `Return Home` preserves pairing and `Open Terminal` restores access
+- [x] Vault `Unpair` permanently removes the terminal from Hardware Fleet
+- [x] Checkout does not hang on SHIELDING (error or success within timeout)
 - [ ] Supabase Security Advisor is clear except for explicitly accepted findings
 - [ ] Production backup/PITR restore and rollback are tested
-- [ ] Old deployment credentials are rejected after rotation
-[ ] Embed/checkout links resolve (no 404)  
+- [x] Old deployment credentials are rejected after rotation
+- [x] Embed/checkout links resolve (no 404)
+
+Security Review Result: **CONDITIONAL PASS WITH WARNING**. Review scope: Security Advisor only. Result: 1 unresolved warning, `auth_leaked_password_protection` (Leaked Password Protection Disabled). This warning was temporarily accepted with the documented exception that Supabase leaked-password protection requires a Pro Plan or higher, and the deployment risk is accepted only by the responsible authority. This is not a clean Security Advisor pass and does not imply unrestricted production approval.
+
+Evidence for the checked post-deploy items: the production validation flow covered merchant session binding, registry health, terminal fleet behavior, and checkout timeout handling; the credential-rotation check was confirmed by a live rotation test in which the old key was rejected and the new key remained valid; the quickstart/embed link resolution check was verified via the supplied Catbox recordings (https://files.catbox.moe/jcnak2.mp4 and https://files.catbox.moe/6oa3zr.mp4), which show the quickstart/embed flow resolving successfully without a 404.
 
 Design Language
 

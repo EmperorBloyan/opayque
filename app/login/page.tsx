@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { bindAuthenticatedMerchantSession } from "@/lib/crypto/session";
 import { clearMerchantProfileCache } from "@/lib/client/merchantProfileCache";
-import { ArrowRight, Lock, Mail, X, UserPlus } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, X, UserPlus } from "lucide-react";
 
 function getSavedMerchantName() {
   if (typeof window === "undefined") return "Opayque Merchant";
@@ -117,6 +117,7 @@ function LoginContent() {
   const [merchantLogo, setMerchantLogo] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -369,13 +370,22 @@ function LoginContent() {
                   <div className="flex items-center gap-3 text-zinc-400">
                     <Lock className="h-4 w-4" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password"
-                      className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
+                      className="min-w-0 flex-1 bg-transparent text-white outline-none placeholder:text-zinc-500"
                       required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="shrink-0 text-zinc-500 transition hover:text-white"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
               </label>

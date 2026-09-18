@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowLeft, Check, Lock } from "lucide-react";
+import { ArrowLeft, Check, Eye, EyeOff, Lock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function UpdatePasswordPage() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,13 +114,22 @@ export default function UpdatePasswordPage() {
               <div className="flex items-center gap-3 text-zinc-400">
                 <Lock className="h-4 w-4" />
                 <input
-                  type="password"
+                  type={showNewPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
-                  className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
+                  className="min-w-0 flex-1 bg-transparent text-white outline-none placeholder:text-zinc-500"
                   minLength={8}
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((value) => !value)}
+                  className="shrink-0 text-zinc-500 transition hover:text-white"
+                  aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                  aria-pressed={showNewPassword}
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           </label>
@@ -129,13 +140,22 @@ export default function UpdatePasswordPage() {
               <div className="flex items-center gap-3 text-zinc-400">
                 <Lock className="h-4 w-4" />
                 <input
-                  type="password"
+                  type={showConfirmation ? "text" : "password"}
                   value={confirmation}
                   onChange={(event) => setConfirmation(event.target.value)}
-                  className="w-full bg-transparent text-white outline-none placeholder:text-zinc-500"
+                  className="min-w-0 flex-1 bg-transparent text-white outline-none placeholder:text-zinc-500"
                   minLength={8}
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmation((value) => !value)}
+                  className="shrink-0 text-zinc-500 transition hover:text-white"
+                  aria-label={showConfirmation ? "Hide confirmation password" : "Show confirmation password"}
+                  aria-pressed={showConfirmation}
+                >
+                  {showConfirmation ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           </label>

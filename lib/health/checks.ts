@@ -102,7 +102,7 @@ async function checkRelayer(rpcUrl: string | null): Promise<DependencyCheck & { 
 }
 
 async function checkAnchorProgram(rpcUrl: string | null): Promise<DependencyCheck & { programId?: string }> {
-  const programId = process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID?.trim() || "B7j1xVowZAT2zV3bF3TPbV56hEtL1NNhFV2UVRMQR1dS";
+  const programId = process.env.NEXT_PUBLIC_OPAYQUE_PROGRAM_ID?.trim() || "9tMdYGfZqKTURYHsgL1KSBK9h9i8EH9zRREhP7FcEKQL";
   if (!rpcUrl) return { status: "degraded", latencyMs: null, programId, detail: "No healthy RPC available" };
   const startedAt = Date.now();
   try {
@@ -133,7 +133,9 @@ export async function getReadinessReport(): Promise<ReadinessReport> {
     endpoint: healthyRpc ? endpointHost(healthyRpc.url) : undefined,
     endpoints: rpcResults.map(({ url, error, ...result }) => ({ endpoint: endpointHost(url), ...result, ...(error ? { error: "RPC probe failed" } : {}) })),
   };
-  const production = environment.environment === "production";
+  const production = environment.environment === "production"
+    && process.env.VERCEL_ENV !== "preview"
+    && process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview";
   const critical = [supabase, rpc, magicBlock, redis, relayer, anchorProgram].filter((check) => production ? check.status !== "ok" : check.status === "unhealthy");
   const degraded = [supabase, rpc, magicBlock, redis, relayer, anchorProgram].some((check) => check.status === "degraded");
   const status = critical.length > 0 ? "unhealthy" : degraded || !environment.ok ? "degraded" : "ok";

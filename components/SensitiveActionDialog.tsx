@@ -1,18 +1,20 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { LockKeyhole, ShieldCheck, X } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, ShieldCheck, X } from "lucide-react";
 import type { SensitivePasswordRequest } from "@/lib/client/reauthenticate";
 
 export default function SensitiveActionDialog() {
   const [request, setRequest] = useState<SensitivePasswordRequest | null>(null);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const handleRequest = (event: Event) => {
       const nextRequest = (event as CustomEvent<SensitivePasswordRequest>).detail;
       setPassword("");
+      setShowPassword(false);
       setRequest(nextRequest);
     };
 
@@ -29,6 +31,7 @@ export default function SensitiveActionDialog() {
     request?.reject(new Error("Password confirmation is required."));
     setRequest(null);
     setPassword("");
+    setShowPassword(false);
   };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -37,6 +40,7 @@ export default function SensitiveActionDialog() {
     request?.resolve(password);
     setRequest(null);
     setPassword("");
+    setShowPassword(false);
   };
 
   useEffect(() => {
@@ -99,13 +103,22 @@ export default function SensitiveActionDialog() {
               <input
                 ref={inputRef}
                 id="sensitive-action-password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Enter password"
                 autoComplete="current-password"
                 className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-600"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="shrink-0 text-zinc-500 transition hover:text-white"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
 
             <button
