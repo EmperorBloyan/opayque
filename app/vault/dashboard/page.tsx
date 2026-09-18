@@ -10,6 +10,20 @@ import { Search, RotateCcw, Copy, Check, AlertTriangle, X, ChevronDown } from 'l
 const formatUSDC = (val: number) => 
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
+const currencySymbols: Record<string, string> = {
+  USD: "$",
+  USDC: "$",
+  EUR: "€",
+  GBP: "£",
+  NGN: "₦",
+  GHS: "₵",
+  KES: "KSh",
+  ZAR: "R",
+  INR: "₹",
+  CAD: "C$",
+  AUD: "A$",
+};
+
 export default function VaultDashboard() {
   const { publicKey, connected } = useWallet();
   const { currency, setCurrency, rates, convert } = useCurrency();
@@ -409,23 +423,24 @@ export default function VaultDashboard() {
             </button>
             <h2 className="text-7xl font-mono font-bold tracking-tighter text-white">{convert(displayedVolume).formatted}</h2>
           </div>
-          <div>
-            <label className="block text-[9px] text-zinc-400 mb-2 font-medium uppercase tracking-widest">Display Currency</label>
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-200 focus:outline-none focus:border-purple-500"
-            >
-              {Object.keys(rates).length > 0 ? (
-                Object.keys(rates).map((curr) => (
-                  <option key={curr} value={curr}>
-                    {curr}
-                  </option>
-                ))
-              ) : (
-                <option value="USD">USD</option>
-              )}
-            </select>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 sm:min-w-40">
+            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-500">Currency</span>
+            <span className="relative inline-flex items-center gap-1 text-sm font-semibold text-white">
+              <span aria-hidden="true">{currencySymbols[currency] ?? currency}</span>
+              <ChevronDown size={13} aria-hidden="true" className="text-zinc-500" />
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                aria-label="Select currency"
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              >
+                {Object.keys(rates).length > 0 ? (
+                  Object.keys(rates).map((curr) => <option key={curr} value={curr}>{curr}</option>)
+                ) : (
+                  <option value="USD">USD</option>
+                )}
+              </select>
+            </span>
           </div>
         </div>
         

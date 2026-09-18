@@ -8,6 +8,7 @@ export interface Endpoint {
   name: string;
   address: string;
   category: "Staff" | "Cause" | "Tips";
+  transferMode?: "private" | "public";
   image?: string;
   createdAt: number;
 }

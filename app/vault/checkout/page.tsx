@@ -25,6 +25,7 @@ function CheckoutContent() {
   }
 
   const category = searchParams.get("category") || "Registry";
+  const transferMode = searchParams.get("mode") === "public" ? "public" : "private";
 
   return (
     <main className="min-h-[100dvh] bg-zinc-950 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6">
@@ -38,6 +39,7 @@ function CheckoutContent() {
         endpointName={name}
         endpointCategory={category}
         allowCustomAmount={safeAmount <= 0}
+        transferMode={transferMode}
       />
     </main>
   );

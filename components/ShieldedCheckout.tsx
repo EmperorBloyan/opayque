@@ -7,7 +7,6 @@ import { Connection, PublicKey, SendTransactionError, Transaction, VersionedTran
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Copy, LucideCheckCircle2, LucideLoader2, LucideShieldCheck, X } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
-import { buildShieldedTransfer } from "@/lib/magicblock";
 import { appendLocalActivity } from "@/lib/activity";
 import { getAssetMintAddress, getSolanaRpcUrls, isDevnetNetwork } from "@/lib/solana/constants";
 import { sendLegacyPayment, sendPayment, sendStandardPayment } from "@/lib/solana/sendPayment";
@@ -96,6 +95,7 @@ export default function ShieldedCheckout({
   const [transferMode, setTransferMode] = useState<TransferMode>(initialTransferMode);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [handoffCopied, setHandoffCopied] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState(transactionId || checkoutSessionId || "");
 
   const [draftAmount, setDraftAmount] = useState(() =>
     Number.isFinite(amount) && amount > 0 ? amount : 10
@@ -214,7 +214,7 @@ export default function ShieldedCheckout({
     setStatus("processing");
     setMessage("Building transaction...");
     setSuccessSignature(null);
-    const intentId = transactionId || checkoutSessionId || "";
+    let intentId = paymentIntentId;
     let paymentTransferMode = transferMode;
     let paymentConnection: Connection | null = null;
     try {
@@ -241,19 +241,22 @@ export default function ShieldedCheckout({
       const isDevnet = isDevnetNetwork();
       const mint = new PublicKey(getAssetMintAddress("USDC", isDevnet));
       const rpcUrls = getSolanaRpcUrls();
-      const buildPromise = paymentTransferMode === "private"
-        ? withTimeout(
-            buildShieldedTransfer(
-              publicKey.toBase58(),
-              safeMerchantPubkey,
-              safeAmount,
-              transactionId || checkoutSessionId || ""
-            ),
-            25000,
-            "Shielded transfer build"
-          )
-        : withTimeout(
-            fetch("/api/transfer", {
+      if (!intentId) {
+        const intentResponse = await fetch("/api/registry/payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipient: safeMerchantPubkey, amount: safeAmount, mode: paymentTransferMode }),
+        });
+        const intentPayload = await intentResponse.json().catch(() => ({}));
+        if (!intentResponse.ok || typeof intentPayload.intent_id !== "string") {
+          throw new Error(intentPayload?.error || "Unable to create payment intent");
+        }
+        intentId = intentPayload.intent_id;
+        setPaymentIntentId(intentId);
+      }
+
+      const buildPromise = withTimeout(
+        fetch("/api/transfer", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -262,12 +265,12 @@ export default function ShieldedCheckout({
                 amount: safeAmount,
                 mint: mint.toBase58(),
                 intent_id: intentId,
-                mode: "public",
+                mode: paymentTransferMode,
               }),
             }).then(async (response) => {
               const payload = await response.json().catch(() => ({}));
-              if (!response.ok || payload?.mode !== "public" || typeof payload.transaction !== "string") {
-                throw new Error(payload?.error || "Public payment transaction could not be built");
+              if (!response.ok || payload?.mode !== paymentTransferMode || typeof payload.transaction !== "string") {
+                throw new Error(payload?.error || "Payment transaction could not be built");
               }
               const bytes = Uint8Array.from(atob(payload.transaction), (character) => character.charCodeAt(0));
               let transaction: VersionedTransaction | Transaction;
@@ -276,11 +279,11 @@ export default function ShieldedCheckout({
               } catch {
                 transaction = Transaction.from(bytes);
               }
-              return { ...payload, transaction, mode: "public" as const };
+              return { ...payload, transaction, mode: paymentTransferMode };
             }),
-            25000,
-            "Public transfer build"
-          );
+        25000,
+        "Payment transfer build"
+      );
       const [balanceResult, built] = await Promise.all([
         loadWalletBalances(rpcUrls, publicKey, mint),
         buildPromise,
@@ -345,11 +348,11 @@ export default function ShieldedCheckout({
         if (!settleResponse.ok) {
           throw new Error(settlePayload?.error || "Payment confirmed, but terminal reconciliation failed.");
         }
-      } else if (checkoutSessionId) {
+      } else if (checkoutSessionId || intentId) {
         const verifyResponse = await fetch("/api/v1/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: checkoutSessionId, transactionSignature: signature }),
+          body: JSON.stringify({ sessionId: checkoutSessionId || intentId, transactionSignature: signature }),
         });
         const verifyPayload = await verifyResponse.json().catch(() => ({}));
         if (!verifyResponse.ok) {
@@ -439,14 +442,14 @@ export default function ShieldedCheckout({
             Amount Due
           </p>
 
-          <p className="mt-2 text-4xl font-black text-zinc-900 dark:text-white">
+          <p className="mt-2 text-center text-4xl font-black text-zinc-900 dark:text-white">
             {fiatLabelAmount.toLocaleString(undefined, {
               maximumFractionDigits: 2,
             })}{" "}
             <span className="text-base text-zinc-500">{displayCurrency}</span>
           </p>
 
-          <p className="mt-2 text-sm font-mono text-purple-500">
+          <p className="mt-2 text-center text-sm font-mono text-purple-500">
             ≈ {safeAmount.toFixed(2)} {settlementToken || "USDC"}
           </p>
 

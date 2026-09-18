@@ -359,6 +359,9 @@ export default function RegistryPage() {
                       <p className="text-[9px] font-mono text-zinc-600 truncate w-32">
                         {ep.address}
                       </p>
+                      <p className={`text-[9px] font-black uppercase tracking-widest ${ep.transferMode === "public" ? "text-zinc-400" : "text-purple-400"}`}>
+                        {ep.transferMode === "public" ? "Standard" : "Private"}
+                      </p>
                     </div>
                   </div>
 
@@ -424,7 +427,7 @@ export default function RegistryPage() {
                       selectedEndpoint.address
                     )}&name=${encodeURIComponent(selectedEndpoint.name)}&category=${encodeURIComponent(
                       selectedEndpoint.category || "Registry"
-                    )}`}
+                      )}&mode=${encodeURIComponent(selectedEndpoint.transferMode === "public" ? "public" : "private")}`}
                     size={200}
                     level="H"
                   />

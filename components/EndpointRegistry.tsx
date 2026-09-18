@@ -9,7 +9,9 @@ import {
   LucideAlertCircle, 
   LucideHeart, 
   LucideCircleDollarSign,
-  LucideUsers
+  LucideUsers,
+  LucideShieldCheck,
+  LucideGlobe2,
 } from "lucide-react";
 import { Endpoint, EndpointCategory } from "@/lib/types";
 import { PublicKey } from "@solana/web3.js";
@@ -23,6 +25,7 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
   const [category, setCategory] = useState<EndpointCategory>("Staff");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [transferMode, setTransferMode] = useState<"private" | "public">("private");
   const [image, setImage] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -60,6 +63,7 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
       name,
       address,
       category,
+      transferMode,
       image, // ✅ include uploaded image
       createdAt: Date.now()
     };
@@ -71,6 +75,7 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
       setSuccess(false);
       setName("");
       setAddress("");
+      setTransferMode("private");
       setImage(undefined);
     }, 1200);
   };
@@ -115,6 +120,30 @@ export default function EndpointRegistry({ onSave, existingEndpoints }: Endpoint
               {item.icon} {item.label}
             </button>
           ))}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Payment privacy</p>
+          <div className="flex bg-black/50 p-1.5 rounded-2xl border border-white/5" role="group" aria-label="Payment privacy">
+            {[
+              { label: "Private", value: "private" as const, icon: <LucideShieldCheck size={13} /> },
+              { label: "Standard", value: "public" as const, icon: <LucideGlobe2 size={13} /> },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setTransferMode(item.value)}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                  transferMode === item.value
+                    ? item.value === "private" ? "bg-purple-600 text-white shadow-lg" : "bg-black text-white shadow-lg"
+                    : "text-zinc-500 hover:text-white"
+                }`}
+                aria-pressed={transferMode === item.value}
+              >
+                {item.icon} {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-4">
